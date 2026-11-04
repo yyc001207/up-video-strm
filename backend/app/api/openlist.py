@@ -26,6 +26,7 @@ from app.business.openlist.schema import (
     OpenListExecutionStart,
     OpenListServerAddDirs,
     OpenListServerCreate,
+    OpenListServerTestConnection,
     OpenListServerUpdate,
     OpenListTaskCreate,
     OpenListTaskUpdate,
@@ -85,6 +86,14 @@ async def delete_server(
         raise BadRequestException("缺少 id")
     await service.delete_server(db, server_id)
     return success_response(data=None)
+
+
+@router.post("/servers/test-connection", summary="测试服务器连通性（读取根目录，不落库）")
+async def test_server_connection(
+    data: OpenListServerTestConnection,
+    db: AsyncSession = Depends(get_db),
+):
+    return success_response(data=await service.test_server_connection(db, data))
 
 
 @router.post("/servers/{server_id}", summary="更新服务器配置")

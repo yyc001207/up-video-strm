@@ -22,6 +22,7 @@ from app.business.openlist.schema import (
     OpenListExecutionBatchCreate,
     OpenListExecutionCreate,
     OpenListServerCreate,
+    OpenListServerTestConnection,
     OpenListServerUpdate,
     OpenListTaskCreate,
     OpenListTaskUpdate,
@@ -262,6 +263,34 @@ async def _validate_parent_dirs(server_url: str, token: Optional[str], paths: li
     api = OpenListAPI(server_url, token or "", verify_ssl=verify_ssl)
     for path in paths:
         await _validate_parent_dir_api(api, path)
+
+
+async def test_server_connection(db: AsyncSession, data: OpenListServerTestConnection) -> dict:
+    """测试服务器连通性：按表单地址与 Token 读取根目录，仅校验不落库。
+
+    Token 解析顺序：表单填写值 → 编辑已有服务器时使用已保存 Token；
+    未填写 Token 时仍会尝试匿名访问（适用于免登录/游客可读的 OpenList）。
+    """
+    server_url = (data.server_url or "").strip().rstrip("/")
+    if not server_url:
+        raise BadRequestException("请填写服务器地址")
+    if not server_url.lower().startswith(("http://", "https://")):
+        raise BadRequestException("服务器地址需以 http:// 或 https:// 开头")
+    token = (data.token or "").strip()
+    if not token and data.server_id is not None:
+        server = await get_server(db, data.server_id)
+        token = server.token or ""
+    verify_ssl = await _get_verify_ssl(db)
+    api = OpenListAPI(server_url, token, verify_ssl=verify_ssl)
+    try:
+        # 只重试 1 次：连通性测试需要及时反馈，避免长重试拖慢弹窗
+        result = await api.list_files("/", max_retries=1)
+    except Exception as exc:
+        raise BadRequestException(f"连接失败：{exc}") from exc
+    total = result.get("total")
+    if total is None:
+        total = len(result.get("content") or [])
+    return {"message": f"连接成功：根目录可读取，共 {total} 项"}
 
 
 async def _fetch_dirs(server: OpenListServer, path: str, verify_ssl: bool) -> list[dict]:

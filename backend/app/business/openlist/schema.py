@@ -73,6 +73,16 @@ class OpenListServerAddDirs(BaseModel):
     skip_validation: bool = False
 
 
+class OpenListServerTestConnection(BaseModel):
+    """测试服务器连通性：编辑已有服务器时 token 留空则使用已保存的 Token。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    server_url: str = Field(..., min_length=1, max_length=512)
+    token: Optional[str] = Field(default=None, max_length=512)
+    server_id: Optional[int] = None
+
+
 class OpenListServerResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

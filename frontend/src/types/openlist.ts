@@ -34,6 +34,11 @@ export interface OpenListServerUpdate {
   skip_validation?: boolean
 }
 
+/** 服务器连通性测试结果。 */
+export interface ServerConnectionTestResult {
+  message: string
+}
+
 export interface OpenListConfig {
   id: number | null
   servers: OpenListServer[]

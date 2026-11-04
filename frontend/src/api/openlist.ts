@@ -16,6 +16,7 @@ import type {
   OpenListServerUpdate,
   OpenListTask,
   Res,
+  ServerConnectionTestResult,
   ServerDirItem
 } from '@/types/openlist'
 
@@ -64,6 +65,14 @@ export const openlistApi = {
   },
   deleteServer(id: number): Promise<Res<null>> {
     return request.post('/openlist/servers/delete', { id })
+  },
+  /** 测试服务器连通性（编辑时 token 留空则使用已保存 Token）。 */
+  testServerConnection(data: {
+    server_url: string
+    token?: string
+    server_id?: number
+  }): Promise<Res<ServerConnectionTestResult>> {
+    return request.post('/openlist/servers/test-connection', data)
   },
   /** 快速追加父级目录（仅校验新增部分，不动已有目录）。 */
   addServerParentDirs(serverId: number, parentDirs: string[], skipValidation = false): Promise<Res<OpenListServer>> {

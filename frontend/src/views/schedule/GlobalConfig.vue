@@ -18,6 +18,7 @@ const server = computed<OpenListServer | null>(() => store.server)
 const serverDialogVisible = ref(false)
 const editingServerId = ref<number | null>(null)
 const savingServer = ref(false)
+const testingConnection = ref(false)
 const refreshingCache = ref(false)
 const serverForm = reactive({ name: '', server_url: '', token: '', parent_dirs: '', skip_validation: false })
 
@@ -64,6 +65,28 @@ function parseParentDirs(): string[] {
     if (path && !dirs.includes(path)) dirs.push(path)
   }
   return dirs
+}
+
+async function handleTestConnection() {
+  const serverUrl = serverForm.server_url.trim()
+  if (!serverUrl) {
+    ElMessage.warning('请填写服务器地址')
+    return
+  }
+  testingConnection.value = true
+  try {
+    const result = await openlistApi.testServerConnection({
+      server_url: serverUrl,
+      token: serverForm.token.trim() || undefined,
+      // 编辑已有服务器且 Token 留空时，后端用已保存的 Token 测试
+      server_id: editingServerId.value ?? undefined
+    })
+    ElMessage.success(result.data.message)
+  } catch {
+    /* 拦截器提示 */
+  } finally {
+    testingConnection.value = false
+  }
 }
 
 async function handleSaveServer() {
@@ -367,8 +390,13 @@ defineExpose({ reload: load })
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="serverDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="savingServer" @click="handleSaveServer">保存</el-button>
+        <div class="dialog-footer">
+          <el-button :loading="testingConnection" @click="handleTestConnection">测试连通性</el-button>
+          <div class="dialog-footer__right">
+            <el-button @click="serverDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="savingServer" @click="handleSaveServer">保存</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
 
@@ -533,6 +561,19 @@ defineExpose({ reload: load })
 
   :deep(.el-input) {
     flex: 1;
+  }
+}
+
+/* 服务器弹窗底部：左侧连通性测试，右侧取消/保存 */
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--up-strm-space-2, 8px);
+
+  &__right {
+    display: flex;
+    gap: var(--up-strm-space-2, 8px);
   }
 }
 </style>

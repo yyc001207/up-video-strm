@@ -7,7 +7,7 @@
 - **前后端一体**：FastAPI 后端 + Vue 3 前端，后端检测到前端构建产物时自动托管页面（含 SPA 回退）
 - **桌面化运行**：PyInstaller + Inno Setup 打包的安装包，双击即用，支持系统托盘、开机自启与单实例
 
-> 📖 安装、配置、执行、日志、设置与常见问题，见 [用户手册](docs/用户手册.md)。
+> 📖 安装、配置、执行、日志、设置与常见问题，见 [用户手册](manual/用户手册.md)。
 
 ## 特性概览
 
@@ -22,7 +22,7 @@
 | 桌面版 | 原生 WebView2 窗口、系统托盘常驻、开机自启、启动/关闭最小化到托盘、单实例唤起 |
 | 界面主题 | 浅色 / 深色 / 跟随系统一键切换，本地记忆、首屏无闪烁 |
 
-> 各功能的操作步骤与说明统一见 [用户手册](docs/用户手册.md)，此处不再重复。
+> 各功能的操作步骤与说明统一见 [用户手册](manual/用户手册.md)，此处不再重复。
 
 ## 快速开始
 
@@ -36,7 +36,7 @@
 
 - 系统要求：Windows 10 / 11 x64；应用窗口依赖 Microsoft Edge WebView2 运行时（Windows 10/11 通常自带，缺失时安装程序与启动都会给出提示）。
 - 运行数据统一存放在 `%LOCALAPPDATA%\up-video-strm`，卸载不会删除，重装沿用。
-- 详细说明：[安装](docs/用户手册.md#1-安装windows-安装包)、[启动与托盘](docs/用户手册.md#2-启动与托盘)、[桌面设置](docs/用户手册.md#10-桌面设置)。
+- 详细说明：[安装](manual/用户手册.md#1-安装windows-安装包)、[启动与托盘](manual/用户手册.md#2-启动与托盘)、[桌面设置](manual/用户手册.md#10-桌面设置)。
 
 ### 方式二：源码运行
 
@@ -86,10 +86,10 @@ npm run preview                   # 本地预览构建产物
 
 | 文档 | 内容 |
 |------|------|
-| [docs/用户手册.md](docs/用户手册.md) | 使用者视角：安装、启动与托盘、全局/服务器/任务配置、执行、日志、历史、设置、升级备份、常见问题 |
-| [rules/project.md](rules/project.md) | 工程总览：定位、技术栈、端口、运行方式、打包发布、冻结运行差异 |
-| [rules/backend.md](rules/backend.md) | 后端目录结构、业务模块、数据层、关键流程、环境变量、冻结运行 |
-| [rules/frontend.md](rules/frontend.md) | 前端技术栈、目录结构、页面组件、接口与状态、常用命令 |
+| [manual/用户手册.md](manual/用户手册.md) | 使用者视角：安装、启动与托盘、全局/服务器/任务配置、执行、日志、历史、设置、升级备份、常见问题 |
+| [docs/rules/project.md](docs/rules/project.md) | 工程总览：定位、技术栈、端口、运行方式、打包发布、冻结运行差异 |
+| [docs/rules/backend.md](docs/rules/backend.md) | 后端目录结构、业务模块、数据层、关键流程、环境变量、冻结运行 |
+| [docs/rules/frontend.md](docs/rules/frontend.md) | 前端技术栈、目录结构、页面组件、接口与状态 |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 
@@ -115,8 +115,8 @@ up-video-strm/
 ├── frontend/                   # Vue 3 + Vite + Element Plus 前端
 │   └── src/                    # views / components / stores / api / types / utils / styles
 ├── packaging/                  # Windows 打包：up-video-strm.spec / build.ps1 / installer.iss / bump_version.py
-├── docs/                       # 用户手册与界面截图
-├── rules/                      # 工程说明（project / backend / frontend）
+├── docs/                       # 工程规则与规范（rules/，后续计划、需求等文档）
+├── manual/                     # 用户手册与界面截图
 ├── AGENTS.md
 ├── LICENSE
 └── README.md

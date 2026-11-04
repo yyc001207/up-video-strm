@@ -1,16 +1,41 @@
-// up-video-strm 自定义扩展变量（统一以 --up-video-strm- 前缀）
-// Element Plus 内置变量（--el-*）不在此重复定义，直接使用即可
+// up-video-strm 自定义设计令牌（统一使用 --up-strm- 前缀）。
+// 仅定义项目自有的布局 / 圆角 / 间距 / 阴影 / 字号；Element Plus 变量统一在 element-reset.scss 覆盖。
 
 :root {
-  // 布局尺寸
-  --up-video-strm-nav-height: 56px;
-  --up-video-strm-sidebar-width: 220px;
-  --up-video-strm-sidebar-collapsed-width: 64px;
-  --up-video-strm-content-max-width: 1400px;
+  // 布局
+  --up-strm-sidebar-width: 220px;
+  --up-strm-sidebar-collapsed-width: 64px;
+  --up-strm-topbar-height: 56px;
+  --up-strm-content-max-width: 1400px;
 
-  // 组件特定变量
-  --up-video-strm-card-hover-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  --up-video-strm-icon-size-sm: 24px;
-  --up-video-strm-icon-size-md: 40px;
-  --up-video-strm-icon-size-lg: 56px;
+  // 圆角：控件 6 / 卡片 8 / 容器 12
+  --up-strm-radius-sm: 6px;
+  --up-strm-radius-md: 8px;
+  --up-strm-radius-lg: 12px;
+
+  // 间距（4px 基数）
+  --up-strm-space-1: 4px;
+  --up-strm-space-2: 8px;
+  --up-strm-space-3: 12px;
+  --up-strm-space-4: 16px;
+  --up-strm-space-6: 24px;
+  --up-strm-space-8: 32px;
+
+  // 阴影（亮色主题）
+  --up-strm-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --up-strm-shadow-md: 0 4px 12px rgba(16, 24, 40, 0.1);
+  --up-strm-shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.14);
+
+  // 字号阶（正文行高 1.5，标题行高 1.4）
+  --up-strm-font-size-xs: 12px; // 标注 / 元信息
+  --up-strm-font-size-sm: 13px; // 辅助说明
+  --up-strm-font-size-base: 14px; // 正文与表格
+  --up-strm-font-size-lg: 16px; // 卡片标题
+  --up-strm-font-size-xl: 20px; // 页面标题
+}
+
+html.dark {
+  --up-strm-shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --up-strm-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --up-strm-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
 }

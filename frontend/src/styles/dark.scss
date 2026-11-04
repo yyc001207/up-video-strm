@@ -1,7 +1,19 @@
 // Element Plus 暗黑模式变量
 @use 'element-plus/theme-chalk/dark/css-vars.css';
 
-// 原生控件（滚动条/输入框等）跟随暗黑主题
+// 暗色主题表面色：页面 / 卡片 / 浮层三层灰阶拉开层级，文字与主色同步提亮。
 html.dark {
   color-scheme: dark;
+
+  --el-bg-color-page: #0e1116; // 页面底（最深）
+  --el-bg-color: #171b22; // 卡片
+  --el-bg-color-overlay: #1f2530; // 浮层（最浅）
+  --el-border-color: #2a3140;
+  --el-border-color-light: #262c38;
+  --el-border-color-lighter: #202634;
+  --el-fill-color-light: #20262f;
+  --el-text-color-primary: #e6e9ef;
+  --el-text-color-regular: #c3c9d4;
+  --el-text-color-secondary: #9aa3b2;
+  --el-color-primary: #6c97f8; // 暗色下提亮主色，保证对比
 }

@@ -1,21 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, FolderOpened, Refresh } from '@element-plus/icons-vue'
+import { FolderOpened, Refresh } from '@element-plus/icons-vue'
 
 import { desktopApi } from '@/api/desktop'
 import type { DesktopInfo } from '@/types/desktop'
 
-const router = useRouter()
 const loading = ref(false)
 const info = ref<DesktopInfo | null>(null)
 const saving = ref('')
-
-/** 返回主页面（任务调度）。 */
-function goBack() {
-  router.push('/')
-}
 
 async function load() {
   loading.value = true
@@ -92,12 +85,7 @@ defineExpose({ reload: load })
 </script>
 
 <template>
-  <div class="settings-page">
-    <div class="settings-page__bar">
-      <el-button :icon="ArrowLeft" @click="goBack">返回</el-button>
-      <span class="settings-page__title">设置</span>
-    </div>
-
+  <div class="page settings-page">
     <div class="settings" v-loading="loading">
       <el-alert
         v-if="info && !info.is_desktop"
@@ -188,7 +176,7 @@ defineExpose({ reload: load })
         </div>
       </template>
 
-      <el-descriptions v-if="info" :column="1" border class="settings__desc-table">
+      <el-descriptions v-if="info" :column="1" border>
         <el-descriptions-item label="数据目录">{{ info.data_dir }}</el-descriptions-item>
         <el-descriptions-item label="日志文件">{{ info.log_file }}</el-descriptions-item>
         <el-descriptions-item label="程序路径">{{ info.exe_path || '—（网页版无独立程序）' }}</el-descriptions-item>
@@ -199,7 +187,7 @@ defineExpose({ reload: load })
       <template #header>
         <span>关于</span>
       </template>
-      <el-descriptions v-if="info" :column="1" border class="settings__desc-table">
+      <el-descriptions v-if="info" :column="1" border>
         <el-descriptions-item label="版本">{{ info.version }}</el-descriptions-item>
         <el-descriptions-item label="运行模式">
           <el-tag :type="info.is_desktop ? 'success' : 'info'" effect="light" size="small">
@@ -216,31 +204,13 @@ defineExpose({ reload: load })
 .settings-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  min-height: 0;
-
-  &__bar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-  }
-
-  &__title {
-    font-size: 16px;
-    font-weight: 500;
-    color: var(--el-text-color-primary);
-  }
+  gap: var(--up-strm-space-3, 12px);
 }
 
 .settings {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
+  gap: var(--up-strm-space-3, 12px);
 
   &__alert {
     flex-shrink: 0;
@@ -286,10 +256,6 @@ defineExpose({ reload: load })
   &__desc {
     font-size: var(--el-font-size-extra-small);
     color: var(--el-text-color-secondary);
-  }
-
-  &__desc-table {
-    max-width: 760px;
   }
 
   &__actions {

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, FolderAdd, Plus } from '@element-plus/icons-vue'
+import { Delete, FolderAdd, Plus, Search } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListTask } from '@/types/openlist'
-import DirTreePanel from './DirTreePanel.vue'
+import DirTreePanel from './components/DirTreePanel.vue'
 
 const store = useOpenlistStore()
 
@@ -28,6 +28,11 @@ const form = reactive({
   pause_time: '' as string
 })
 
+/** 空状态文案：有筛选条件时区分「无匹配」与「无数据」。 */
+const emptyDescription = computed(() =>
+  keyword.value.trim() || serverFilter.value != null ? '没有匹配的任务配置' : '暂无任务配置'
+)
+
 async function load() {
   loading.value = true
   try {
@@ -44,6 +49,10 @@ async function load() {
 
 async function handleSearch() {
   await load()
+}
+
+function handleSelectionChange(rows: OpenListTask[]) {
+  selectedIds.value = rows.map(row => row.id)
 }
 
 function openCreate() {
@@ -105,7 +114,11 @@ async function handleSave() {
 
 async function handleDelete(row: OpenListTask) {
   try {
-    await ElMessageBox.confirm(`确认删除任务「${row.name}」？`, '提示', { type: 'warning' })
+    await ElMessageBox.confirm(`删除任务「${row.name}」？该操作不可恢复。`, '删除任务', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
   } catch {
     return
   }
@@ -121,8 +134,10 @@ async function handleBatchDelete() {
     return
   }
   try {
-    await ElMessageBox.confirm(`确认删除选中的 ${count} 个任务？此操作不可恢复。`, '批量删除', {
-      type: 'warning'
+    await ElMessageBox.confirm(`删除选中的 ${count} 个任务？该操作不可恢复。`, '批量删除任务', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
     })
   } catch {
     return
@@ -347,75 +362,100 @@ defineExpose({ reload: load })
 </script>
 
 <template>
-  <div class="task-manage">
-    <el-card shadow="never" class="task-manage__card">
-      <template #header>
-        <div class="task-manage__header">
-          <span>任务配置</span>
-          <div class="task-manage__actions">
-            <el-select
-              v-model="serverFilter"
-              placeholder="全部服务器"
-              clearable
-              class="task-manage__server-filter"
-              @change="handleSearch"
-            >
-              <el-option
-                v-for="server in store.servers"
-                :key="server.id"
-                :label="server.name || server.server_url"
-                :value="server.id"
-              />
-            </el-select>
-            <el-input
-              v-model="keyword"
-              placeholder="任务名称关键字"
-              clearable
-              class="task-manage__keyword"
-              @keyup.enter="handleSearch"
-              @clear="handleSearch"
-            />
-            <el-button type="danger" plain :disabled="selectedIds.length === 0" @click="handleBatchDelete">
-              批量删除{{ selectedIds.length > 0 ? `（${selectedIds.length}）` : '' }}
-            </el-button>
-            <el-button type="primary" plain :icon="FolderAdd" @click="openQuickAdd">快速添加</el-button>
-            <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
-          </div>
-        </div>
-      </template>
+  <div class="page task-manage">
+    <!-- 工具栏：左侧搜索/筛选，右侧动作（主次分明） -->
+    <div class="toolbar">
+      <div class="toolbar__left">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索任务名称"
+          clearable
+          class="toolbar__keyword"
+          @keyup.enter="handleSearch"
+          @clear="handleSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-select
+          v-model="serverFilter"
+          placeholder="全部服务器"
+          clearable
+          class="toolbar__server"
+          @change="handleSearch"
+        >
+          <el-option
+            v-for="server in store.servers"
+            :key="server.id"
+            :label="server.name || server.server_url"
+            :value="server.id"
+          />
+        </el-select>
+      </div>
 
+      <div class="toolbar__right">
+        <el-button
+          type="danger"
+          plain
+          :icon="Delete"
+          :disabled="selectedIds.length === 0"
+          @click="handleBatchDelete"
+        >
+          批量删除{{ selectedIds.length > 0 ? `（${selectedIds.length}）` : '' }}
+        </el-button>
+        <el-button :icon="FolderAdd" @click="openQuickAdd">快速添加</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
+      </div>
+    </div>
+
+    <el-card shadow="never" class="task-manage__card">
       <el-table
         v-loading="loading"
         :data="list"
         row-key="id"
-        height="100%"
         class="task-manage__table"
-        @selection-change="rows => (selectedIds = rows.map(r => r.id))"
+        @selection-change="handleSelectionChange"
       >
-        <el-table-column type="selection" width="45" />
-        <el-table-column label="编号" prop="id" width="80" />
-        <el-table-column label="任务名称" prop="name" min-width="150" show-overflow-tooltip />
+        <el-table-column type="selection" width="48" />
+        <el-table-column label="编号" prop="id" width="76" />
+        <el-table-column label="任务" min-width="260">
+          <template #default="{ row }">
+            <div class="cell-primary">{{ row.name }}</div>
+            <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
+          </template>
+        </el-table-column>
         <el-table-column label="服务器" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.server_name || row.server_url || '—' }}
           </template>
         </el-table-column>
-        <el-table-column label="处理路径" prop="process_path" min-width="190" show-overflow-tooltip />
-        <el-table-column label="输出目录" prop="output_dir" min-width="190" show-overflow-tooltip />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="输出目录" prop="output_dir" min-width="200" show-overflow-tooltip />
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="primary"  @click="handleCopy(row)">复制</el-button>
+            <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
+
+        <template #empty>
+          <el-empty :description="emptyDescription" :image-size="80">
+            <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
+          </el-empty>
+        </template>
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="editingId != null ? '编辑任务' : '新建任务'" width="520px" destroy-on-close>
-      <el-form label-width="90px">
+    <el-dialog
+      v-model="dialogVisible"
+      :title="editingId != null ? '编辑任务' : '新建任务'"
+      width="520px"
+      destroy-on-close
+    >
+      <el-form label-width="96px">
         <el-form-item label="所属服务器">
-          <el-select v-model="form.server_id" placeholder="请选择任务所属服务器" class="task-manage__server-select">
+          <el-select v-model="form.server_id" placeholder="请选择任务所属服务器" class="form-control">
             <el-option
               v-for="server in store.servers"
               :key="server.id"
@@ -423,7 +463,7 @@ defineExpose({ reload: load })
               :value="server.id"
             />
           </el-select>
-          <div class="task-manage__remark">任务强关联服务器，执行时只能在该服务器上运行</div>
+          <div class="remark">任务强关联服务器，执行时只能在该服务器上运行</div>
         </el-form-item>
         <el-form-item label="任务名称">
           <el-input v-model="form.name" placeholder="如：TV 剧集" maxlength="128" />
@@ -435,12 +475,12 @@ defineExpose({ reload: load })
           <el-input v-model="form.output_dir" placeholder="如：/tv" maxlength="512" />
         </el-form-item>
         <el-form-item label="限流间隔">
-          <el-input-number v-model="form.pause_count" :min="1" :max="100000" placeholder="用全局" class="task-manage__pause-count" />
-          <div class="task-manage__remark">留空则使用全局配置；每隔 N 个文件暂停一次</div>
+          <el-input-number v-model="form.pause_count" :min="1" :max="100000" placeholder="用全局" class="pause-count" />
+          <div class="remark">留空则使用全局配置；每隔 N 个文件暂停一次</div>
         </el-form-item>
         <el-form-item label="限流暂停">
           <el-input v-model="form.pause_time" placeholder="用全局，如 0,3,5" maxlength="512" />
-          <div class="task-manage__remark">秒，逗号分隔；随机暂停其中一项；填 0 表示不限流</div>
+          <div class="remark">秒，逗号分隔；随机暂停其中一项；填 0 表示不限流</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -455,11 +495,10 @@ defineExpose({ reload: load })
       title="快速添加任务配置（按目录）"
       size="800px"
       destroy-on-close
-      class="task-manage__quick-drawer"
     >
-      <el-form label-width="90px">
+      <el-form label-width="96px">
         <el-form-item label="选择服务器">
-          <el-select v-model="quickServerId" placeholder="请选择服务器配置" class="task-manage__quick-select">
+          <el-select v-model="quickServerId" placeholder="请选择服务器配置" class="quick-select">
             <el-option
               v-for="server in quickServerOptions"
               :key="server.id"
@@ -467,43 +506,43 @@ defineExpose({ reload: load })
               :value="server.id"
             />
           </el-select>
-          <span v-if="!quickServerOptions.length" class="task-manage__remark">请先在「全局配置」新增服务器</span>
+          <span v-if="!quickServerOptions.length" class="remark">请先在「全局配置」新增服务器</span>
         </el-form-item>
         <el-form-item label="父级目录">
-          <div class="task-manage__parent-row">
-            <el-select v-model="quickParentDir" placeholder="请选择父级目录" class="task-manage__quick-select">
+          <div class="parent-row">
+            <el-select v-model="quickParentDir" placeholder="请选择父级目录" class="quick-select">
               <el-option v-for="dir in quickParentOptions" :key="dir" :label="dir" :value="dir" />
             </el-select>
             <el-button :icon="Plus" plain @click="openQuickAddParentDir">新增</el-button>
           </div>
-          <span v-if="quickServer && !quickParentOptions.length" class="task-manage__remark">
+          <span v-if="quickServer && !quickParentOptions.length" class="remark">
             该服务器未配置父级目录，可点击「新增」快速添加
           </span>
         </el-form-item>
         <el-form-item label="选择目录">
           <DirTreePanel v-model="quickSelected" :server-id="quickServerId" :parent-dir="quickParentDir" />
-          <div class="task-manage__include-parent">
+          <div class="include-parent">
             <el-checkbox v-model="quickIncludeParent" :disabled="!quickParentDir">
               同时把父级目录「{{ quickParentDir || '—' }}」本身作为一条任务配置
             </el-checkbox>
           </div>
-          <div class="task-manage__include-parent">
+          <div class="include-parent">
             <el-checkbox v-model="quickWithParent" :disabled="!quickParentDir">
               输出目录带父级目录（选中以父级目录开头，如 /emby/电视剧；不选以一级子目录开头，如 /电视剧）
             </el-checkbox>
           </div>
-          <div class="task-manage__remark">勾选目录后点击下方「添加任务配置」，每个目录生成一条任务配置</div>
+          <div class="remark">勾选目录后点击下方「添加任务配置」，每个目录生成一条任务配置</div>
         </el-form-item>
         <el-form-item label="限流间隔">
-          <el-input-number v-model="quickPauseCount" :min="1" :max="100000" placeholder="用全局" class="task-manage__pause-count" />
-          <div class="task-manage__remark">留空则使用全局配置；每隔 N 个文件暂停一次</div>
+          <el-input-number v-model="quickPauseCount" :min="1" :max="100000" placeholder="用全局" class="pause-count" />
+          <div class="remark">留空则使用全局配置；每隔 N 个文件暂停一次</div>
         </el-form-item>
         <el-form-item label="限流暂停">
           <el-input v-model="quickPauseTime" placeholder="用全局，如 0,3,5" maxlength="512" />
-          <div class="task-manage__remark">秒，逗号分隔；随机暂停其中一项；填 0 表示不限流</div>
+          <div class="remark">秒，逗号分隔；随机暂停其中一项；填 0 表示不限流</div>
         </el-form-item>
         <el-form-item v-if="quickPreview.length" label="添加预览">
-          <el-table :data="quickPreview" size="small" max-height="220" class="task-manage__quick-table">
+          <el-table :data="quickPreview" size="small" max-height="220" class="quick-table">
             <el-table-column label="任务名称" prop="name" min-width="110" show-overflow-tooltip />
             <el-table-column label="处理路径" prop="process_path" min-width="150" show-overflow-tooltip />
             <el-table-column label="输出目录" prop="output_dir" min-width="150" show-overflow-tooltip />
@@ -516,7 +555,7 @@ defineExpose({ reload: load })
         </el-form-item>
       </el-form>
       <template #footer>
-        <div class="task-manage__drawer-footer">
+        <div class="drawer-footer">
           <el-button @click="quickDialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="quickCreating" :disabled="quickPreview.length === 0" @click="handleQuickAdd">
             添加 {{ quickPreview.length }} 条任务配置
@@ -527,7 +566,7 @@ defineExpose({ reload: load })
 
     <!-- 快速新增父级目录 -->
     <el-dialog v-model="quickParentDialogVisible" title="快速新增父级目录" width="480px" destroy-on-close>
-      <el-form label-width="90px">
+      <el-form label-width="96px">
         <el-form-item label="父级目录">
           <el-input
             v-model="quickNewDirs"
@@ -535,7 +574,7 @@ defineExpose({ reload: load })
             :rows="4"
             placeholder="每行一个目录，自动补全 / 前缀，如：&#10;emby/动漫&#10;音乐"
           />
-          <div class="task-manage__remark">保存时自动校验格式、存在性与读写权限，校验通过后自动缓存一级子目录并选中</div>
+          <div class="remark">保存时自动校验格式、存在性与读写权限，校验通过后自动缓存一级子目录并选中</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -550,86 +589,90 @@ defineExpose({ reload: load })
 .task-manage {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+  gap: var(--up-strm-space-4, 16px);
 
   &__card {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-
-    :deep(.el-card__body) {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-    }
-  }
-
-  &__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  &__actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  &__keyword {
-    width: 180px;
-  }
-
-  &__server-filter {
-    width: 180px;
-  }
-
-  &__server-select {
-    width: 100%;
-  }
-
-  &__quick-select {
-    width: 340px;
-  }
-
-  &__parent-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-  }
-
-  &__include-parent {
-    margin: 6px 0 2px;
-  }
-
-  &__drawer-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-  }
-
-  &__quick-table {
-    width: 100%;
+    flex-shrink: 0;
   }
 
   &__table {
-    flex: 1;
-    min-height: 0;
+    width: 100%;
+  }
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--up-strm-space-3, 12px);
+
+  &__left,
+  &__right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--up-strm-space-2, 8px);
   }
 
-  &__pause-count {
-    width: 200px;
+  &__keyword {
+    width: 220px;
   }
 
-  &__remark {
-    font-size: var(--el-font-size-extra-small);
-    color: var(--el-text-color-secondary);
-    margin-top: 2px;
+  &__server {
+    width: 180px;
   }
+}
+
+.cell-primary {
+  font-size: var(--up-strm-font-size-base, 14px);
+  color: var(--el-text-color-primary);
+  line-height: 1.4;
+}
+
+.cell-secondary {
+  font-size: var(--up-strm-font-size-xs, 12px);
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-control,
+.quick-select {
+  width: 100%;
+}
+
+.pause-count {
+  width: 200px;
+}
+
+.parent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--up-strm-space-2, 8px);
+  width: 100%;
+}
+
+.include-parent {
+  margin: var(--up-strm-space-1, 4px) 0;
+}
+
+.quick-table {
+  width: 100%;
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--up-strm-space-3, 12px);
+}
+
+.remark {
+  font-size: var(--up-strm-font-size-sm, 13px);
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+  margin-top: 2px;
 }
 </style>

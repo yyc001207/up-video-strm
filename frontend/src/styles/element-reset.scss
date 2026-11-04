@@ -1,6 +1,68 @@
-// Element Plus 样式覆盖（占位）
-// 仅在必要时覆盖 Element Plus 变量，放在全局样式之前
+// Element Plus 样式覆盖：品牌色 / 语义色 / 中性色令牌 + 表格统一规范。
+// 在 element-plus/dist/index.css 之后加载，覆盖其默认值；暗色主题在 dark.scss 中按 html.dark 提权覆盖。
+
 :root {
-  // --el-color-primary: #409eff;
-  // 如需调整主题色，在此处覆盖
+  // 品牌主色阶（替代 EP 默认 #409EFF）
+  --el-color-primary: #2b6cf6;
+  --el-color-primary-light-3: #6c97f8;
+  --el-color-primary-light-5: #95b4fa;
+  --el-color-primary-light-7: #bfd3fc;
+  --el-color-primary-light-8: #d8e3fd;
+  --el-color-primary-light-9: #eff4ff;
+  --el-color-primary-dark-2: #1e55d6;
+
+  // 语义色
+  --el-color-success: #12b76a;
+  --el-color-warning: #f79009;
+  --el-color-danger: #e24b4a;
+  --el-color-error: #e24b4a;
+  --el-color-info: #667085;
+
+  // 中性色 / 表面色 / 文字色（亮色主题）
+  --el-bg-color-page: #f7f8fa; // 页面底
+  --el-bg-color: #ffffff; // 卡片
+  --el-bg-color-overlay: #ffffff; // 浮层
+  --el-text-color-primary: #1a1d23; // 正文 16.9:1（AA）
+  --el-text-color-regular: #3d4552;
+  --el-text-color-secondary: #5b6472; // 次要 6.0:1（AA）
+  --el-text-color-placeholder: #8a93a2; // 仅占位 / 禁用
+  --el-border-color: #d9dee6;
+  --el-border-color-light: #e3e6eb;
+  --el-border-color-lighter: #edf0f4;
+  --el-fill-color-light: #f4f5f7;
+  --el-border-radius-base: 6px;
+}
+
+// 表格统一规范：40px 行高、12px 表头、数字列等宽右对齐。
+.el-table {
+  --el-table-header-text-color: var(--el-text-color-secondary);
+  --el-table-row-hover-bg-color: var(--el-fill-color-light);
+  --el-table-border-color: var(--el-border-color-lighter);
+  font-size: var(--up-strm-font-size-base);
+
+  th.el-table__cell {
+    font-size: var(--up-strm-font-size-xs);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  td.el-table__cell {
+    padding: 8px 0;
+  }
+
+  .el-table__cell .cell {
+    line-height: 24px;
+  }
+}
+
+// 计数列：右对齐 + 等宽数字（表格内约定 class="num-cell"）。
+.el-table .num-cell .cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+// 卡片统一圆角与轻阴影，暗色下阴影由 --up-strm-shadow-* 令牌切换。
+.el-card {
+  border-radius: var(--up-strm-radius-md);
+  border-color: var(--el-border-color-lighter);
 }

@@ -1,6 +1,11 @@
 /** OpenList 任务调度相关类型定义（与后端 openlist 模块字段保持一致）。 */
 
-import type { Res } from '@/types/upload'
+/** 后端统一响应包装：code===200 时 data 为业务数据。 */
+export interface Res<T = unknown> {
+  code: number
+  msg?: string
+  data: T
+}
 
 export interface OpenListServer {
   id: number
@@ -150,4 +155,4 @@ export interface WsStatusFrame {
 
 export type WsFrame = WsLogFrame | WsProgressFrame | WsStatusFrame
 
-export type { Res }
+

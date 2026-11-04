@@ -4,6 +4,8 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
+    /* TS 6.0 起 baseUrl 弃用告警（路径别名仍由 baseUrl+paths 提供），显式忽略 */
+    "ignoreDeprecations": "6.0",
 
     /* Path alias */
     "baseUrl": ".",

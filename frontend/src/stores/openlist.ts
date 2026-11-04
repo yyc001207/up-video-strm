@@ -26,6 +26,9 @@ export const useOpenlistStore = defineStore('openlist', () => {
 
   const runningTaskIds = computed(() => new Set(runningExecutions.value.map(e => e.task_id)))
 
+  /** 运行中执行数量，供侧栏导航徽标与顶栏状态胶囊使用。 */
+  const runningCount = computed(() => runningExecutions.value.length)
+
   async function fetchConfig(): Promise<void> {
     const res = await openlistApi.getConfig()
     config.value = res.data
@@ -92,6 +95,7 @@ export const useOpenlistStore = defineStore('openlist', () => {
     runningExecutions,
     activeExecutionIds,
     runningTaskIds,
+    runningCount,
     fetchConfig,
     fetchTasks,
     fetchRunning,

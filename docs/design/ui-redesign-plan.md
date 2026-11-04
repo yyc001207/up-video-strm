@@ -1,6 +1,6 @@
 # docs/design/ui-redesign-plan.md — 前端 UI 评审与优化方案
 
-> 状态：**设计方案（未实施）**。本文档只描述规划与规范，不代表代码现状。
+> 状态：**已实施（v2.1.0）**。P0、P1 已全部落地；P2 已落地 `LogViewer` 与令牌化收口，`manual/images/` 截图待后续更新（见第 5 节验收清单）。
 > 核心规范见 [AGENTS.md](../../AGENTS.md)；前端工程说明见 [docs/rules/frontend.md](../rules/frontend.md)；用户操作说明见 [manual/用户手册.md](../../manual/用户手册.md)。
 
 - 评审对象：`frontend/src` 全部视图与样式层，及 `manual/images/` 下 16 张真实界面截图
@@ -231,40 +231,43 @@ html.dark {
 
 ### P0 · 缺陷修补（不改结构，建议单独一次 `patch` 发布）
 
-- [ ] `main.ts` 注册 `app.use(ElementPlus, { locale: zhCn })`，消除英文 `No Data` / `Total`
-- [ ] 落地 4.1–4.3 令牌（品牌主色、中性色、暗色三层灰阶）
-- [ ] 表格统一：行高 40px、表头 12px、计数列右对齐 `font-variant-numeric: tabular-nums`、`0/0` → `—`
-- [ ] 删除类确认弹窗文案具体化（对象 + 数量 + 不可恢复提示）
-- [ ] `:focus-visible` 全局焦点环 + `prefers-reduced-motion`
+- [x] `main.ts` 注册 `app.use(ElementPlus, { locale: zhCn })`，消除英文 `No Data` / `Total`
+- [x] 落地 4.1–4.3 令牌（品牌主色、中性色、暗色三层灰阶）
+- [x] 表格统一：行高 40px、表头 12px、计数列右对齐 `font-variant-numeric: tabular-nums`、`0/0` → `—`
+- [x] 删除类确认弹窗文案具体化（对象 + 数量 + 不可恢复提示）
+- [x] `:focus-visible` 全局焦点环 + `prefers-reduced-motion`
 
 ### P1 · 壳层与路由重构（建议 `minor` 发布）
 
-- [ ] 路由命名空间化（见 2.2），`/` 重定向 `/schedule/execution`，`/settings` 保持不变
-- [ ] `App.vue` 改为侧栏（数据驱动模块清单）+ 顶栏页面头 + 全局状态胶囊
-- [ ] 5 个 tab 页拆为独立路由页面，保留 tab 内 `reload` 的按需加载语义（改由路由切换触发）
-- [ ] 执行管理双栏 + 分段控件 + 底部常驻操作条；带参跳实时日志改路由传参
-- [ ] 回归点：5 个页面 `height: 100%` 滚动链、sticky 表现、暗色主题、托盘跳设置
+- [x] 路由命名空间化（见 2.2），`/` 重定向 `/schedule/execution`，`/settings` 保持不变
+- [x] `App.vue` 改为侧栏（数据驱动模块清单）+ 顶栏页面头 + 全局状态胶囊
+- [x] 5 个 tab 页拆为独立路由页面，保留 tab 内 `reload` 的按需加载语义（改由路由切换触发）
+- [x] 执行管理双栏 + 分段控件 + 底部常驻操作条；带参跳实时日志改路由传参
+- [x] 回归点：5 个页面 `height: 100%` 滚动链、sticky 表现、暗色主题、托盘跳设置
 
 ### P2 · 收口（可选）
 
-- [ ] 抽基础组件：`PageHeader / StatCard / DataTable / LogViewer`
-- [ ] 全站硬编码颜色/间距替换为令牌引用；删除遗留未用令牌
-- [ ] 更新 `docs/rules/frontend.md` 与 `manual/用户手册.md` 截图
+- [ ] 抽基础组件：`PageHeader / StatCard / DataTable / LogViewer`（`LogViewer`、`StatusDot` 已抽；其余页面内样式已按同一套令牌统一，暂未单独抽组件）
+- [x] 全站硬编码颜色/间距替换为令牌引用；删除遗留未用令牌
+- [ ] 更新 `docs/rules/frontend.md` 与 `manual/用户手册.md` 截图（文档正文已同步更新；16 张截图仍为旧版界面，待后续重拍）
+
 
 > 实施纪律（见 AGENTS.md）：每步独立 commit（`fix:` / `feat:` / `docs:` + 中文描述）；逐项 `git add`；测试全绿后再交付；P1 交付前用 `packaging/bump_version.py` 按 `minor` 递增版本并保持四处一致。
 
 ---
 
-## 6. 涉及文件清单（实施时参考）
+## 6. 涉及文件清单（实施结果）
 
 | 文件 | 改动类型 |
 |------|----------|
-| `frontend/src/main.ts` | 注册 zhCn locale |
-| `frontend/src/styles/element-reset.scss` | 注入品牌/语义/中性色令牌 |
-| `frontend/src/styles/variables.scss` | 重写自定义令牌 |
-| `frontend/src/styles/dark.scss` | 暗色表面色三层灰阶 |
-| `frontend/src/router/index.ts` | 命名空间路由 + 重定向 |
-| `frontend/src/App.vue` | 壳层：侧栏 + 页面头 + 状态胶囊 |
-| `frontend/src/views/OpenList/index.vue` | tabs 拆分为独立页面 |
-| `frontend/src/views/OpenList/components/*.vue` | 各页面按第 3 节改造 |
-| `frontend/src/stores/openlist.ts` | 补充运行中数量供导航徽标使用 |
+| `frontend/src/main.ts` | 注册 zhCn locale、引入样式 |
+| `frontend/src/styles/variables.scss` / `element-reset.scss` / `dark.scss` / `global.scss` | 4.1–4.3 令牌、EP 变量映射、暗色表面色、焦点环与减少动效 |
+| `frontend/src/router/index.ts` | 命名空间路由 + `/` 重定向 + catch-all |
+| `frontend/src/App.vue` | 壳层：侧栏 + 顶栏 + 运行状态胶囊 + 主题切换 |
+| `frontend/src/views/schedule/{Execution,GlobalConfig,TaskManage,TaskHistory,RealtimeLog}.vue` | 五个页面按第 3 节新建（旧 `views/OpenList/` 已删除） |
+| `frontend/src/views/schedule/components/DirTreePanel.vue` | 目录树组件迁移 |
+| `frontend/src/components/{StatusDot,LogViewer}.vue` | 新增通用组件（`ThemeToggle` 沿用） |
+| `frontend/src/stores/openlist.ts` | 补充运行中数量供导航徽标 / 状态胶囊使用 |
+| `frontend/src/types/openlist.ts`、`frontend/src/api/index.ts` | 内联 `Res` 类型、收口响应拦截器类型 |
+| `frontend/tsconfig.app.json` | TS 6 的 `ignoreDeprecations`（保留 `baseUrl` 别名） |
+

@@ -1,0 +1,7 @@
+# 打包专用依赖（运行依赖 + PyInstaller + 原生窗口外壳）
+# 安装：backend\.venv\Scripts\python.exe -m pip install -r packaging\requirements-build.txt
+-r ../backend/requirements.txt
+pyinstaller>=6.10
+pywebview>=5.0
+pillow>=10
+pystray>=0.19

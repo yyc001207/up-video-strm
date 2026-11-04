@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# PyInstaller（packaging/build.ps1 的中间产物；dist/ 已在上方忽略）
+build/
+*.spec.bak
+
+# Runtime data
+backend/data/
+backend/openlist_logs/
+backend/output/
+backend/webview/
+backend/desktop.json
+.workbuddy/*
+
+# Tests（测试文件不纳入版本管理）
+backend/tests/
+
+# Env
+.env
+
+# Logs
+*.log

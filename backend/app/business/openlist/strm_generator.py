@@ -1,0 +1,464 @@
+"""STRM 生成器：扫描 OpenList 云端目录，为视频生成 .strm 下载链接、下载字幕。
+
+- 视频文件产出 ``.strm`` 文件（内容为 ``{base}/d/{quoted_path}`` 下载地址）
+- 字幕文件直接下载到输出目录
+- 增量模式（force=False）跳过已存在文件；强制模式（force=True）重新生成
+- 不支持的格式（非视频/字幕扩展名）不处理，忽略的媒体/图片扩展名直接跳过
+- 输出路径相对任务处理路径映射：``/test/tv/xxx.mkv`` -> 输出目录 ``/xxx.strm``
+"""
+
+import asyncio
+import logging
+import os
+import random
+import shutil
+from pathlib import Path
+from typing import Any, Dict, List, Set
+from urllib.parse import quote
+
+from app.business.openlist.openlist_api import OpenListAPI
+from app.business.openlist.task_status_manager import TaskStatusManager
+from app.core.logger import get_strm_logger
+from app.utils.helpers import sanitize_filename
+
+
+def parse_pause_times(raw) -> List[int]:
+    """解析暂停时间（秒，逗号分隔）为整数列表。
+
+    过滤非数字项；空列表或全部为 0 表示不限流（返回空列表）。
+    """
+    if not raw:
+        return []
+    values = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            values.append(int(part))
+        except (ValueError, TypeError):
+            continue
+    if not values or all(v == 0 for v in values):
+        return []
+    return values
+
+
+def resolve_output_base(output_dir: str, output_root: str | None = None) -> Path:
+    """把以 ``/`` 开头的任务输出目录解析为落盘路径。
+
+    任务里填 ``/emby/电视剧`` 表示「相对输出根目录」，根目录取全局配置 ``output_root``：
+    - 未配置（None/空）：回退当前工作目录下的 ``output``，即 Docker 内 ``/app/output``、
+      源码运行 ``backend/output``、桌面版数据目录下的 ``output``，与改造前一致。
+    - 已配置：相对该绝对路径解析，例如 ``D:\\Media\\strm`` + ``/emby`` -> ``D:\\Media\\strm\\emby``。
+    """
+    relative = (output_dir or "").strip().lstrip("/")
+    root = Path(output_root).expanduser() if str(output_root or "").strip() else Path.cwd() / "output"
+    return root / relative if relative else root
+
+
+class STRMGenerator:
+    # 系列层路径优化关键字：仅「电影」目录下的「系列」目录层级会被移除
+    MOVIE_KEYWORD = "电影"
+    SERIES_KEYWORD = "系列"
+
+    def __init__(
+        self,
+        global_config: Dict[str, Any],
+        task_config: Dict[str, Any],
+        task_id: str = None,
+        logger_: logging.Logger = None,
+        api: OpenListAPI = None,
+    ):
+        self.logger = logger_ or get_strm_logger()
+        self.task_id = str(task_id) if task_id is not None else None
+        self.base_url = global_config["baseUrl"].rstrip("/")
+        verify_ssl = bool(global_config.get("verifySsl", False))
+        self.api = api or OpenListAPI(self.base_url, global_config["token"], logger_=self.logger, verify_ssl=verify_ssl)
+        self.video_exts = self._normalize_exts(global_config.get("videoExtensions", []))
+        self.subtitle_exts = self._normalize_exts(global_config.get("subtitleExtensions", []))
+        self.output_dir = task_config.get("outputDir") or "./output"
+        # 输出根目录：仅对以 "/" 开头的输出目录生效；为空则回退 CWD/output
+        self.output_root = str(global_config.get("outputRoot") or "").strip() or None
+        # 系列层路径优化：默认关闭，仅执行时显式开启才移除「电影」目录下的「系列」层级
+        self.strip_series = bool(task_config.get("stripSeries", False))
+        self.task_paths = self._normalize_task_paths(task_config)
+        # 限流参数：任务级优先，为 NULL/空则回退全局配置；全 0 或空则不暂停
+        raw_count = task_config.get("pauseCount")
+        if raw_count is None:
+            raw_count = global_config.get("pauseCount")
+        try:
+            self.pause_count = max(1, int(raw_count)) if raw_count else 0
+        except (ValueError, TypeError):
+            self.pause_count = 0
+        raw_time = task_config.get("pauseTime") or global_config.get("pauseTime")
+        self.pause_times = parse_pause_times(raw_time)
+        self.stats = {
+            "totalVideos": 0,
+            "successVideos": 0,
+            "errorVideos": 0,
+            "totalSubtitles": 0,
+            "successSubtitles": 0,
+            "errorSubtitles": 0,
+        }
+
+    @staticmethod
+    def _normalize_exts(raw) -> Set[str]:
+        """扩展名统一转小写并补点，兼容 ``mp4``/``.mp4`` 两种写法。"""
+        if isinstance(raw, str):
+            raw = raw.split(",")
+        exts = set()
+        for item in raw or []:
+            item = str(item).strip().lower()
+            if not item:
+                continue
+            exts.add(item if item.startswith(".") else f".{item}")
+        return exts
+
+    @staticmethod
+    def _normalize_task_paths(task_config: Dict[str, Any]) -> List[str]:
+        """任务处理路径：兼容单行字符串与换行分隔的多路径。"""
+        raw = task_config.get("taskPaths") or task_config.get("processPath") or ""
+        if isinstance(raw, str):
+            return [p.strip().strip("/") for p in raw.split("\n") if p.strip()]
+        if isinstance(raw, (list, tuple)):
+            return [str(p).strip().strip("/") for p in raw if str(p).strip()]
+        return []
+
+    def _sanitize_path(self, path: str) -> str:
+        if not path or path == ".":
+            return path
+        parts = path.split("/")
+        cleaned_parts = [sanitize_filename(p) for p in parts]
+        return "/".join(cleaned_parts)
+
+    def _get_download_url(self, file_path: str) -> str:
+        clean_path = file_path.strip("/")
+        return f"{self.base_url}/d/{quote(clean_path)}"
+
+    def _build_output_dir(self, output_base: Path, relative_path: str) -> Path:
+        relative_path = str(relative_path).replace("\\", "/").strip("./")
+        if not relative_path or relative_path == ".":
+            output_dir = output_base
+        else:
+            parts = relative_path.split("/")
+            cleaned_parts = [sanitize_filename(p) for p in parts]
+            cleaned_path = "/".join(cleaned_parts)
+            output_dir = output_base / cleaned_path
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
+
+    def _cancelled(self) -> bool:
+        if self.task_id:
+            return TaskStatusManager.is_cancelled(self.task_id)
+        return False
+
+    def _get_output_path_raw(self, item_path: str, base_path: str) -> str:
+        """相对输出路径（未应用「系列」层优化）。"""
+        item_path = item_path.strip("/")
+        base_path = base_path.strip("/")
+        if item_path.startswith(base_path):
+            relative = item_path[len(base_path):].lstrip("/")
+            if not relative:
+                # 扫描路径与处理路径相同：对应输出根，清理时直接指向输出根
+                return ""
+            return relative
+        return Path(item_path).name
+
+    def _strip_series_layers(self, item_path: str, relative: str) -> str:
+        """移除相对路径中位于「电影」目录之下的「系列」目录层级（仅开启优化时调用）。
+
+        规则：
+        - 仅当完整云端路径中存在名称含「电影」的目录层级时才处理（非电影目录保持原样）
+        - 移除该「电影」层级之下、名称含「系列」的目录层级，其余层级结构保留
+        - strm 文件内的链接不受影响（仍使用完整原始路径）
+        """
+        if not relative:
+            return relative
+        full_layers = [s for s in str(item_path).strip("/").split("/") if s]
+        movie_idx = next((i for i, name in enumerate(full_layers) if self.MOVIE_KEYWORD in name), None)
+        if movie_idx is None:
+            return relative
+        series_names = {name for name in full_layers[movie_idx + 1:] if self.SERIES_KEYWORD in name}
+        if not series_names:
+            return relative
+        kept = [seg for seg in relative.split("/") if seg and seg not in series_names]
+        return "/".join(kept)
+
+    def _get_output_path(self, item_path: str, base_path: str) -> str:
+        """输出相对路径；开启系列层优化时按规则移除「xxx系列」目录层级。"""
+        relative = self._get_output_path_raw(item_path, base_path)
+        if self.strip_series:
+            relative = self._strip_series_layers(item_path, relative)
+        return relative
+
+    @staticmethod
+    def _add_expected_dir(expected_dirs: Set[str], relative: str):
+        """把一个云端目录的本地相对路径及其所有上级路径加入「本地应存在目录」集合。"""
+        if not relative:
+            return
+        parts = [p for p in str(relative).split("/") if p]
+        for i in range(1, len(parts) + 1):
+            expected_dirs.add("/".join(parts[:i]))
+
+    def _register_expected_dir(self, expected_dirs: Set[str], dir_path: str, base_path: str, alt_path: str = None):
+        """登记云端目录在本地对应的目录层级（含原始路径与优化后路径两种形态）。
+
+        - 原始路径形态：未开启优化时生成的旧结构（如 ``A/xxx系列/B``）不应被误删
+        - 优化后路径形态：开启优化时生成的新结构（如 ``A/B``）
+        两者都登记后，开关切换产生的新旧目录结构可以共存而不被失效清理删除。
+
+        ``alt_path`` 为备选云端路径（当接口返回的 ``path`` 与应用侧拼接的路径形态不一致时使用），
+        多登记一个期望目录只会更保守（宁可残留也不误删）。
+        """
+        for candidate in (dir_path, alt_path):
+            if not candidate:
+                continue
+            self._add_expected_dir(expected_dirs, self._sanitize_path(self._get_output_path_raw(candidate, base_path)))
+            if self.strip_series:
+                self._add_expected_dir(expected_dirs, self._sanitize_path(self._get_output_path(candidate, base_path)))
+
+    async def _process_file(self, item: Dict, current_path: str, output_base: Path, force: bool, strm_only: bool, base_path: str):
+        name = item.get("name", "")
+        file_ext = Path(name).suffix.lower()
+        item_path = item.get("path") or f"{current_path}/{name}"
+        item_path = item_path.strip("/")
+        if self._cancelled():
+            return
+        output_relative = self._get_output_path(item_path, base_path)
+        parent = Path(output_relative).parent
+        output_dir_path = str(parent).replace("\\", "/") if str(parent) != "." else ""
+        output_dir = self._build_output_dir(output_base, output_dir_path)
+
+        if file_ext in self.video_exts:
+            self.stats["totalVideos"] += 1
+            try:
+                strm_filename = self._sanitize_path(Path(name).stem) + ".strm"
+                strm_path = output_dir / strm_filename
+                if not force and strm_path.exists():
+                    self.stats["successVideos"] += 1
+                    self.logger.info(f"[{output_relative}] 跳过 STRM (已存在): {name}")
+                    return
+                output_dir.mkdir(parents=True, exist_ok=True)
+                with open(strm_path, "w", encoding="utf-8") as f:
+                    f.write(self._get_download_url(item_path))
+                self.stats["successVideos"] += 1
+                self.logger.info(f"[{output_relative}] 创建 STRM: {name}")
+            except Exception as e:
+                self.stats["errorVideos"] += 1
+                self.logger.error(f"[{output_relative}] 创建 STRM 失败 {name}: {e}")
+        elif file_ext in self.subtitle_exts:
+            self.stats["totalSubtitles"] += 1
+            try:
+                subtitle_path = output_dir / name
+                # strm_only 仅在强制生成时生效：已存在的字幕跳过下载，避免重复下载
+                skip_existing = not force or (strm_only and force)
+                if skip_existing and subtitle_path.exists():
+                    self.stats["successSubtitles"] += 1
+                    self.logger.info(f"[{output_relative}] 跳过字幕 (已存在): {name}")
+                    return
+                output_dir.mkdir(parents=True, exist_ok=True)
+                success = await self.api.download_file("/" + item_path, str(subtitle_path), encode=False)
+                if success:
+                    self.stats["successSubtitles"] += 1
+                    self.logger.info(f"[{output_relative}] 下载字幕: {name}")
+                else:
+                    self.stats["errorSubtitles"] += 1
+                    self.logger.error(f"[{output_relative}] 下载字幕失败: {name}")
+            except Exception as e:
+                self.stats["errorSubtitles"] += 1
+                self.logger.error(f"[{output_relative}] 下载字幕失败 {name}: {e}")
+
+    IGNORE_EXTS = {".nfo", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif", ".svg", ".ico", ".mp3"}
+
+    async def _scan_and_process(self, scan_path: str, output_base: Path, force: bool, strm_only: bool, base_path: str, cloud_files: Set[str], expected_local_dirs: Set[str] = None) -> bool:
+        """扫描并处理一个目录；返回该子树是否扫描完整（任一子目录扫描失败即返回 False）。"""
+        if self._cancelled():
+            return True
+        if expected_local_dirs is None:
+            expected_local_dirs = set()
+        try:
+            result = await self.api.list_files("/" + scan_path)
+            items = result.get("content") or []
+        except Exception as e:
+            # 扫描失败（网络抖动/权限异常等）不做失效清理：此时云端列表为空，
+            # 清理会把本地已生成的文件与目录整体删除，风险远大于残留。
+            self.logger.error(f"扫描失败 {scan_path}: {e}，跳过该目录及其上级的失效清理")
+            return False
+        for item in items:
+            if not item.get("is_dir", False):
+                item_name = item.get("name", "")
+                item_path = f"{scan_path}/{item_name}"
+                relative_path = self._get_output_path(item_path, base_path)
+                relative_path = self._sanitize_path(relative_path)
+                file_ext = Path(relative_path).suffix.lower()
+                if file_ext in self.video_exts:
+                    relative_path = str(relative_path).rsplit(".", 1)[0] + ".strm"
+                cloud_files.add(relative_path)
+        subdirs = []
+        for item in items:
+            if not item.get("is_dir", False):
+                continue
+            dir_name = item.get("name", "")
+            # 递归用的路径优先取接口返回的 path，缺失时按扫描路径拼接
+            dir_path = item.get("path", "").strip("/") or f"{scan_path}/{dir_name}"
+            subdirs.append(dir_path)
+            self._register_expected_dir(expected_local_dirs, dir_path, base_path, alt_path=f"{scan_path}/{dir_name}" if dir_name else None)
+        incomplete = False
+        for subdir_path in subdirs:
+            sub_cloud_files = set()
+            sub_complete = await self._scan_and_process(subdir_path, output_base, force, strm_only, base_path, sub_cloud_files, expected_local_dirs)
+            if sub_cloud_files:
+                cloud_files.update(sub_cloud_files)
+            if not sub_complete:
+                incomplete = True
+        if incomplete:
+            # 子树中存在扫描失败的目录：该子树的文件/目录列表不完整，任何失效清理都可能误删，
+            # 因此本层也一并跳过清理（宁可残留）。
+            self.logger.warning(f"子树存在扫描失败的目录，跳过该目录的失效清理: {scan_path}")
+        else:
+            self._cleanup_current_dir(output_base, cloud_files, base_path, scan_path, expected_local_dirs)
+        # 顺序处理文件（原为 asyncio.gather 并发）；每处理 pause_count 个文件限流暂停一次，
+        # 随机暂停 pause_times 列表中的一个时间，控制对服务器的请求频率。
+        files = [item for item in items if not item.get("is_dir", False)]
+        count = 0
+        for item in files:
+            await self._process_file(item, scan_path, output_base, force, strm_only, base_path)
+            count += 1
+            if self.pause_times and self.pause_count > 0 and count % self.pause_count == 0:
+                delay = random.choice(self.pause_times)
+                self.logger.info(f"[限流] 已处理 {count} 个文件，暂停 {delay}s")
+                await asyncio.sleep(delay)
+        return not incomplete
+
+    def _safe_remove_dir(self, target: Path, output_base: Path):
+        """安全删除目录：先确认目标在输出根内，改名后再删除（同文件系统内原子性）。
+
+        先 ``rename`` 到临时名可避免 rmtree 中途失败导致半删状态卡住原目录名；
+        若 rename 失败（如目标被占用）则回退直接删除。任何失败都仅记录日志。
+        """
+        try:
+            target_resolved = target.resolve()
+            base_resolved = output_base.resolve()
+            # 防越界：目标必须严格位于输出根之内，且不能是输出根本身
+            if target_resolved == base_resolved or not target_resolved.is_relative_to(base_resolved):
+                self.logger.error(f"拒绝删除越界路径: {target}")
+                return
+            trash = target_resolved.parent / f".trash-{target_resolved.name}"
+            try:
+                if trash.exists():
+                    shutil.rmtree(str(trash))
+                target_resolved.rename(trash)
+                shutil.rmtree(str(trash))
+            except Exception:
+                # rename 失败（目标被占用等）时回退直接删除
+                shutil.rmtree(str(target_resolved))
+        except Exception as e:
+            self.logger.error(f"删除目录失败 {target}: {e}")
+
+    def _cleanup_current_dir(self, output_base: Path, cloud_files: Set[str], base_path: str, scan_path: str, expected_local_dirs: Set[str] = None):
+        if self._cancelled():
+            return
+        output_relative = self._get_output_path(scan_path, base_path)
+        output_relative = self._sanitize_path(output_relative)
+        # 数据安全保护：开启系列层优化后，若该扫描目录的相对路径因移除「系列」层而上移，
+        # 其清理目标会落到上一级目录，而目录级清理会删除「同级中不属于本扫描子树」的目录，
+        # 可能误删其他电影的目录。此类目录一律跳过清理（宁可残留失效文件，也不误删）。
+        if self.strip_series:
+            raw_relative = self._sanitize_path(self._get_output_path_raw(scan_path, base_path))
+            if raw_relative != output_relative:
+                self.logger.info(f"已启用系列层优化，跳过该目录的失效清理（避免误删同级目录）: {scan_path}")
+                return
+        current_dir = output_base / output_relative
+        try:
+            current_resolved = current_dir.resolve()
+            base_resolved = output_base.resolve()
+        except Exception:
+            return
+        if not current_resolved.is_relative_to(base_resolved) or current_resolved == base_resolved:
+            if output_relative:
+                self.logger.error(f"清理路径越界，跳过: {current_dir}")
+                return
+        if not current_dir.exists():
+            return
+        current_depth = len(output_relative.split("/")) if output_relative else 0
+        current_dir_files = set()
+        for cf in cloud_files:
+            cf_parts = cf.split("/")
+            if len(cf_parts) > current_depth:
+                prefix = "/".join(cf_parts[:current_depth])
+                if current_depth == 0 or prefix == output_relative:
+                    current_dir_files.add(cf)
+        for local_file in current_dir.iterdir():
+            if not local_file.is_file():
+                continue
+            try:
+                relative_path = local_file.relative_to(output_base)
+            except ValueError:
+                continue
+            relative_str = str(relative_path).replace("\\", "/")
+            file_ext = Path(relative_str).suffix.lower()
+            if file_ext in self.IGNORE_EXTS:
+                continue
+            if file_ext == ".strm":
+                if relative_str in current_dir_files:
+                    continue
+                try:
+                    local_file.unlink()
+                    self.logger.info(f"删除已失效STRM: {relative_str}")
+                except Exception as e:
+                    self.logger.error(f"删除文件失败 {local_file}: {e}")
+                continue
+            if relative_str not in current_dir_files:
+                try:
+                    local_file.unlink()
+                    self.logger.info(f"删除已失效文件: {relative_str}")
+                except Exception as e:
+                    self.logger.error(f"删除文件失败 {local_file}: {e}")
+        if expected_local_dirs is not None:
+            for local_item in current_dir.iterdir():
+                if not local_item.is_dir():
+                    continue
+                try:
+                    rel_dir = str(local_item.relative_to(output_base)).replace("\\", "/")
+                except ValueError:
+                    continue
+                rel_dir = self._sanitize_path(rel_dir)
+                # 期望目录集合按「本地相对路径」记录（含原始结构与优化后结构），
+                # 因此系列层优化导致的层级上移不会把已生成的目录判为失效目录。
+                if rel_dir in expected_local_dirs:
+                    continue
+                # 该目录是某个云端目录的上级（云端路径更深）：同样属于有效结构
+                if any(exp.startswith(rel_dir + "/") for exp in expected_local_dirs):
+                    continue
+                self._safe_remove_dir(local_item, output_base)
+                self.logger.info(f"删除已失效目录: {local_item}")
+
+    def _cleanup_empty_dirs(self, output_base: Path):
+        for dirpath, dirnames, filenames in os.walk(str(output_base), topdown=False):
+            current = Path(dirpath)
+            if current == output_base:
+                continue
+            try:
+                if not any(current.iterdir()):
+                    current.rmdir()
+                    self.logger.info(f"清理空目录: {current}")
+            except Exception as e:
+                self.logger.error(f"清理空目录失败 {current}: {e}")
+
+    async def execute(self, force: bool = False, strm_only: bool = False, cleanup: bool = True) -> Dict[str, Any]:
+        if self.output_dir.startswith("/"):
+            output_path = resolve_output_base(self.output_dir, self.output_root)
+            output_path.mkdir(parents=True, exist_ok=True)
+            self.output_dir = str(output_path)
+        output_base = Path(self.output_dir)
+        self.logger.info(f"开始执行，共 {len(self.task_paths)} 个路径")
+        for task_path in self.task_paths:
+            if self._cancelled():
+                self.logger.info("任务已取消")
+                break
+            base_path = task_path.strip("/")
+            cloud_files = set()
+            await self._scan_and_process(task_path, output_base, force, strm_only, base_path, cloud_files)
+        self._cleanup_empty_dirs(output_base)
+        self.logger.info(f"完成: 视频 {self.stats['successVideos']}/{self.stats['totalVideos']}, 字幕 {self.stats['successSubtitles']}/{self.stats['totalSubtitles']}")
+        return self.stats

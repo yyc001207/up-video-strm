@@ -14,13 +14,11 @@ const list = ref<OpenListTask[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const keyword = ref('')
-const serverFilter = ref<number | null>(null)
 const selectedIds = ref<number[]>([])
 
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = reactive({
-  server_id: null as number | null,
   name: '',
   output_dir: '',
   process_path: '',
@@ -28,17 +26,17 @@ const form = reactive({
   pause_time: '' as string
 })
 
-/** 空状态文案：有筛选条件时区分「无匹配」与「无数据」。 */
+/** 空状态文案：有搜索条件时区分「无匹配」与「无数据」。 */
 const emptyDescription = computed(() =>
-  keyword.value.trim() || serverFilter.value != null ? '没有匹配的任务配置' : '暂无任务配置'
+  keyword.value.trim() ? '没有匹配的任务配置' : '暂无任务配置'
 )
 
 async function load() {
   loading.value = true
   try {
-    // 任务与全局配置并行加载：配置用于取服务器列表与前缀
+    // 任务与全局配置并行加载：配置用于取服务器信息与前缀
     const [tasksRes] = await Promise.all([
-      openlistApi.listTasks(keyword.value || undefined, serverFilter.value),
+      openlistApi.listTasks(keyword.value || undefined),
       store.fetchConfig()
     ])
     list.value = tasksRes.data.list
@@ -57,7 +55,6 @@ function handleSelectionChange(rows: OpenListTask[]) {
 
 function openCreate() {
   editingId.value = null
-  form.server_id = null
   form.name = ''
   form.output_dir = ''
   form.process_path = ''
@@ -68,7 +65,6 @@ function openCreate() {
 
 function openEdit(row: OpenListTask) {
   editingId.value = row.id
-  form.server_id = row.server_id
   form.name = row.name
   form.output_dir = row.output_dir
   form.process_path = row.process_path
@@ -78,29 +74,25 @@ function openEdit(row: OpenListTask) {
 }
 
 async function handleSave() {
-  if (form.server_id == null) {
-    ElMessage.warning('请选择任务所属服务器')
-    return
-  }
   if (!form.name.trim() || !form.output_dir.trim() || !form.process_path.trim()) {
     ElMessage.warning('请填写任务名称、输出目录与处理路径')
     return
   }
   saving.value = true
   try {
-    const payload: Record<string, unknown> = {
-      server_id: form.server_id,
+    // 限流字段：留空表示使用全局配置（不提交 / 置 null）
+    const payload = {
       name: form.name.trim(),
       output_dir: form.output_dir.trim(),
-      process_path: form.process_path.trim()
+      process_path: form.process_path.trim(),
+      ...(form.pause_count != null ? { pause_count: form.pause_count } : {}),
+      ...(form.pause_time.trim() ? { pause_time: form.pause_time.trim() } : {})
     }
-    // 限流字段：留空表示使用全局配置（不提交 / 置 null）
-    if (form.pause_count != null) payload.pause_count = form.pause_count
-    if (form.pause_time.trim()) payload.pause_time = form.pause_time.trim()
     if (editingId.value != null) {
       await openlistApi.updateTask(editingId.value, payload)
     } else {
-      await openlistApi.createTask(payload as { server_id: number; name: string; output_dir: string; process_path: string })
+      // 单服务器模式：后端自动绑定唯一服务器，前端不再传 server_id
+      await openlistApi.createTask(payload)
     }
     ElMessage.success('保存成功')
     dialogVisible.value = false
@@ -155,7 +147,6 @@ async function handleBatchDelete() {
 async function handleCopy(row: OpenListTask) {
   // 复制：仅带入用户可编辑参数（排除 id 等系统自动生成字段），不立即新建
   editingId.value = null
-  form.server_id = row.server_id
   form.name = `${row.name} - 复制`
   form.output_dir = row.output_dir
   form.process_path = row.process_path
@@ -167,7 +158,6 @@ async function handleCopy(row: OpenListTask) {
 // ---------- 快速添加（按目录批量生成任务配置） ----------
 
 const quickDialogVisible = ref(false)
-const quickServerId = ref<number | null>(null)
 const quickParentDir = ref('')
 const quickSelected = ref<string[]>([])
 const quickCreating = ref(false)
@@ -178,9 +168,8 @@ const quickParentDialogVisible = ref(false)
 const quickParentSaving = ref(false)
 const quickNewDirs = ref('')
 
-const quickServerOptions = computed(() => store.servers.filter(s => s.is_active))
-const quickServer = computed(() => quickServerOptions.value.find(s => s.id === quickServerId.value))
-const quickParentOptions = computed(() => quickServer.value?.parent_dirs ?? [])
+// 单服务器模式：父级目录直接取全局唯一服务器的配置
+const quickParentOptions = computed(() => store.server?.parent_dirs ?? [])
 
 /** 任务名称：季文件夹（Season 01 / S01 / Season 1 等）→「上级文件夹名S季号」，其余取目录名。 */
 function buildTaskName(path: string): string {
@@ -246,18 +235,8 @@ function openQuickAdd() {
   quickWithParent.value = false
   quickPauseCount.value = null
   quickPauseTime.value = ''
-  if (quickServerOptions.value.length > 0) {
-    quickServerId.value = quickServerOptions.value[0].id
-  } else {
-    quickServerId.value = null
-    quickParentDir.value = ''
-  }
-}
-
-// 切换服务器：父级目录重置为第一个
-watch(quickServerId, () => {
   quickParentDir.value = quickParentOptions.value[0] ?? ''
-})
+}
 
 // 切换父级目录：清空已选目录
 watch(quickParentDir, () => {
@@ -282,23 +261,18 @@ async function handleQuickAdd() {
   }
   quickCreating.value = true
   try {
-    if (quickServerId.value == null) {
-      ElMessage.warning('请先选择服务器')
-      return
-    }
     const payloads = quickPreview.value.map(item => {
-      const payload: Record<string, unknown> = {
-        server_id: quickServerId.value,
+      const payload = {
         name: item.name,
         process_path: item.process_path,
-        output_dir: item.output_dir
+        output_dir: item.output_dir,
+        // 限流字段：留空表示使用全局配置（不提交）
+        ...(quickPauseCount.value != null ? { pause_count: quickPauseCount.value } : {}),
+        ...(quickPauseTime.value.trim() ? { pause_time: quickPauseTime.value.trim() } : {})
       }
-      // 限流字段：留空表示使用全局配置（不提交）
-      if (quickPauseCount.value != null) payload.pause_count = quickPauseCount.value
-      if (quickPauseTime.value.trim()) payload.pause_time = quickPauseTime.value.trim()
       return payload
     })
-    await Promise.all(payloads.map(p => openlistApi.createTask(p as { server_id: number; name: string; process_path: string; output_dir: string })))
+    await Promise.all(payloads.map(p => openlistApi.createTask(p)))
     ElMessage.success(`已添加 ${payloads.length} 条任务配置`)
     quickDialogVisible.value = false
     quickSelected.value = []
@@ -327,11 +301,11 @@ function parseParentDirs(text: string): string[] {
   return dirs
 }
 
-/** 快速新增父级目录：追加到当前服务器，校验通过后自动选中新增的第一个。 */
+/** 快速新增父级目录：追加到唯一服务器，校验通过后自动选中新增的第一个。 */
 async function handleQuickAddParentDir() {
-  const serverId = quickServerId.value
+  const serverId = store.server?.id
   if (serverId == null) {
-    ElMessage.warning('请先选择服务器')
+    ElMessage.warning('请先在全局配置中新增服务器')
     return
   }
   const newDirs = parseParentDirs(quickNewDirs.value)
@@ -378,20 +352,6 @@ defineExpose({ reload: load })
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-select
-          v-model="serverFilter"
-          placeholder="全部服务器"
-          clearable
-          class="toolbar__server"
-          @change="handleSearch"
-        >
-          <el-option
-            v-for="server in store.servers"
-            :key="server.id"
-            :label="server.name || server.server_url"
-            :value="server.id"
-          />
-        </el-select>
       </div>
 
       <div class="toolbar__right">
@@ -425,11 +385,6 @@ defineExpose({ reload: load })
             <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="服务器" min-width="150" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.server_name || row.server_url || '—' }}
-          </template>
-        </el-table-column>
         <el-table-column label="输出目录" prop="output_dir" min-width="200" show-overflow-tooltip />
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
@@ -454,17 +409,6 @@ defineExpose({ reload: load })
       destroy-on-close
     >
       <el-form label-width="96px">
-        <el-form-item label="所属服务器">
-          <el-select v-model="form.server_id" placeholder="请选择任务所属服务器" class="form-control">
-            <el-option
-              v-for="server in store.servers"
-              :key="server.id"
-              :label="server.name || server.server_url"
-              :value="server.id"
-            />
-          </el-select>
-          <div class="remark">任务强关联服务器，执行时只能在该服务器上运行</div>
-        </el-form-item>
         <el-form-item label="任务名称">
           <el-input v-model="form.name" placeholder="如：TV 剧集" maxlength="128" />
         </el-form-item>
@@ -497,17 +441,6 @@ defineExpose({ reload: load })
       destroy-on-close
     >
       <el-form label-width="96px">
-        <el-form-item label="选择服务器">
-          <el-select v-model="quickServerId" placeholder="请选择服务器配置" class="quick-select">
-            <el-option
-              v-for="server in quickServerOptions"
-              :key="server.id"
-              :label="server.name || server.server_url"
-              :value="server.id"
-            />
-          </el-select>
-          <span v-if="!quickServerOptions.length" class="remark">请先在「全局配置」新增服务器</span>
-        </el-form-item>
         <el-form-item label="父级目录">
           <div class="parent-row">
             <el-select v-model="quickParentDir" placeholder="请选择父级目录" class="quick-select">
@@ -515,12 +448,13 @@ defineExpose({ reload: load })
             </el-select>
             <el-button :icon="Plus" plain @click="openQuickAddParentDir">新增</el-button>
           </div>
-          <span v-if="quickServer && !quickParentOptions.length" class="remark">
-            该服务器未配置父级目录，可点击「新增」快速添加
+          <span v-if="!store.server" class="remark">请先在「全局配置」新增服务器</span>
+          <span v-else-if="!quickParentOptions.length" class="remark">
+            当前服务器未配置父级目录，可点击「新增」快速添加
           </span>
         </el-form-item>
         <el-form-item label="选择目录">
-          <DirTreePanel v-model="quickSelected" :server-id="quickServerId" :parent-dir="quickParentDir" />
+          <DirTreePanel v-model="quickSelected" :server-id="store.server?.id ?? null" :parent-dir="quickParentDir" />
           <div class="include-parent">
             <el-checkbox v-model="quickIncludeParent" :disabled="!quickParentDir">
               同时把父级目录「{{ quickParentDir || '—' }}」本身作为一条任务配置
@@ -618,10 +552,6 @@ defineExpose({ reload: load })
   &__keyword {
     width: 220px;
   }
-
-  &__server {
-    width: 180px;
-  }
 }
 
 .cell-primary {
@@ -639,7 +569,6 @@ defineExpose({ reload: load })
   white-space: nowrap;
 }
 
-.form-control,
 .quick-select {
   width: 100%;
 }

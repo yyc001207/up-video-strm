@@ -26,6 +26,9 @@ export const useOpenlistStore = defineStore('openlist', () => {
 
   const runningTaskIds = computed(() => new Set(runningExecutions.value.map(e => e.task_id)))
 
+  /** 单服务器模式：当前唯一服务器（未配置时为 null）。 */
+  const server = computed<OpenListServer | null>(() => servers.value[0] ?? null)
+
   /** 运行中执行数量，供侧栏导航徽标与顶栏状态胶囊使用。 */
   const runningCount = computed(() => runningExecutions.value.length)
 
@@ -52,21 +55,19 @@ export const useOpenlistStore = defineStore('openlist', () => {
     return res.data
   }
 
-  /** 批量创建执行记录（同一服务器多任务，仅落库），返回全部 execution。 */
-  async function batchCreateExecution(serverId: number, tasksToRun: BatchExecutionParams['tasks']): Promise<OpenListExecution[]> {
-    const res = await openlistApi.batchCreateExecutions({ server_id: serverId, tasks: tasksToRun })
+  /** 批量创建执行记录（多任务，仅落库），返回全部执行记录。 */
+  async function batchCreateExecution(tasksToRun: BatchExecutionParams['tasks']): Promise<OpenListExecution[]> {
+    const res = await openlistApi.batchCreateExecutions({ tasks: tasksToRun })
     activeExecutionIds.value = res.data.list.map(e => e.id)
     return res.data.list
   }
 
-  /** 批量创建目录执行记录（同一服务器多目录，不关联任务，仅落库），返回全部 execution。 */
+  /** 批量创建目录执行记录（多目录，不关联任务，仅落库），返回全部执行记录。 */
   async function batchCreateDirExecution(
-    serverId: number,
     dirs: DirExecutionItem[],
     flags: { is_incremental: boolean; is_force: boolean; strm_only: boolean }
   ): Promise<OpenListExecution[]> {
     const res = await openlistApi.batchCreateDirExecutions({
-      server_id: serverId,
       dirs,
       is_incremental: flags.is_incremental,
       is_force: flags.is_force,
@@ -91,6 +92,7 @@ export const useOpenlistStore = defineStore('openlist', () => {
   return {
     config,
     servers,
+    server,
     tasks,
     runningExecutions,
     activeExecutionIds,

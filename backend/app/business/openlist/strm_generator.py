@@ -57,10 +57,6 @@ def resolve_output_base(output_dir: str, output_root: str | None = None) -> Path
 
 
 class STRMGenerator:
-    # 系列层路径优化关键字：仅「电影」目录下的「系列」目录层级会被移除
-    MOVIE_KEYWORD = "电影"
-    SERIES_KEYWORD = "系列"
-
     def __init__(
         self,
         global_config: Dict[str, Any],
@@ -79,8 +75,6 @@ class STRMGenerator:
         self.output_dir = task_config.get("outputDir") or "./output"
         # 输出根目录：仅对以 "/" 开头的输出目录生效；为空则回退 CWD/output
         self.output_root = str(global_config.get("outputRoot") or "").strip() or None
-        # 系列层路径优化：默认关闭，仅执行时显式开启才移除「电影」目录下的「系列」层级
-        self.strip_series = bool(task_config.get("stripSeries", False))
         self.task_paths = self._normalize_task_paths(task_config)
         # 限流参数：任务级优先，为 NULL/空则回退全局配置；全 0 或空则不暂停
         raw_count = task_config.get("pauseCount")
@@ -164,32 +158,9 @@ class STRMGenerator:
             return relative
         return Path(item_path).name
 
-    def _strip_series_layers(self, item_path: str, relative: str) -> str:
-        """移除相对路径中位于「电影」目录之下的「系列」目录层级（仅开启优化时调用）。
-
-        规则：
-        - 仅当完整云端路径中存在名称含「电影」的目录层级时才处理（非电影目录保持原样）
-        - 移除该「电影」层级之下、名称含「系列」的目录层级，其余层级结构保留
-        - strm 文件内的链接不受影响（仍使用完整原始路径）
-        """
-        if not relative:
-            return relative
-        full_layers = [s for s in str(item_path).strip("/").split("/") if s]
-        movie_idx = next((i for i, name in enumerate(full_layers) if self.MOVIE_KEYWORD in name), None)
-        if movie_idx is None:
-            return relative
-        series_names = {name for name in full_layers[movie_idx + 1:] if self.SERIES_KEYWORD in name}
-        if not series_names:
-            return relative
-        kept = [seg for seg in relative.split("/") if seg and seg not in series_names]
-        return "/".join(kept)
-
     def _get_output_path(self, item_path: str, base_path: str) -> str:
-        """输出相对路径；开启系列层优化时按规则移除「xxx系列」目录层级。"""
-        relative = self._get_output_path_raw(item_path, base_path)
-        if self.strip_series:
-            relative = self._strip_series_layers(item_path, relative)
-        return relative
+        """输出相对路径（与云端路径相对处理路径一致）。"""
+        return self._get_output_path_raw(item_path, base_path)
 
     @staticmethod
     def _add_expected_dir(expected_dirs: Set[str], relative: str):
@@ -201,11 +172,7 @@ class STRMGenerator:
             expected_dirs.add("/".join(parts[:i]))
 
     def _register_expected_dir(self, expected_dirs: Set[str], dir_path: str, base_path: str, alt_path: str = None):
-        """登记云端目录在本地对应的目录层级（含原始路径与优化后路径两种形态）。
-
-        - 原始路径形态：未开启优化时生成的旧结构（如 ``A/xxx系列/B``）不应被误删
-        - 优化后路径形态：开启优化时生成的新结构（如 ``A/B``）
-        两者都登记后，开关切换产生的新旧目录结构可以共存而不被失效清理删除。
+        """登记云端目录在本地对应的目录层级。
 
         ``alt_path`` 为备选云端路径（当接口返回的 ``path`` 与应用侧拼接的路径形态不一致时使用），
         多登记一个期望目录只会更保守（宁可残留也不误删）。
@@ -214,8 +181,6 @@ class STRMGenerator:
             if not candidate:
                 continue
             self._add_expected_dir(expected_dirs, self._sanitize_path(self._get_output_path_raw(candidate, base_path)))
-            if self.strip_series:
-                self._add_expected_dir(expected_dirs, self._sanitize_path(self._get_output_path(candidate, base_path)))
 
     async def _process_file(self, item: Dict, current_path: str, output_base: Path, force: bool, strm_only: bool, base_path: str):
         name = item.get("name", "")
@@ -360,14 +325,6 @@ class STRMGenerator:
             return
         output_relative = self._get_output_path(scan_path, base_path)
         output_relative = self._sanitize_path(output_relative)
-        # 数据安全保护：开启系列层优化后，若该扫描目录的相对路径因移除「系列」层而上移，
-        # 其清理目标会落到上一级目录，而目录级清理会删除「同级中不属于本扫描子树」的目录，
-        # 可能误删其他电影的目录。此类目录一律跳过清理（宁可残留失效文件，也不误删）。
-        if self.strip_series:
-            raw_relative = self._sanitize_path(self._get_output_path_raw(scan_path, base_path))
-            if raw_relative != output_relative:
-                self.logger.info(f"已启用系列层优化，跳过该目录的失效清理（避免误删同级目录）: {scan_path}")
-                return
         current_dir = output_base / output_relative
         try:
             current_resolved = current_dir.resolve()
@@ -423,8 +380,7 @@ class STRMGenerator:
                 except ValueError:
                     continue
                 rel_dir = self._sanitize_path(rel_dir)
-                # 期望目录集合按「本地相对路径」记录（含原始结构与优化后结构），
-                # 因此系列层优化导致的层级上移不会把已生成的目录判为失效目录。
+                # 期望目录集合按「本地相对路径」记录，用于判定历史生成的目录是否仍有效。
                 if rel_dir in expected_local_dirs:
                     continue
                 # 该目录是某个云端目录的上级（云端路径更深）：同样属于有效结构

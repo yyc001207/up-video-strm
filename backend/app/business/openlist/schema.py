@@ -91,7 +91,7 @@ class OpenListServerResponse(BaseModel):
 class OpenListTaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    server_id: int
+    server_id: Optional[int] = None
     name: str = Field(..., min_length=1, max_length=128)
     output_dir: str = Field(..., min_length=1, max_length=512)
     process_path: str = Field(..., min_length=1, max_length=512)
@@ -145,8 +145,6 @@ class OpenListBatchTask(BaseModel):
     is_incremental: bool = True
     is_force: bool = False
     strm_only: bool = False
-    # 系列层路径优化（移除「电影」目录下的「系列」层级），默认关闭
-    strip_series: bool = False
 
 
 class OpenListExecutionCreate(BaseModel):
@@ -155,19 +153,18 @@ class OpenListExecutionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: int
-    server_id: int
+    server_id: Optional[int] = None
     is_incremental: bool = True
     is_force: bool = False
     strm_only: bool = False
-    strip_series: bool = False
 
 
 class OpenListExecutionBatchCreate(BaseModel):
-    """批量创建执行记录（同一服务器，多个任务，仅落库不启动）。"""
+    """批量创建执行记录（多个任务，仅落库不启动）。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    server_id: int
+    server_id: Optional[int] = None
     tasks: list[OpenListBatchTask] = Field(..., min_length=1, max_length=50)
 
 
@@ -181,7 +178,7 @@ class OpenListDirExecutionItem(BaseModel):
 
 
 class OpenListDirExecutionBatchCreate(BaseModel):
-    """批量目录执行（同一服务器，多个目录，仅落库不启动）。
+    """批量目录执行（多个目录，仅落库不启动）。
 
     与任务执行不同：不创建/关联任务记录，execution.task_id 固定为 0，
     执行参数以 process_path/output_dir 快照冗余存储，取消键使用 execution_id。
@@ -189,7 +186,7 @@ class OpenListDirExecutionBatchCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    server_id: int
+    server_id: Optional[int] = None
     dirs: list[OpenListDirExecutionItem] = Field(..., min_length=1, max_length=50)
     is_incremental: bool = True
     is_force: bool = False
@@ -203,7 +200,7 @@ class OpenListExecutionStart(BaseModel):
 
     execution_id: int
     task_id: int
-    server_id: int
+    server_id: Optional[int] = None
 
 
 class OpenListExecutionCancel(BaseModel):
@@ -230,7 +227,6 @@ class OpenListExecutionResponse(BaseModel):
     is_incremental: bool = True
     is_force: bool = False
     strm_only: bool = False
-    strip_series: bool = False
     duration_seconds: Optional[int] = None
     log_path: Optional[str] = None
     started_time: Optional[datetime] = None

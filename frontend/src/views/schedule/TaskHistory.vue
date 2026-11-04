@@ -12,7 +12,6 @@ const store = useOpenlistStore()
 
 const list = ref<HistorySummaryItem[]>([])
 const loading = ref(false)
-const serverFilter = ref<number | null>(null)
 
 /** 视图切换：列表 ↔ 详情（详情作为页面展示，不再使用抽屉）。 */
 const viewMode = ref<'list' | 'detail'>('list')
@@ -45,7 +44,8 @@ function countText(success: number, total: number): string {
 async function load() {
   loading.value = true
   try {
-    const res = await openlistApi.historySummary(serverFilter.value)
+    // 单服务器模式：后端只返回唯一服务器下的历史，无需传服务器参数
+    const res = await openlistApi.historySummary()
     list.value = res.data.list
   } finally {
     loading.value = false
@@ -114,22 +114,6 @@ defineExpose({ reload: load })
     <!-- 列表页面 -->
     <template v-if="viewMode === 'list'">
       <div class="toolbar">
-        <div class="toolbar__left">
-          <el-select
-            v-model="serverFilter"
-            placeholder="全部服务器"
-            clearable
-            class="toolbar__server"
-            @change="load"
-          >
-            <el-option
-              v-for="server in store.servers"
-              :key="server.id"
-              :label="server.name || server.server_url"
-              :value="server.id"
-            />
-          </el-select>
-        </div>
         <div class="toolbar__right">
           <el-button :icon="Refresh" @click="load">刷新</el-button>
         </div>
@@ -143,11 +127,6 @@ defineExpose({ reload: load })
                 <el-link type="primary" :underline="false" @click="openDetail(row)">{{ row.task_name }}</el-link>
               </div>
               <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="服务器" min-width="130" show-overflow-tooltip>
-            <template #default="{ row }">
-              {{ row.execution?.server_name || '—' }}
             </template>
           </el-table-column>
           <el-table-column label="状态" width="110">
@@ -211,9 +190,6 @@ defineExpose({ reload: load })
           </el-table-column>
           <el-table-column label="输出目录" min-width="150" show-overflow-tooltip>
             <template #default="{ row }">{{ row.output_dir || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="服务器" min-width="110" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.server_name || '—' }}</template>
           </el-table-column>
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
@@ -303,18 +279,13 @@ defineExpose({ reload: load })
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--up-strm-space-3, 12px);
 
-  &__left,
   &__right {
     display: flex;
     align-items: center;
     gap: var(--up-strm-space-2, 8px);
-  }
-
-  &__server {
-    width: 200px;
   }
 }
 

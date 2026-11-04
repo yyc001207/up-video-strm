@@ -5,6 +5,7 @@ export interface Res<T = unknown> {
   code: number
   msg?: string
   data: T
+  total?: number
 }
 
 export interface OpenListServer {
@@ -80,7 +81,6 @@ export interface OpenListExecution {
   is_incremental: boolean
   is_force: boolean
   strm_only: boolean
-  strip_series: boolean
   duration_seconds: number | null
   log_path: string | null
   started_time: string | null
@@ -95,7 +95,6 @@ export interface DirExecutionItem {
 }
 
 export interface BatchDirExecutionParams {
-  server_id: number
   dirs: DirExecutionItem[]
   is_incremental: boolean
   is_force: boolean

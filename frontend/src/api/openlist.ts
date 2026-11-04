@@ -21,17 +21,14 @@ import type {
 
 export interface ExecutionStartParams {
   task_id: number
-  server_id: number
   is_incremental: boolean
   is_force: boolean
   strm_only: boolean
-  strip_series: boolean
 }
 
 export interface ExecutionLaunchParams {
   execution_id: number
   task_id: number
-  server_id: number
 }
 
 export interface BatchExecutionTask {
@@ -39,11 +36,9 @@ export interface BatchExecutionTask {
   is_incremental: boolean
   is_force: boolean
   strm_only: boolean
-  strip_series: boolean
 }
 
 export interface BatchExecutionParams {
-  server_id: number
   tasks: BatchExecutionTask[]
 }
 
@@ -97,19 +92,14 @@ export const openlistApi = {
     return request.post(`/openlist/servers/${serverId}/dirs/refresh-all`, { path: path || undefined })
   },
 
-  /** 任务列表（含最近一次执行，可按服务器筛选）。 */
-  listTasks(keyword?: string, serverId?: number | null): Promise<Res<{ list: OpenListTask[] }>> {
-    return request.get('/openlist/tasks', {
-      params: {
-        ...(keyword ? { keyword } : {}),
-        ...(serverId ? { server_id: serverId } : {})
-      }
-    })
+  /** 任务列表（含最近一次执行）。 */
+  listTasks(keyword?: string): Promise<Res<{ list: OpenListTask[] }>> {
+    return request.get('/openlist/tasks', { params: keyword ? { keyword } : {} })
   },
   getTask(id: number): Promise<Res<OpenListTask>> {
     return request.get(`/openlist/tasks/${id}`)
   },
-  createTask(data: { server_id: number; name: string; output_dir: string; process_path: string; pause_count?: number; pause_time?: string }): Promise<Res<OpenListTask>> {
+  createTask(data: { name: string; output_dir: string; process_path: string; pause_count?: number; pause_time?: string }): Promise<Res<OpenListTask>> {
     return request.post('/openlist/tasks', data)
   },
   updateTask(id: number, data: Partial<OpenListTask>): Promise<Res<OpenListTask>> {
@@ -127,11 +117,11 @@ export const openlistApi = {
   createExecution(params: ExecutionStartParams): Promise<Res<OpenListExecution>> {
     return request.post('/openlist/executions', params)
   },
-  /** 批量创建执行记录（同一服务器多任务，仅落库）。 */
+  /** 批量创建执行记录（多任务，仅落库）。 */
   batchCreateExecutions(params: BatchExecutionParams): Promise<Res<{ list: OpenListExecution[] }>> {
     return request.post('/openlist/executions/batch', params)
   },
-  /** 批量创建目录执行记录（同一服务器多目录，不关联任务，仅落库）。 */
+  /** 批量创建目录执行记录（多目录，不关联任务，仅落库）。 */
   batchCreateDirExecutions(params: BatchDirExecutionParams): Promise<Res<{ list: OpenListExecution[] }>> {
     return request.post('/openlist/executions/dirs', params)
   },
@@ -150,9 +140,9 @@ export const openlistApi = {
     return request.get(`/openlist/executions/${id}`)
   },
 
-  /** 任务历史：每个任务最近一次执行（可按服务器筛选）。 */
-  historySummary(serverId?: number | null): Promise<Res<{ list: HistorySummaryItem[] }>> {
-    return request.get('/openlist/history', { params: serverId ? { server_id: serverId } : {} })
+  /** 任务历史：每个任务最近一次执行。 */
+  historySummary(): Promise<Res<{ list: HistorySummaryItem[] }>> {
+    return request.get('/openlist/history')
   },
   /** 指定任务的全部执行记录。 */
   historyByTask(taskId: number, page: number, pageSize: number): Promise<Res<{ list: OpenListExecution[] }>> {

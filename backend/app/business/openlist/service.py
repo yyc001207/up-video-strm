@@ -88,7 +88,6 @@ def execution_to_dict(execution: OpenListExecution, task: Optional[OpenListTask]
         "is_incremental": execution.is_incremental,
         "is_force": execution.is_force,
         "strm_only": execution.strm_only,
-        "strip_series": execution.strip_series,
         "duration_seconds": execution.duration_seconds,
         "log_path": execution.log_path,
         "started_time": execution.started_time.isoformat(sep=" ") if execution.started_time else None,
@@ -170,6 +169,30 @@ async def get_server(db: AsyncSession, server_id: int) -> OpenListServer:
     server = await db.get(OpenListServer, server_id)
     if server is None or server.is_deleted:
         raise NotFoundException("服务器不存在")
+    return server
+
+
+async def get_active_server(db: AsyncSession, server_id: Optional[int] = None) -> OpenListServer:
+    """解析唯一启用服务器：显式传入 server_id 时校验存在，否则取唯一启用服务器。
+
+    产品只支持一个 OpenList 服务器（创建接口已做数量校验），因此未显式指定时
+    直接取当前启用服务器，供执行/任务等接口在单服务器模式下自动回退。
+    """
+    if server_id is not None:
+        server = await get_server(db, server_id)
+        if not server.is_active:
+            raise BadRequestException("服务器已停用，请先在全局配置中启用")
+        return server
+    server = await db.scalar(
+        select(OpenListServer)
+        .where(
+            OpenListServer.is_deleted == False,  # noqa: E712
+            OpenListServer.is_active == True,  # noqa: E712
+        )
+        .order_by(OpenListServer.id)
+    )
+    if server is None:
+        raise BadRequestException("未配置可用的 OpenList 服务器，请先在全局配置中新增服务器")
     return server
 
 
@@ -400,6 +423,11 @@ async def search_server_dirs(
 
 
 async def create_server(db: AsyncSession, data: OpenListServerCreate) -> dict:
+    existing = await db.scalar(
+        select(func.count(OpenListServer.id)).where(OpenListServer.is_deleted == False)  # noqa: E712
+    )
+    if existing:
+        raise BadRequestException("只支持一个 OpenList 服务器，请直接编辑已有服务器")
     parent_dirs = _normalize_parent_dirs(data.parent_dirs)
     # 格式校验始终执行（本地可判定，不依赖服务器）；存在性/读写校验可跳过
     for path in parent_dirs:
@@ -662,7 +690,7 @@ async def get_task(db: AsyncSession, task_id: int) -> OpenListTask:
 
 
 async def create_task(db: AsyncSession, data: OpenListTaskCreate) -> dict:
-    server = await get_server(db, data.server_id)
+    server = await get_active_server(db, data.server_id)
     task = OpenListTask(
         server_id=server.id,
         name=data.name,
@@ -742,9 +770,10 @@ async def copy_task(db: AsyncSession, task_id: int) -> dict:
 async def create_execution(db: AsyncSession, data: OpenListExecutionCreate) -> dict:
     """创建执行记录（仅落库，不启动后台）。返回 execution_id 供前端先连日志。"""
     task = await get_task(db, data.task_id)
-    server = await get_server(db, data.server_id)
-    if task.server_id is not None and task.server_id != server.id:
-        raise BadRequestException("任务与所选服务器不匹配，请选择任务所属服务器执行")
+    server = await get_active_server(db, data.server_id)
+    # 单服务器模式：历史任务可能绑定到已删除的服务器，执行时统一归一到当前服务器
+    if task.server_id != server.id:
+        task.server_id = server.id
     execution = OpenListExecution(
         task_id=task.id,
         task_name=task.name,
@@ -754,7 +783,6 @@ async def create_execution(db: AsyncSession, data: OpenListExecutionCreate) -> d
         is_incremental=data.is_incremental,
         is_force=data.is_force,
         strm_only=data.strm_only,
-        strip_series=data.strip_series,
         started_time=datetime.now(),
     )
     db.add(execution)
@@ -765,27 +793,25 @@ async def create_execution(db: AsyncSession, data: OpenListExecutionCreate) -> d
 
 
 async def batch_create_executions(db: AsyncSession, data: OpenListExecutionBatchCreate) -> list[dict]:
-    """批量创建执行记录（同一服务器，多个任务），仅落库不启动。
+    """批量创建执行记录（多个任务），仅落库不启动。
 
     前端先拿到全部 execution_id 后逐条连接日志、再逐条启动，保证日志不遗漏。
     """
-    await get_server(db, data.server_id)
-    server_name = (await get_server(db, data.server_id)).name
+    server = await get_active_server(db, data.server_id)
     created: list[OpenListExecution] = []
     for item in data.tasks:
         task = await get_task(db, item.task_id)
-        if task.server_id is not None and task.server_id != data.server_id:
-            raise BadRequestException(f"任务「{task.name}」与所选服务器不匹配，请选择任务所属服务器执行")
+        if task.server_id != server.id:
+            task.server_id = server.id
         execution = OpenListExecution(
             task_id=task.id,
             task_name=task.name,
-            server_id=data.server_id,
-            server_name=server_name,
+            server_id=server.id,
+            server_name=server.name,
             status="running",
             is_incremental=item.is_incremental,
             is_force=item.is_force,
             strm_only=item.strm_only,
-            strip_series=item.strip_series,
             started_time=datetime.now(),
         )
         db.add(execution)
@@ -799,12 +825,12 @@ async def batch_create_executions(db: AsyncSession, data: OpenListExecutionBatch
 
 
 async def batch_create_dir_executions(db: AsyncSession, data: OpenListDirExecutionBatchCreate) -> list[dict]:
-    """批量创建目录执行记录（同一服务器，多个目录），仅落库不启动。
+    """批量创建目录执行记录（多个目录），仅落库不启动。
 
     与任务执行不同：不创建/关联任务记录，execution.task_id 固定为 0，
     执行参数（process_path/output_dir）以快照冗余存储，取消键使用 execution_id。
     """
-    server = await get_server(db, data.server_id)
+    server = await get_active_server(db, data.server_id)
     created: list[OpenListExecution] = []
     for item in data.dirs:
         execution = OpenListExecution(
@@ -829,12 +855,13 @@ async def batch_create_dir_executions(db: AsyncSession, data: OpenListDirExecuti
     return [execution_to_dict(e) for e in created]
 
 
-async def start_execution(db: AsyncSession, execution_id: int, task_id: int, server_id: int) -> dict:
-    """启动已创建的执行记录：校验记录存在且仍为 running，按 server_id 加载配置后拉起后台任务。
+async def start_execution(db: AsyncSession, execution_id: int, task_id: int, server_id: Optional[int] = None) -> dict:
+    """启动已创建的执行记录：校验记录存在且仍为 running，加载服务器配置后拉起后台任务。
 
     只有处于 running 且尚未被启动过的记录才能启动；重复调用直接报错，防止
     前端并发/重复点击导致同一执行被启动多次。
     目录执行（task_id=0）使用 process_path/output_dir 快照启动，不查任务表。
+    单服务器模式下 server_id 可省略：优先用执行记录快照的服务器，其次取唯一启用服务器。
     """
     execution = await db.get(OpenListExecution, execution_id)
     if execution is None or execution.is_deleted:
@@ -844,7 +871,14 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int, ser
     if execution.status != "running":
         raise BadRequestException("执行记录不可启动，当前状态: " + execution.status)
 
-    global_config = await get_config_for_run(db, server_id)
+    resolved_server_id = server_id if server_id is not None else execution.server_id
+    if resolved_server_id is None:
+        resolved_server_id = (await get_active_server(db)).id
+    server = await get_active_server(db, resolved_server_id)
+    if execution.server_id != server.id:
+        execution.server_id = server.id
+        execution.server_name = server.name
+    global_config = await get_config_for_run(db, server.id)
 
     if execution.process_path:
         # 目录执行：快照路径 + 取消键为 execution_id
@@ -855,8 +889,8 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int, ser
         cancel_key = str(execution.id)
     else:
         task = await get_task(db, task_id)
-        if task.server_id is not None and task.server_id != server_id:
-            raise BadRequestException("任务与所选服务器不匹配，请选择任务所属服务器执行")
+        if task.server_id != server.id:
+            task.server_id = server.id
         process_path = task.process_path
         output_dir = task.output_dir
         pause_count = task.pause_count
@@ -878,7 +912,6 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int, ser
             pause_count=pause_count,
             pause_time=pause_time,
             strm_only=execution.strm_only,
-            strip_series=execution.strip_series,
             cancel_key=cancel_key,
         )
     )

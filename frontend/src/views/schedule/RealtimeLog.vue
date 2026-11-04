@@ -7,7 +7,7 @@
  *
  * 启动时序（与旧实现保持一致）：路由 query 传入 `execs` 与 `server`；
  * launch=true 的执行先建立 WebSocket（可先看到启动前的日志），连接建立后再调用
- * store.startExecution({ execution_id, task_id, server_id }) 真正启动任务；
+ * store.startExecution({ execution_id, task_id }) 真正启动任务；
  * launch=false 的执行只连接查看已运行的日志，不触发启动。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -46,11 +46,10 @@ interface QueryExecution {
   launch: boolean
 }
 
-/** 已解析出的连接目标（taskId / serverId 已在必要时回退到运行记录）。 */
+/** 已解析出的连接目标（taskId 已在必要时回退到运行记录）。 */
 interface OpenTarget {
   executionId: number
   taskId: number
-  serverId: number
   taskName: string
   launch: boolean
   running: OpenListExecution | undefined
@@ -60,7 +59,6 @@ interface OpenTarget {
 interface PendingLaunch {
   executionId: number
   taskId: number
-  serverId: number
 }
 
 type ProgressSnapshot = WsProgressFrame['data']
@@ -94,7 +92,6 @@ const launchedIds = ref<number[]>(loadLaunchedIds())
 const pendingLaunch = ref<PendingLaunch | null>(null)
 const launching = ref(false)
 const batchExecutions = ref<QueryExecution[]>([])
-const batchServerId = ref<number | null>(null)
 
 const logLines = ref<LogLine[]>([])
 const nextSeq = ref(1)
@@ -293,17 +290,14 @@ function buildTarget(
   executionId: number,
   taskId: number | null,
   taskName: string,
-  serverId: number | null,
   launch: boolean
 ): OpenTarget {
   const running = findRunningExecution(executionId)
   const effectiveTaskId = taskId !== null && taskId > 0 ? taskId : running?.task_id ?? 0
-  const effectiveServerId = serverId !== null ? serverId : running?.server_id ?? 0
   const name = taskName.trim() !== '' ? taskName : running?.task_name ?? ''
   return {
     executionId,
     taskId: effectiveTaskId,
-    serverId: effectiveServerId,
     taskName: name !== '' ? name : `执行 #${executionId}`,
     launch,
     running
@@ -388,8 +382,7 @@ async function launchIfPending(): Promise<void> {
   try {
     await store.startExecution({
       execution_id: pending.executionId,
-      task_id: pending.taskId,
-      server_id: pending.serverId
+      task_id: pending.taskId
     })
     markLaunched(pending.executionId)
     pendingLaunch.value = null
@@ -434,7 +427,7 @@ function startConnection(target: OpenTarget, launch: boolean): void {
   finishedAt.value = null
   startedAt.value = parseTime(target.running?.started_time ?? null) ?? (launch ? null : Date.now())
   pendingLaunch.value = launch
-    ? { executionId: target.executionId, taskId: target.taskId, serverId: target.serverId }
+    ? { executionId: target.executionId, taskId: target.taskId }
     : null
   autoScroll.value = true
   connectionState.value = 'connecting'
@@ -505,7 +498,6 @@ async function handleExecutionChange(executionId: number): Promise<void> {
     executionId,
     batchItem?.taskId ?? null,
     batchItem?.taskName || fallbackName,
-    batchServerId.value,
     batchItem?.launch ?? false
   )
   const launch = needLaunch(target)
@@ -535,7 +527,6 @@ async function handleReconnect(): Promise<void> {
     executionId,
     batchItem?.taskId ?? null,
     selectedExecutionName.value,
-    batchServerId.value,
     batchItem?.launch ?? false
   )
   const launch = needLaunch(target)
@@ -574,8 +565,6 @@ async function init(): Promise<void> {
   if (disposed) return
   const items = parseExecutions(route.query.execs)
   if (items.length > 0) {
-    const serverId = toNumber(route.query.server)
-    batchServerId.value = serverId
     batchExecutions.value = items
     const first: QueryExecution | undefined = items[0]
     if (first === undefined) return
@@ -584,7 +573,6 @@ async function init(): Promise<void> {
       first.executionId,
       first.taskId,
       first.taskName || running?.task_name || '',
-      serverId,
       first.launch
     )
     await openInitial(target)
@@ -593,13 +581,7 @@ async function init(): Promise<void> {
   // 直接刷新 / 手动打开页面：展示第一条运行中的执行（只查看日志，不启动）。
   const firstRunning: OpenListExecution | undefined = store.runningExecutions[0]
   if (firstRunning === undefined) return
-  const target = buildTarget(
-    firstRunning.id,
-    firstRunning.task_id,
-    firstRunning.task_name,
-    firstRunning.server_id,
-    false
-  )
+  const target = buildTarget(firstRunning.id, firstRunning.task_id, firstRunning.task_name, false)
   await openInitial(target)
 }
 

@@ -1,19 +1,24 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, FolderOpened, Plus } from '@element-plus/icons-vue'
+import { Delete, Edit, FolderOpened, Plus, Refresh } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
+import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListConfig, OpenListServer } from '@/types/openlist'
 
+const store = useOpenlistStore()
+
 const loading = ref(false)
-const config = ref<OpenListConfig | null>(null)
+/** 单服务器模式：配置与唯一服务器统一取自 store（`server` = servers[0] ?? null）。 */
+const config = computed<OpenListConfig | null>(() => store.config)
+const server = computed<OpenListServer | null>(() => store.server)
 
 // 服务器弹窗
 const serverDialogVisible = ref(false)
 const editingServerId = ref<number | null>(null)
 const savingServer = ref(false)
-const refreshingCacheId = ref<number | null>(null)
+const refreshingCache = ref(false)
 const serverForm = reactive({ name: '', server_url: '', token: '', parent_dirs: '', skip_validation: false })
 
 // 全局配置弹窗
@@ -24,8 +29,7 @@ const configForm = reactive({ video_formats: '', subtitle_formats: '', max_concu
 async function load() {
   loading.value = true
   try {
-    const res = await openlistApi.getConfig()
-    config.value = res.data
+    await store.fetchConfig()
   } finally {
     loading.value = false
   }
@@ -41,13 +45,13 @@ function openCreateServer() {
   serverDialogVisible.value = true
 }
 
-function openEditServer(server: OpenListServer) {
-  editingServerId.value = server.id
-  serverForm.name = server.name ?? ''
-  serverForm.server_url = server.server_url
+function openEditServer(target: OpenListServer) {
+  editingServerId.value = target.id
+  serverForm.name = target.name ?? ''
+  serverForm.server_url = target.server_url
   // 编辑时不回填 Token：留空表示保持原 Token 不变
   serverForm.token = ''
-  serverForm.parent_dirs = (server.parent_dirs ?? []).join('\n')
+  serverForm.parent_dirs = (target.parent_dirs ?? []).join('\n')
   serverForm.skip_validation = false
   serverDialogVisible.value = true
 }
@@ -98,24 +102,29 @@ async function handleSaveServer() {
 }
 
 /** 手动刷新该服务器所有父级目录的一级子目录缓存。 */
-async function handleRefreshCache(server: OpenListServer) {
-  refreshingCacheId.value = server.id
+async function handleRefreshCache(target: OpenListServer) {
+  refreshingCache.value = true
   try {
-    const paths: Array<string | undefined> = server.parent_dirs?.length ? server.parent_dirs : [undefined]
-    const results = await Promise.all(paths.map(p => openlistApi.refreshServerDirs(server.id, p)))
+    const dirs = target.parent_dirs ?? []
+    const paths: Array<string | undefined> = dirs.length ? dirs : [undefined]
+    const results = await Promise.all(paths.map(p => openlistApi.refreshServerDirs(target.id, p)))
     const total = results.reduce((sum, r) => sum + (r.data.count ?? 0), 0)
-    ElMessage.success(`目录缓存已刷新（${results.length} 个父级目录，共 ${total} 个子目录）`)
+    ElMessage.success(
+      dirs.length
+        ? `目录缓存已刷新（${results.length} 个父级目录，共 ${total} 个子目录）`
+        : `目录缓存已刷新（共 ${total} 个子目录）`
+    )
   } catch {
     /* 拦截器提示 */
   } finally {
-    refreshingCacheId.value = null
+    refreshingCache.value = false
   }
 }
 
-async function handleDeleteServer(server: OpenListServer) {
+async function handleDeleteServer(target: OpenListServer) {
   try {
     await ElMessageBox.confirm(
-      `删除服务器「${server.name ?? server.server_url}」？该操作不可恢复。`,
+      `删除服务器「${target.name || target.server_url}」？该操作不可恢复。`,
       '删除服务器',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
@@ -123,7 +132,7 @@ async function handleDeleteServer(server: OpenListServer) {
     return
   }
   try {
-    await openlistApi.deleteServer(server.id)
+    await openlistApi.deleteServer(target.id)
     ElMessage.success('已删除')
     await load()
   } catch {
@@ -132,16 +141,17 @@ async function handleDeleteServer(server: OpenListServer) {
 }
 
 function openEditConfig() {
-  if (!config.value) return
-  configForm.video_formats = config.value.video_formats ?? ''
-  configForm.subtitle_formats = config.value.subtitle_formats ?? ''
-  configForm.max_concurrent = config.value.max_concurrent || 1
-  configForm.pause_count = config.value.pause_count || 50
-  configForm.pause_time = config.value.pause_time ?? '0,3,5'
-  configForm.disable_ssl_verify = config.value.disable_ssl_verify ?? false
-  configForm.log_to_db = config.value.log_to_db ?? false
-  configForm.output_dir_prefix = config.value.output_dir_prefix ?? ''
-  configForm.output_root = config.value.output_root ?? ''
+  const current = config.value
+  if (!current) return
+  configForm.video_formats = current.video_formats ?? ''
+  configForm.subtitle_formats = current.subtitle_formats ?? ''
+  configForm.max_concurrent = current.max_concurrent || 1
+  configForm.pause_count = current.pause_count || 50
+  configForm.pause_time = current.pause_time ?? '0,3,5'
+  configForm.disable_ssl_verify = current.disable_ssl_verify ?? false
+  configForm.log_to_db = current.log_to_db ?? false
+  configForm.output_dir_prefix = current.output_dir_prefix ?? ''
+  configForm.output_root = current.output_root ?? ''
   configDialogVisible.value = true
 }
 
@@ -194,68 +204,67 @@ defineExpose({ reload: load })
 <template>
   <div class="page global-config">
     <el-row :gutter="16">
-      <!-- 左 8 栏：服务器配置表 -->
+      <!-- 左 8 栏：唯一服务器配置卡 -->
       <el-col :xs="24" :lg="16">
         <el-card v-loading="loading" shadow="never" class="global-config__card">
           <template #header>
             <div class="card-header">
               <span class="card-title">服务器配置</span>
-              <el-button type="primary" :icon="Plus" @click="openCreateServer">新增服务器</el-button>
+              <div v-if="server" class="card-header__actions">
+                <el-button :icon="Refresh" :loading="refreshingCache" @click="handleRefreshCache(server)">
+                  刷新缓存
+                </el-button>
+                <el-button :icon="Edit" @click="openEditServer(server)">编辑</el-button>
+                <el-button type="danger" plain :icon="Delete" @click="handleDeleteServer(server)">删除</el-button>
+              </div>
             </div>
           </template>
 
-          <el-table :data="config?.servers ?? []" row-key="id" class="global-config__table">
-            <el-table-column label="名称" min-width="110" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.name || '未命名' }}</template>
-            </el-table-column>
-            <el-table-column label="服务器地址" prop="server_url" min-width="180" show-overflow-tooltip />
-            <el-table-column label="Token" width="86">
-              <template #default="{ row }">
-                <el-tag :type="row.has_token ? 'success' : 'danger'" effect="light" size="small">
-                  {{ row.has_token ? '已设置' : '未设置' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="父级目录" min-width="140">
-              <template #default="{ row }">
-                <template v-if="row.parent_dirs?.length">
-                  <el-tag
-                    v-for="dir in row.parent_dirs"
-                    :key="dir"
-                    type="info"
-                    effect="plain"
-                    size="small"
-                    class="global-config__dir-tag"
-                  >
-                    {{ dir }}
-                  </el-tag>
-                </template>
-                <span v-else class="global-config__muted">未配置</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="76">
-              <template #default="{ row }">
-                <el-tag :type="row.is_active ? 'success' : 'info'" effect="light" size="small">
-                  {{ row.is_active ? '启用' : '停用' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="196">
-              <template #default="{ row }">
-                <el-button link type="primary" :loading="refreshingCacheId === row.id" @click="handleRefreshCache(row)">
-                  刷新缓存
-                </el-button>
-                <el-button link type="primary" @click="openEditServer(row)">编辑</el-button>
-                <el-button link type="danger" @click="handleDeleteServer(row)">删除</el-button>
-              </template>
-            </el-table-column>
+          <div v-if="server" class="server-card">
+            <div class="server-card__head">
+              <span class="server-card__name">{{ server.name || '未命名' }}</span>
+              <el-tag :type="server.is_active ? 'success' : 'info'" effect="light" size="small">
+                {{ server.is_active ? '启用' : '停用' }}
+              </el-tag>
+            </div>
 
-            <template #empty>
-              <el-empty description="暂无服务器，点击「新增服务器」配置 OpenList 服务器" :image-size="80">
-                <el-button type="primary" :icon="Plus" @click="openCreateServer">新增服务器</el-button>
-              </el-empty>
-            </template>
-          </el-table>
+            <dl class="meta-list">
+              <div class="meta-list__item">
+                <dt>服务器地址</dt>
+                <dd>{{ server.server_url }}</dd>
+              </div>
+              <div class="meta-list__item">
+                <dt>访问 Token</dt>
+                <dd>
+                  <el-tag :type="server.has_token ? 'success' : 'danger'" effect="light" size="small">
+                    {{ server.has_token ? '已配置' : '未配置' }}
+                  </el-tag>
+                </dd>
+              </div>
+              <div class="meta-list__item">
+                <dt>父级目录</dt>
+                <dd>
+                  <template v-if="server.parent_dirs?.length">
+                    <el-tag
+                      v-for="dir in server.parent_dirs"
+                      :key="dir"
+                      type="info"
+                      effect="plain"
+                      size="small"
+                      class="meta-list__dir"
+                    >
+                      {{ dir }}
+                    </el-tag>
+                  </template>
+                  <span v-else class="global-config__muted">未配置父级目录</span>
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <el-empty v-else-if="!loading" description="尚未配置 OpenList 服务器" :image-size="90">
+            <el-button type="primary" :icon="Plus" @click="openCreateServer">新增服务器</el-button>
+          </el-empty>
         </el-card>
       </el-col>
 
@@ -269,26 +278,26 @@ defineExpose({ reload: load })
             </div>
           </template>
 
-          <dl v-if="config" class="param-list">
-            <div class="param-list__item">
+          <dl v-if="config" class="meta-list">
+            <div class="meta-list__item">
               <dt>最大并发</dt>
               <dd>{{ config.max_concurrent || 1 }} 个任务</dd>
             </div>
-            <div class="param-list__item">
+            <div class="meta-list__item">
               <dt>视频格式</dt>
               <dd>{{ config.video_formats || '—' }}</dd>
             </div>
-            <div class="param-list__item">
+            <div class="meta-list__item">
               <dt>字幕格式</dt>
               <dd>{{ config.subtitle_formats || '—' }}</dd>
             </div>
-            <div class="param-list__item">
+            <div class="meta-list__item">
               <dt>暂停策略</dt>
               <dd>
                 每 {{ config.pause_count || 50 }} 个文件暂停一次（{{ config.pause_time || '0,3,5' }} 秒）
               </dd>
             </div>
-            <div class="param-list__item">
+            <div class="meta-list__item">
               <dt>SSL 校验</dt>
               <dd>
                 <el-tag :type="config.disable_ssl_verify ? 'warning' : 'success'" effect="light" size="small">
@@ -296,7 +305,7 @@ defineExpose({ reload: load })
                 </el-tag>
               </dd>
             </div>
-            <div class="param-list__item">
+            <div class="meta-list__item">
               <dt>日志入库</dt>
               <dd>
                 <el-tag :type="config.log_to_db ? 'warning' : 'success'" effect="light" size="small">
@@ -304,11 +313,11 @@ defineExpose({ reload: load })
                 </el-tag>
               </dd>
             </div>
-            <div class="param-list__item">
+            <div class="meta-list__item">
               <dt>输出前缀</dt>
               <dd>{{ config.output_dir_prefix || '—' }}</dd>
             </div>
-            <div class="param-list__item">
+            <div class="meta-list__item">
               <dt>输出根目录</dt>
               <dd>{{ config.output_root || '默认（程序目录下 output）' }}</dd>
             </div>
@@ -326,7 +335,7 @@ defineExpose({ reload: load })
     >
       <el-form label-width="100px">
         <el-form-item label="名称">
-          <el-input v-model="serverForm.name" placeholder="如：主服务器 / 备服务器" maxlength="128" />
+          <el-input v-model="serverForm.name" placeholder="如：主服务器" maxlength="128" />
         </el-form-item>
         <el-form-item label="服务器地址">
           <el-input v-model="serverForm.server_url" placeholder="http://192.168.199.238:5244" maxlength="512" />
@@ -419,25 +428,53 @@ defineExpose({ reload: load })
     height: 100%;
   }
 
-  &__table {
-    width: 100%;
-  }
-
-  &__dir-tag {
-    margin: 2px 4px 2px 0;
-  }
-
   &__muted {
     color: var(--el-text-color-secondary);
-    font-size: var(--up-strm-font-size-xs, 12px);
+    font-size: var(--up-strm-font-size-sm, 13px);
+  }
+}
+
+.server-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--up-strm-space-3, 12px);
+  padding: var(--up-strm-space-4, 16px);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--up-strm-radius-md, 8px);
+  background: var(--el-bg-color-overlay);
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--up-strm-space-2, 8px);
+  }
+
+  &__name {
+    color: var(--el-text-color-primary);
+    font-size: var(--up-strm-font-size-lg, 16px);
+    font-weight: 600;
+    line-height: 1.4;
+    word-break: break-all;
+  }
+
+  .meta-list__item:last-child {
+    padding-bottom: 0;
   }
 }
 
 .card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--up-strm-space-3, 12px);
+}
+
+.card-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .card-title {
@@ -446,7 +483,7 @@ defineExpose({ reload: load })
   color: var(--el-text-color-primary);
 }
 
-.param-list {
+.meta-list {
   margin: 0;
 
   &__item {
@@ -474,6 +511,10 @@ defineExpose({ reload: load })
       line-height: 1.5;
       word-break: break-all;
     }
+  }
+
+  &__dir {
+    margin: 2px 4px 2px 0;
   }
 }
 

@@ -2,9 +2,10 @@
 /**
  * 任务调度 · 执行管理（/schedule/execution）。
  *
- * 双栏工作区：左「选择任务」（服务器 + 搜索 + 复选列表），右「执行参数」（分段模式 + 高级选项）；
+ * 双栏工作区：左「选择任务」（搜索 + 复选列表），右「执行参数」（分段模式）；
  * 底部常驻操作条展示已选任务 / 视频数并提供清空与执行；「正在执行」表 5s 轮询。
  *
+ * 单服务器模式：任务列表直接展示全部任务配置，不再按服务器筛选，也不再传服务器参数。
  * 执行时序保持不变：本页只调用 batchCreateExecution 落库，随后带参跳转实时日志页，
  * 由实时日志页在 WebSocket 连接成功后再调用 startExecution（避免漏日志）。
  */
@@ -64,20 +65,15 @@ const runningLoading = ref(false)
 const starting = ref(false)
 const cancellingId = ref<number | null>(null)
 
-const selectedServerId = ref<number | null>(null)
 const selectedTaskIds = ref<number[]>([])
 const keyword = ref('')
 const execMode = ref<ExecutionMode>('incremental')
-const stripSeries = ref(false)
-const advancedPanels = ref<string[]>([])
 
-const activeServers = computed(() => store.servers.filter(server => server.is_active))
-/** 任务强关联服务器：只展示所选服务器的任务配置。 */
-const taskOptions = computed(() => store.tasks.filter(task => task.server_id === selectedServerId.value))
+/** 单服务器模式：任务列表直接展示全部任务配置，不再按服务器筛选。 */
 const filteredTasks = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
-  if (!kw) return taskOptions.value
-  return taskOptions.value.filter(task => {
+  if (!kw) return store.tasks
+  return store.tasks.filter(task => {
     return (
       task.name.toLowerCase().includes(kw) ||
       (task.process_path || '').toLowerCase().includes(kw) ||
@@ -86,15 +82,13 @@ const filteredTasks = computed(() => {
   })
 })
 const selectedTasks = computed(() =>
-  taskOptions.value.filter(task => selectedTaskIds.value.includes(task.id))
+  store.tasks.filter(task => selectedTaskIds.value.includes(task.id))
 )
 /** 已选任务的视频总数：按各任务最近一次执行的视频数估算。 */
 const totalVideos = computed(() =>
   selectedTasks.value.reduce((sum, task) => sum + (task.last_execution?.video_total_count ?? 0), 0)
 )
-const canStart = computed(
-  () => selectedServerId.value != null && selectedTaskIds.value.length > 0
-)
+const canStart = computed(() => selectedTaskIds.value.length > 0)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 /** 组件是否已卸载：异步首屏加载完成时避免在卸载后继续启动轮询。 */
@@ -133,21 +127,6 @@ function handleRowKeydown(event: KeyboardEvent, task: OpenListTask): void {
   toggleTask(task)
 }
 
-function handleServerChange(): void {
-  // 任务强关联服务器，切换服务器后旧选择不再有效
-  selectedTaskIds.value = []
-  keyword.value = ''
-}
-
-/** 首屏/刷新后校正服务器选择，避免配置变化后指向已删除服务器。 */
-function ensureServer(): void {
-  const exists = activeServers.value.some(server => server.id === selectedServerId.value)
-  if (!exists) {
-    selectedServerId.value = activeServers.value[0]?.id ?? null
-    selectedTaskIds.value = []
-  }
-}
-
 /** 计数文本：0/0 显示「—」降噪，等宽数字对齐。 */
 function countText(success: number, total: number): string {
   return total > 0 ? `${success}/${total}` : '—'
@@ -174,7 +153,6 @@ async function load(): Promise<void> {
   loading.value = true
   try {
     await Promise.all([store.fetchConfig(), store.fetchTasks(), refreshRunning()])
-    ensureServer()
   } catch {
     /* 拦截器已提示 */
   } finally {
@@ -183,10 +161,6 @@ async function load(): Promise<void> {
 }
 
 async function handleStart(): Promise<void> {
-  if (selectedServerId.value == null) {
-    ElMessage.warning('请先选择服务器')
-    return
-  }
   if (selectedTaskIds.value.length === 0) {
     ElMessage.warning('请至少选择一个任务')
     return
@@ -204,17 +178,14 @@ async function handleStart(): Promise<void> {
     ElMessage.info(`已跳过 ${skippedCount} 个正在执行的任务`)
   }
 
-  const serverId = selectedServerId.value
   const flags = MODE_FLAGS[execMode.value]
   starting.value = true
   try {
     // 仅创建执行记录（落库，不启动后台），启动由实时日志页在日志连接成功后触发
     const executions = await store.batchCreateExecution(
-      serverId,
       requestedIds.map(taskId => ({
         task_id: taskId,
-        ...flags,
-        strip_series: stripSeries.value
+        ...flags
       }))
     )
     if (executions.length === 0) {
@@ -230,7 +201,7 @@ async function handleStart(): Promise<void> {
     }))
     await router.push({
       path: ROUTE_REALTIME,
-      query: { execs: JSON.stringify(items), server: String(serverId) }
+      query: { execs: JSON.stringify(items) }
     })
   } catch {
     /* 拦截器已提示 */
@@ -249,11 +220,7 @@ async function handleViewLog(execution: OpenListExecution): Promise<void> {
       launch: false
     }
   ]
-  const query: Record<string, string> = { execs: JSON.stringify(items) }
-  if (execution.server_id != null) {
-    query.server = String(execution.server_id)
-  }
-  await router.push({ path: ROUTE_REALTIME, query })
+  await router.push({ path: ROUTE_REALTIME, query: { execs: JSON.stringify(items) } })
 }
 
 async function handleCancel(execution: OpenListExecution): Promise<void> {
@@ -318,28 +285,14 @@ onUnmounted(() => {
           <header class="exec-panel__head">
             <div class="exec-panel__heading">
               <h2 class="exec-panel__title">选择任务</h2>
-              <p class="exec-panel__sub">仅展示所选服务器下的任务；执行中的任务不可重复选择</p>
+              <p class="exec-panel__sub">展示全部任务配置；执行中的任务不可重复选择</p>
             </div>
             <span class="exec-panel__count">已选 {{ selectedTaskIds.length }}</span>
           </header>
 
           <div class="exec-panel__body">
-            <template v-if="activeServers.length > 0">
+            <template v-if="store.server">
               <div class="task-filters">
-                <el-select
-                  v-model="selectedServerId"
-                  class="task-filters__server"
-                  placeholder="选择服务器"
-                  :disabled="starting"
-                  @change="handleServerChange"
-                >
-                  <el-option
-                    v-for="server in activeServers"
-                    :key="server.id"
-                    :label="server.name || server.server_url"
-                    :value="server.id"
-                  />
-                </el-select>
                 <el-input
                   v-model="keyword"
                   class="task-filters__search"
@@ -350,9 +303,9 @@ onUnmounted(() => {
               </div>
 
               <el-empty
-                v-if="taskOptions.length === 0"
+                v-if="store.tasks.length === 0"
                 class="exec-panel__empty"
-                description="该服务器下暂无任务配置"
+                description="暂无任务配置"
                 :image-size="72"
               >
                 <el-button type="primary" plain @click="goTasks">前往任务配置</el-button>
@@ -438,21 +391,6 @@ onUnmounted(() => {
               <p class="param-block__hint">{{ MODE_HINT[execMode] }}</p>
             </div>
 
-            <el-collapse v-model="advancedPanels" class="param-advanced">
-              <el-collapse-item name="advanced" title="高级选项">
-                <div class="param-switch">
-                  <div class="param-switch__text">
-                    <span class="param-switch__label">系列层优化</span>
-                    <p class="param-switch__hint">
-                      默认关闭；开启后输出目录移除「电影」目录下的「系列」层级（如
-                      动画电影/哆啦A梦系列/剧场版 → 动画电影/剧场版），strm 内链接仍保留原始完整路径
-                    </p>
-                  </div>
-                  <el-switch v-model="stripSeries" :disabled="starting" />
-                </div>
-              </el-collapse-item>
-            </el-collapse>
-
             <p class="param-note">
               执行记录创建后会跳转到实时日志页，日志连接成功后才开始执行，确保完整记录本次执行日志。
             </p>
@@ -481,9 +419,6 @@ onUnmounted(() => {
           empty-text="暂无正在执行的任务"
         >
           <el-table-column prop="task_name" label="任务" min-width="180" show-overflow-tooltip />
-          <el-table-column label="服务器" width="140" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.server_name || '—' }}</template>
-          </el-table-column>
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
               <StatusDot :status="row.status" />
@@ -643,16 +578,11 @@ onUnmounted(() => {
   }
 }
 
-// 服务器 / 搜索
+// 任务搜索
 .task-filters {
   display: flex;
   flex: none;
   gap: var(--up-strm-space-2);
-
-  &__server {
-    flex: none;
-    width: 210px;
-  }
 
   &__search {
     flex: 1;
@@ -765,59 +695,6 @@ onUnmounted(() => {
       color: var(--el-text-color-secondary);
       font-size: var(--up-strm-font-size-xs);
       line-height: 1.6;
-    }
-  }
-
-  .param-advanced {
-    flex: none;
-    border-top: 1px solid var(--el-border-color-lighter);
-    border-bottom: none;
-
-    :deep(.el-collapse-item__header) {
-      color: var(--el-text-color-regular);
-      font-size: var(--up-strm-font-size-sm);
-      font-weight: 600;
-      border-bottom-color: var(--el-border-color-lighter);
-    }
-
-    :deep(.el-collapse-item__wrap) {
-      background: transparent;
-      border-bottom: none;
-    }
-
-    :deep(.el-collapse-item__content) {
-      padding-bottom: 0;
-    }
-  }
-
-  .param-switch {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--up-strm-space-3);
-    padding-top: var(--up-strm-space-2);
-
-    &__text {
-      flex: 1;
-      min-width: 0;
-    }
-
-    &__label {
-      display: block;
-      color: var(--el-text-color-primary);
-      font-size: var(--up-strm-font-size-sm);
-      font-weight: 500;
-      line-height: 1.5;
-    }
-
-    &__hint {
-      margin: var(--up-strm-space-1) 0 0;
-      color: var(--el-text-color-secondary);
-      font-size: var(--up-strm-font-size-xs);
-      line-height: 1.6;
-    }
-
-    :deep(.el-switch) {
-      flex: none;
     }
   }
 
@@ -973,14 +850,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 720px) {
-  .task-filters {
-    flex-direction: column;
-  }
-
-  .task-filters__server {
-    width: 100%;
-  }
-
   .exec-footer {
     flex-direction: column;
     align-items: stretch;

@@ -80,7 +80,6 @@ def execution_to_dict(execution: OpenListExecution, task: Optional[OpenListTask]
         "process_path": process_path,
         "output_dir": output_dir,
         "server_id": execution.server_id,
-        "server_name": execution.server_name,
         "status": execution.status,
         "video_success_count": execution.video_success_count,
         "video_total_count": execution.video_total_count,
@@ -102,7 +101,6 @@ def task_to_dict(task: OpenListTask, last_execution: Optional[OpenListExecution]
         "id": task.id,
         "server_id": task.server_id,
         "server_url": server.server_url if server else "",
-        "server_name": server.name if server else None,
         "name": task.name,
         "output_dir": task.output_dir,
         "process_path": task.process_path,
@@ -128,7 +126,6 @@ async def _load_task_servers(db: AsyncSession, tasks: list[OpenListTask]) -> dic
 def server_to_dict(server: OpenListServer, parent_dirs: Optional[list[str]] = None) -> dict:
     return {
         "id": server.id,
-        "name": server.name,
         "server_url": server.server_url,
         "parent_dirs": parent_dirs or [],
         "is_active": server.is_active,
@@ -464,7 +461,7 @@ async def create_server(db: AsyncSession, data: OpenListServerCreate) -> dict:
     if not data.skip_validation:
         verify_ssl = await _get_verify_ssl(db)
         await _validate_parent_dirs(data.server_url, data.token or None, parent_dirs, verify_ssl)
-    server = OpenListServer(name=data.name, server_url=data.server_url, token=data.token or None)
+    server = OpenListServer(server_url=data.server_url, token=data.token or None)
     db.add(server)
     await db.flush()
     for path in parent_dirs:
@@ -478,8 +475,6 @@ async def create_server(db: AsyncSession, data: OpenListServerCreate) -> dict:
 
 async def update_server(db: AsyncSession, server_id: int, data: OpenListServerUpdate) -> dict:
     server = await get_server(db, server_id)
-    if data.name is not None:
-        server.name = data.name
     if data.server_url is not None:
         server.server_url = data.server_url
     if data.token:
@@ -592,7 +587,6 @@ async def get_config(db: AsyncSession) -> dict:
         "pause_count": config.pause_count or DEFAULT_PAUSE_COUNT,
         "pause_time": config.pause_time or DEFAULT_PAUSE_TIME,
         "disable_ssl_verify": config.disable_ssl_verify,
-        "log_to_db": config.log_to_db,
         "output_dir_prefix": config.output_dir_prefix or "",
         "output_root": config.output_root or "",
     }
@@ -613,8 +607,6 @@ async def update_config(db: AsyncSession, data: OpenListConfigUpdate) -> dict:
         config.pause_time = data.pause_time
     if data.disable_ssl_verify is not None:
         config.disable_ssl_verify = data.disable_ssl_verify
-    if data.log_to_db is not None:
-        config.log_to_db = data.log_to_db
     if data.output_dir_prefix is not None:
         config.output_dir_prefix = data.output_dir_prefix.strip() or None
     if data.output_root is not None:
@@ -672,7 +664,6 @@ async def get_config_for_run(db: AsyncSession, server_id: Optional[int] = None) 
         "pauseTime": config.pause_time or DEFAULT_PAUSE_TIME,
         # disable_ssl_verify=True 时禁用验证（verify=False）；默认 False=校验
         "verifySsl": not config.disable_ssl_verify,
-        "logToDb": config.log_to_db,
         # 输出根目录：任务输出目录以 "/" 开头时相对该目录解析；为空则回退 CWD/output
         "outputRoot": config.output_root or None,
     }
@@ -807,7 +798,6 @@ async def create_execution(db: AsyncSession, data: OpenListExecutionCreate) -> d
         task_id=task.id,
         task_name=task.name,
         server_id=server.id,
-        server_name=server.name,
         status="running",
         is_incremental=data.is_incremental,
         is_force=data.is_force,
@@ -836,7 +826,6 @@ async def batch_create_executions(db: AsyncSession, data: OpenListExecutionBatch
             task_id=task.id,
             task_name=task.name,
             server_id=server.id,
-            server_name=server.name,
             status="running",
             is_incremental=item.is_incremental,
             is_force=item.is_force,
@@ -868,7 +857,6 @@ async def batch_create_dir_executions(db: AsyncSession, data: OpenListDirExecuti
             process_path=item.path,
             output_dir=item.output_dir,
             server_id=server.id,
-            server_name=server.name,
             status="running",
             is_incremental=data.is_incremental,
             is_force=data.is_force,
@@ -906,7 +894,6 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int, ser
     server = await get_active_server(db, resolved_server_id)
     if execution.server_id != server.id:
         execution.server_id = server.id
-        execution.server_name = server.name
     global_config = await get_config_for_run(db, server.id)
 
     if execution.process_path:

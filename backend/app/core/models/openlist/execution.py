@@ -19,7 +19,6 @@ class OpenListExecution(Base):
     process_path: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="处理路径快照（目录执行时冗余，任务执行时为 NULL）")
     output_dir: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="输出目录快照（目录执行时冗余，任务执行时为 NULL）")
     server_id: Mapped[Optional[int]] = mapped_column(ForeignKey("open_list_server.id"), nullable=True, comment="关联服务器 ID（可空，兼容旧记录）")
-    server_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, comment="服务器名称（冗余快照）")
     status: Mapped[str] = mapped_column(Enum("running", "success", "fail", "cancelled", name="open_list_execution_status"), nullable=False, default="running", comment="执行状态")
     video_success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="视频处理成功数")
     video_total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="视频总数")

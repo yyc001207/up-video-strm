@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, FolderOpened, Plus, Refresh } from '@element-plus/icons-vue'
 
@@ -14,18 +14,36 @@ const loading = ref(false)
 const config = computed<OpenListConfig | null>(() => store.config)
 const server = computed<OpenListServer | null>(() => store.server)
 
+/** 服务器连通状态：未配置 / 检测中 / 在线 / 离线。 */
+type ServerStatus = 'none' | 'checking' | 'online' | 'offline'
+const serverStatus = ref<ServerStatus>('none')
+const statusTextMap: Record<ServerStatus, string> = {
+  none: '未配置',
+  checking: '检测中',
+  online: '在线',
+  offline: '离线'
+}
+const serverStatusText = computed(() => statusTextMap[serverStatus.value])
+const serverStatusTag = computed<'success' | 'danger' | 'warning' | 'info'>(() => {
+  if (serverStatus.value === 'online') return 'success'
+  if (serverStatus.value === 'offline') return 'danger'
+  if (serverStatus.value === 'checking') return 'warning'
+  return 'info'
+})
+let statusTimer: number | undefined
+
 // 服务器弹窗
 const serverDialogVisible = ref(false)
 const editingServerId = ref<number | null>(null)
 const savingServer = ref(false)
 const testingConnection = ref(false)
 const refreshingCache = ref(false)
-const serverForm = reactive({ name: '', server_url: '', token: '', parent_dirs: '', skip_validation: false })
+const serverForm = reactive({ server_url: '', token: '', parent_dirs: '', skip_validation: false })
 
-// 全局配置弹窗
+// 全局配置抽屉
 const configDialogVisible = ref(false)
 const savingConfig = ref(false)
-const configForm = reactive({ video_formats: '', subtitle_formats: '', max_concurrent: 1, pause_count: 50, pause_time: '0,3,5', disable_ssl_verify: false, log_to_db: false, output_dir_prefix: '', output_root: '' })
+const configForm = reactive({ video_formats: '', subtitle_formats: '', max_concurrent: 1, pause_count: 50, pause_time: '0,3,5', disable_ssl_verify: false, output_dir_prefix: '', output_root: '' })
 
 async function load() {
   loading.value = true
@@ -36,9 +54,25 @@ async function load() {
   }
 }
 
+/** 探测当前服务器连通性（未配置时为 none）。 */
+async function checkServerStatus() {
+  const current = server.value
+  if (!current) {
+    serverStatus.value = 'none'
+    return
+  }
+  serverStatus.value = 'checking'
+  try {
+    // silent：后台轮询状态失败时不弹全局错误消息，仅更新状态标签
+    await openlistApi.testServerConnection({ server_url: current.server_url, server_id: current.id }, { silent: true })
+    serverStatus.value = 'online'
+  } catch {
+    serverStatus.value = 'offline'
+  }
+}
+
 function openCreateServer() {
   editingServerId.value = null
-  serverForm.name = ''
   serverForm.server_url = ''
   serverForm.token = ''
   serverForm.parent_dirs = ''
@@ -48,7 +82,6 @@ function openCreateServer() {
 
 function openEditServer(target: OpenListServer) {
   editingServerId.value = target.id
-  serverForm.name = target.name ?? ''
   serverForm.server_url = target.server_url
   // 编辑时不回填 Token：留空表示保持原 Token 不变
   serverForm.token = ''
@@ -99,7 +132,6 @@ async function handleSaveServer() {
   try {
     if (editingServerId.value != null) {
       await openlistApi.updateServer(editingServerId.value, {
-        name: serverForm.name.trim() || undefined,
         server_url: serverForm.server_url.trim(),
         token: serverForm.token.trim() || undefined,
         parent_dirs: parentDirs,
@@ -107,7 +139,6 @@ async function handleSaveServer() {
       })
     } else {
       await openlistApi.createServer({
-        name: serverForm.name.trim() || undefined,
         server_url: serverForm.server_url.trim(),
         token: serverForm.token.trim() || undefined,
         parent_dirs: parentDirs,
@@ -117,6 +148,7 @@ async function handleSaveServer() {
     ElMessage.success('服务器配置已保存')
     serverDialogVisible.value = false
     await load()
+    await checkServerStatus()
   } catch {
     /* 拦截器提示 */
   } finally {
@@ -137,6 +169,7 @@ async function handleRefreshCache(target: OpenListServer) {
         ? `目录缓存已刷新（${results.length} 个父级目录，共 ${total} 个子目录）`
         : `目录缓存已刷新（共 ${total} 个子目录）`
     )
+    await checkServerStatus()
   } catch {
     /* 拦截器提示 */
   } finally {
@@ -147,7 +180,7 @@ async function handleRefreshCache(target: OpenListServer) {
 async function handleDeleteServer(target: OpenListServer) {
   try {
     await ElMessageBox.confirm(
-      `删除服务器「${target.name || target.server_url}」？该操作不可恢复。`,
+      `删除服务器「${target.server_url}」？该操作不可恢复。`,
       '删除服务器',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
@@ -158,6 +191,7 @@ async function handleDeleteServer(target: OpenListServer) {
     await openlistApi.deleteServer(target.id)
     ElMessage.success('已删除')
     await load()
+    await checkServerStatus()
   } catch {
     /* 拦截器提示 */
   }
@@ -172,7 +206,6 @@ function openEditConfig() {
   configForm.pause_count = current.pause_count || 50
   configForm.pause_time = current.pause_time ?? '0,3,5'
   configForm.disable_ssl_verify = current.disable_ssl_verify ?? false
-  configForm.log_to_db = current.log_to_db ?? false
   configForm.output_dir_prefix = current.output_dir_prefix ?? ''
   configForm.output_root = current.output_root ?? ''
   configDialogVisible.value = true
@@ -205,7 +238,6 @@ async function handleSaveConfig() {
       pause_count: configForm.pause_count,
       pause_time: configForm.pause_time.trim(),
       disable_ssl_verify: configForm.disable_ssl_verify,
-      log_to_db: configForm.log_to_db,
       output_dir_prefix: configForm.output_dir_prefix.trim(),
       output_root: configForm.output_root.trim()
     })
@@ -219,7 +251,21 @@ async function handleSaveConfig() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  await checkServerStatus()
+  // 页面停留期间定时刷新服务器状态（60s）
+  statusTimer = window.setInterval(() => {
+    void checkServerStatus()
+  }, 60000)
+})
+
+onUnmounted(() => {
+  if (statusTimer !== undefined) {
+    window.clearInterval(statusTimer)
+    statusTimer = undefined
+  }
+})
 
 defineExpose({ reload: load })
 </script>
@@ -232,7 +278,13 @@ defineExpose({ reload: load })
         <el-card v-loading="loading" shadow="never" class="global-config__card">
           <template #header>
             <div class="card-header">
-              <span class="card-title">服务器配置</span>
+              <div class="card-header__left">
+                <span class="card-title">服务器配置</span>
+                <el-tag :type="serverStatusTag" effect="light" size="small" class="server-status">
+                  <span class="server-status__dot" :class="`server-status__dot--${serverStatus}`" />
+                  {{ serverStatusText }}
+                </el-tag>
+              </div>
               <div v-if="server" class="card-header__actions">
                 <el-button :icon="Refresh" :loading="refreshingCache" @click="handleRefreshCache(server)">
                   刷新缓存
@@ -244,13 +296,6 @@ defineExpose({ reload: load })
           </template>
 
           <div v-if="server" class="server-card">
-            <div class="server-card__head">
-              <span class="server-card__name">{{ server.name || '未命名' }}</span>
-              <el-tag :type="server.is_active ? 'success' : 'info'" effect="light" size="small">
-                {{ server.is_active ? '启用' : '停用' }}
-              </el-tag>
-            </div>
-
             <dl class="meta-list">
               <div class="meta-list__item">
                 <dt>服务器地址</dt>
@@ -329,14 +374,6 @@ defineExpose({ reload: load })
               </dd>
             </div>
             <div class="meta-list__item">
-              <dt>日志入库</dt>
-              <dd>
-                <el-tag :type="config.log_to_db ? 'warning' : 'success'" effect="light" size="small">
-                  {{ config.log_to_db ? '双写数据库' : '仅写文件' }}
-                </el-tag>
-              </dd>
-            </div>
-            <div class="meta-list__item">
               <dt>输出前缀</dt>
               <dd>{{ config.output_dir_prefix || '—' }}</dd>
             </div>
@@ -357,9 +394,6 @@ defineExpose({ reload: load })
       destroy-on-close
     >
       <el-form label-width="100px">
-        <el-form-item label="名称">
-          <el-input v-model="serverForm.name" placeholder="如：主服务器" maxlength="128" />
-        </el-form-item>
         <el-form-item label="服务器地址">
           <el-input v-model="serverForm.server_url" placeholder="http://192.168.199.238:5244" maxlength="512" />
           <div class="remark">OpenList/AList 等 API 地址</div>
@@ -400,7 +434,7 @@ defineExpose({ reload: load })
       </template>
     </el-dialog>
 
-    <el-dialog v-model="configDialogVisible" title="编辑全局配置" width="520px" destroy-on-close>
+    <el-drawer v-model="configDialogVisible" title="编辑全局配置" size="520px" destroy-on-close>
       <el-form label-width="130px">
         <el-form-item label="同时执行任务个数">
           <el-input-number v-model="configForm.max_concurrent" :min="1" :max="100" />
@@ -426,10 +460,6 @@ defineExpose({ reload: load })
           <el-switch v-model="configForm.disable_ssl_verify" />
           <div class="remark">默认关闭（校验证书）；内网自签名 HTTPS 时开启可禁用验证</div>
         </el-form-item>
-        <el-form-item label="日志写入数据库">
-          <el-switch v-model="configForm.log_to_db" />
-          <div class="remark">默认关闭（仅写日志文件，DB 不再积累日志）；需结构化日志时开启</div>
-        </el-form-item>
         <el-form-item label="输出根目录">
           <div class="path-row">
             <el-input v-model="configForm.output_root" placeholder="留空=程序目录下 output；如 D:\Media\strm" maxlength="512" />
@@ -443,10 +473,12 @@ defineExpose({ reload: load })
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="configDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="savingConfig" @click="handleSaveConfig">保存</el-button>
+        <div class="drawer-footer">
+          <el-button @click="configDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="savingConfig" @click="handleSaveConfig">保存</el-button>
+        </div>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
@@ -471,21 +503,6 @@ defineExpose({ reload: load })
   border-radius: var(--up-strm-radius-md, 8px);
   background: var(--el-bg-color-overlay);
 
-  &__head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--up-strm-space-2, 8px);
-  }
-
-  &__name {
-    color: var(--el-text-color-primary);
-    font-size: var(--up-strm-font-size-lg, 16px);
-    font-weight: 600;
-    line-height: 1.4;
-    word-break: break-all;
-  }
-
   .meta-list__item:last-child {
     padding-bottom: 0;
   }
@@ -499,6 +516,13 @@ defineExpose({ reload: load })
   gap: var(--up-strm-space-3, 12px);
 }
 
+.card-header__left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--up-strm-space-2, 8px);
+}
+
 .card-header__actions {
   display: flex;
   flex-wrap: wrap;
@@ -509,6 +533,33 @@ defineExpose({ reload: load })
   font-size: var(--up-strm-font-size-lg, 16px);
   font-weight: 600;
   color: var(--el-text-color-primary);
+}
+
+/* 服务器连通状态：在线/离线/未配置/检测中，颜色沿用 Element Plus 语义色 */
+.server-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.server-status__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--el-text-color-placeholder);
+
+  &--online {
+    background: var(--el-color-success);
+  }
+
+  &--offline {
+    background: var(--el-color-danger);
+  }
+
+  &--checking {
+    background: var(--el-color-warning);
+  }
 }
 
 .meta-list {
@@ -575,5 +626,11 @@ defineExpose({ reload: load })
     display: flex;
     gap: var(--up-strm-space-2, 8px);
   }
+}
+
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--up-strm-space-2, 8px);
 }
 </style>

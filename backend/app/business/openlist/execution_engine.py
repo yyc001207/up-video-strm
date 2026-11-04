@@ -111,8 +111,7 @@ async def run_generation(
         "pauseTime": pause_time if pause_time else global_config.get("pauseTime"),
     }
     generator = STRMGenerator(global_config, task_config, task_id=task_key, logger_=exe_logger)
-    persist_to_db = bool(global_config.get("logToDb", False))
-    pump = LogPump(execution_id, AsyncSessionLocal, queue, log_path, generator.stats, persist_to_db=persist_to_db)
+    pump = LogPump(execution_id, queue, log_path, generator.stats)
     pump_task = asyncio.create_task(pump.run())
 
     status = "success"

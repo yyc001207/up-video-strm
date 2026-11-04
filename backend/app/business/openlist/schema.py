@@ -19,7 +19,6 @@ class OpenListConfigUpdate(BaseModel):
     pause_count: Optional[int] = Field(default=None, ge=1, le=100000)
     pause_time: Optional[str] = Field(default=None, max_length=512)
     disable_ssl_verify: Optional[bool] = None
-    log_to_db: Optional[bool] = None
     output_dir_prefix: Optional[str] = Field(default=None, max_length=128)
     output_root: Optional[str] = Field(default=None, max_length=512)
 
@@ -34,7 +33,6 @@ class OpenListConfigResponse(BaseModel):
     pause_count: int = 50
     pause_time: str = "0,3,5"
     disable_ssl_verify: bool = False
-    log_to_db: bool = False
     output_dir_prefix: Optional[str] = None
     output_root: Optional[str] = None
     created_time: Optional[datetime] = None
@@ -46,7 +44,6 @@ class OpenListConfigResponse(BaseModel):
 class OpenListServerCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: Optional[str] = Field(default=None, max_length=128)
     server_url: str = Field(..., min_length=1, max_length=512)
     token: Optional[str] = Field(default=None, max_length=512)
     parent_dirs: Optional[list[str]] = Field(default=None, max_length=50)
@@ -56,7 +53,6 @@ class OpenListServerCreate(BaseModel):
 class OpenListServerUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: Optional[str] = Field(default=None, max_length=128)
     server_url: Optional[str] = Field(default=None, min_length=1, max_length=512)
     token: Optional[str] = Field(default=None, max_length=512)
     is_active: Optional[bool] = None
@@ -87,7 +83,6 @@ class OpenListServerResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    name: Optional[str] = None
     server_url: str
     parent_dirs: list[str] = []
     is_active: bool = True
@@ -126,7 +121,6 @@ class OpenListTaskResponse(BaseModel):
     id: int
     server_id: Optional[int] = None
     server_url: Optional[str] = None
-    server_name: Optional[str] = None
     name: str
     output_dir: str
     process_path: str
@@ -228,7 +222,6 @@ class OpenListExecutionResponse(BaseModel):
     process_path: Optional[str] = None
     output_dir: Optional[str] = None
     server_id: Optional[int] = None
-    server_name: Optional[str] = None
     status: str
     video_success_count: int = 0
     video_total_count: int = 0

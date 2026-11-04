@@ -22,7 +22,6 @@ class OpenListConfig(Base):
     pause_count: Mapped[int] = mapped_column(Integer, nullable=False, default=50, comment="间隔文件数量")
     pause_time: Mapped[str] = mapped_column(String(512), nullable=False, default="0,3,5", comment="暂停时间（秒，逗号分隔）")
     disable_ssl_verify: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否禁用 SSL 证书验证（默认 False=校验，应对自签名证书时开启）")
-    log_to_db: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否将执行日志写入数据库（默认 False=只写日志文件）")
     process_path_prefix: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None, comment="处理路径前缀（选择预设时自动拼接，默认空）")
     output_dir_prefix: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None, comment="输出目录前缀（选择预设时自动拼接，默认空）")
     output_root: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, default=None, comment="STRM/字幕输出根目录（留空=CWD/output；桌面版可指向媒体库绝对路径）")

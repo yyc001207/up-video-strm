@@ -10,7 +10,6 @@ export interface Res<T = unknown> {
 
 export interface OpenListServer {
   id: number
-  name: string | null
   server_url: string
   parent_dirs: string[]
   is_active: boolean
@@ -18,7 +17,6 @@ export interface OpenListServer {
 }
 
 export interface OpenListServerCreate {
-  name?: string
   server_url: string
   token?: string
   parent_dirs?: string[]
@@ -26,7 +24,6 @@ export interface OpenListServerCreate {
 }
 
 export interface OpenListServerUpdate {
-  name?: string
   server_url?: string
   token?: string
   is_active?: boolean
@@ -48,7 +45,6 @@ export interface OpenListConfig {
   pause_count: number
   pause_time: string
   disable_ssl_verify: boolean
-  log_to_db: boolean
   output_dir_prefix: string
   output_root: string
 }
@@ -57,7 +53,6 @@ export interface OpenListTask {
   id: number
   server_id: number | null
   server_url: string
-  server_name: string | null
   name: string
   output_dir: string
   process_path: string
@@ -77,7 +72,6 @@ export interface OpenListExecution {
   process_path: string
   output_dir: string
   server_id: number | null
-  server_name: string | null
   status: ExecutionStatus
   video_success_count: number
   video_total_count: number

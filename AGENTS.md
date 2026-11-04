@@ -1,6 +1,6 @@
 # AGENTS.md — 开发规范与协作约定
 
-本文件定义 **video-strm** 项目中所有开发者与 AI 协作方必须严格遵守的标准化操作规范。
+本文件定义 **up-video-strm** 项目中所有开发者与 AI 协作方必须严格遵守的标准化操作规范。
 任何代码改动、文档更新、交付行为都以下述规则为准；规则冲突时，以用户当次明确指令优先。
 
 > 前后端代码结构、技术栈、模块职责、构建与运行命令等工程细节，见 [`rules/`](rules/) 目录下的文档，本文档只保留核心开发规范。
@@ -31,7 +31,7 @@
 
 **要求**：
 
-- 后端改动：在 [backend/tests/](backend/tests/) 下补充/更新用例（现有覆盖参考 [test_openlist.py](backend/tests/test_openlist.py)）。
+- 后端改动：在 [backend/tests/](backend/tests/) 下补充/更新用例（本地测试文件如 `test_smoke.py`，不随仓库提交）。
 - 前端改动：至少通过类型检查 `npm run type-check` / 构建校验；涉及交互逻辑时补充对应验证。
 - 交付前必须实际运行并**全绿**，不得以「应当通过」代替实际执行结果。
 
@@ -92,7 +92,7 @@
 
 ## 7. 版本号必须随改动递增（语义化版本）
 
-**规则**：每次交付可用产物（安装包 / 镜像 / 功能变更）前**必须更新版本号**；不允许连续多次改动仍停留在同一版本。
+**规则**：每次交付可用产物（安装包 / 功能变更）前**必须更新版本号**；不允许连续多次改动仍停留在同一版本。
 
 **版本格式**：遵循 [SemVer](https://semver.org/lang/zh-CN/) `MAJOR.MINOR.PATCH`
 
@@ -113,7 +113,7 @@ backend/.venv/Scripts/python.exe packaging/bump_version.py --show  # 查看当�
 
 **约束**：
 
-- `packaging/build.ps1` 打包前会校验三处版本一致，不一致直接失败；禁止手改单处。
+- `packaging/build.ps1` 打包前会校验 `backend/app/version.py`、`frontend/package.json`、`frontend/package-lock.json` 与 `packaging/version_info.txt` 四处版本一致，不一致直接失败；禁止手改单处。
 - 安装包文件名、exe 版本资源、关于页版本均取自该版本号，无需另行修改。
 - 发布时建议打标签 `git tag v<version>`（未经用户许可不 push）。
 - 一次交付只递增一次，多个改动合并在同一次交付中按最高级别递增。
@@ -128,5 +128,5 @@ backend/.venv/Scripts/python.exe packaging/bump_version.py --show  # 查看当�
 - [ ] 所有不确定的决策均已由用户确认
 - [ ] 端口占用时已自动切换可用端口并告知用户
 - [ ] 文档与注释已与代码实际逻辑同步
-- [ ] 版本号已按语义化版本递增，且三处一致（`bump_version.py`）
+- [ ] 版本号已按语义化版本递增，且四处一致（`bump_version.py`）
 - [ ] 未对已提交代码执行任何未经许可的回退操作

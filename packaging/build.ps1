@@ -1,4 +1,4 @@
-# video-strm Windows packaging script (onedir + Inno Setup installer)
+# up-video-strm Windows packaging script (onedir + Inno Setup installer)
 #
 # Usage (from repo root or anywhere):
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1
@@ -9,13 +9,13 @@
 #       (defaults to backend\.venv\Scripts\python.exe, then python on PATH; CI uses the latter)
 #
 # Outputs:
-#   dist\video-strm-<version>-win-x64-setup.exe     Inno Setup installer (only deliverable)
-#   PyInstaller onedir staging dir dist\video-strm is removed after packaging (-KeepStage keeps it)
+#   dist\up-video-strm-<version>-win-x64-setup.exe     Inno Setup installer (only deliverable)
+#   PyInstaller onedir staging dir dist\up-video-strm is removed after packaging (-KeepStage keeps it)
 
 param(
     [switch]$SkipFrontend,
     [switch]$SkipInstaller,
-    # keep the PyInstaller onedir staging folder (dist\video-strm)
+    # keep the PyInstaller onedir staging folder (dist\up-video-strm)
     [switch]$KeepStage,
     # dev mode: build onedir only and keep it (installers may be blocked by Smart App Control)
     [switch]$Dev,
@@ -30,7 +30,7 @@ $VenvPython = Join-Path $ProjectRoot "backend\.venv\Scripts\python.exe"
 $FrontendDir = Join-Path $ProjectRoot "frontend"
 $FrontendDist = Join-Path $FrontendDir "dist"
 $BackendDist = Join-Path $ProjectRoot "backend\frontend\dist"
-$SpecFile = Join-Path $PSScriptRoot "video-strm.spec"
+$SpecFile = Join-Path $PSScriptRoot "up-video-strm.spec"
 $IssFile = Join-Path $PSScriptRoot "installer.iss"
 $VersionFile = Join-Path $ProjectRoot "backend\app\version.py"
 $VersionInfoFile = Join-Path $PSScriptRoot "version_info.txt"
@@ -42,12 +42,12 @@ $Version = $VersionMatch.Groups[1].Value
 
 $PkgVersion = (Get-Content (Join-Path $FrontendDir "package.json") -Raw | ConvertFrom-Json).version
 if ($PkgVersion -ne $Version) {
-    throw "version mismatch: backend/app/version.py=$Version, frontend/package.json=$PkgVersion. Run: python packaging\bump_version.py <major|minor|patch>"
+    throw "version mismatch: backend\app\version.py=$Version, frontend/package.json=$PkgVersion. Run: python packaging\bump_version.py <major|minor|patch>"
 }
 $LockPath = Join-Path $FrontendDir "package-lock.json"
 $LockVersion = [regex]::Match((Get-Content $LockPath -Raw), '"version"\s*:\s*"([^"]+)"').Groups[1].Value
 if ($LockVersion -ne $Version) {
-    throw "version mismatch: backend/app/version.py=$Version, frontend/package-lock.json=$LockVersion. Run: python packaging\bump_version.py <major|minor|patch>"
+    throw "version mismatch: backend\app\version.py=$Version, frontend/package-lock.json=$LockVersion. Run: python packaging\bump_version.py <major|minor|patch>"
 }
 if (-not (Get-Content $VersionInfoFile -Raw).Contains('"' + $Version + '"')) {
     throw "version mismatch: packaging/version_info.txt is not $Version. Run: python packaging\bump_version.py <major|minor|patch>"
@@ -70,7 +70,7 @@ if (-not $Python -or -not (Test-Path $Python)) {
 if ($Dev) {
     $SkipInstaller = $true
     $KeepStage = $true
-    Write-Host "==> Dev mode: onedir only, staging kept (run dist\video-strm\video-strm.exe)" -ForegroundColor Yellow
+    Write-Host "==> Dev mode: onedir only, staging kept (run dist\up-video-strm\up-video-strm.exe)" -ForegroundColor Yellow
 }
 
 Write-Host "==> Version $Version" -ForegroundColor Cyan
@@ -106,12 +106,12 @@ finally {
     Pop-Location
 }
 
-$ExePath = Join-Path $ProjectRoot "dist\video-strm\video-strm.exe"
+$ExePath = Join-Path $ProjectRoot "dist\up-video-strm\up-video-strm.exe"
 if (-not (Test-Path $ExePath)) { throw "build output missing: $ExePath" }
 Write-Host "==> Built $ExePath" -ForegroundColor Green
 
 if ($SkipInstaller) {
-    Write-Host "==> Installer skipped (-SkipInstaller); staging folder kept at dist\video-strm" -ForegroundColor Yellow
+    Write-Host "==> Installer skipped (-SkipInstaller); staging folder kept at dist\up-video-strm" -ForegroundColor Yellow
     exit 0
 }
 
@@ -124,7 +124,7 @@ $Iscc = $Candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $Iscc) {
     Write-Host "==> Inno Setup (ISCC.exe) not found, installer skipped" -ForegroundColor Yellow
     Write-Host "    Install Inno Setup 6, then rerun this script to produce setup.exe." -ForegroundColor Yellow
-    Write-Host "    Staging folder dist\video-strm\ kept for manual use." -ForegroundColor Yellow
+    Write-Host "    Staging folder dist\up-video-strm\ kept for manual use." -ForegroundColor Yellow
     exit 0
 }
 
@@ -132,7 +132,7 @@ Write-Host "==> Build installer ($Iscc)" -ForegroundColor Cyan
 & $Iscc "/DMyAppVersion=$Version" $IssFile
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit $LASTEXITCODE)" }
 
-$SetupPath = Join-Path $ProjectRoot "dist\video-strm-$Version-win-x64-setup.exe"
+$SetupPath = Join-Path $ProjectRoot "dist\up-video-strm-$Version-win-x64-setup.exe"
 if (Test-Path $SetupPath) {
     Write-Host "==> Built $SetupPath" -ForegroundColor Green
 }
@@ -142,14 +142,14 @@ else {
 
 # Only the installer is delivered: clean staging dir and legacy portable zip
 if (-not $KeepStage) {
-    $StagePath = Join-Path $ProjectRoot "dist\video-strm"
+    $StagePath = Join-Path $ProjectRoot "dist\up-video-strm"
     if (Test-Path $StagePath) {
         try {
             Remove-Item $StagePath -Recurse -Force -ErrorAction Stop
-            Write-Host "==> Removed staging folder dist\video-strm (use -KeepStage to keep it)" -ForegroundColor DarkGray
+            Write-Host "==> Removed staging folder dist\up-video-strm (use -KeepStage to keep it)" -ForegroundColor DarkGray
         }
         catch {
-            Write-Host "==> Could not remove dist\video-strm (program may be running): $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "==> Could not remove dist\up-video-strm (program may be running): $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
 }
@@ -161,7 +161,7 @@ Get-ChildItem (Join-Path $ProjectRoot "dist") -Filter "*-portable.zip" -ErrorAct
 
 # Keep only the installer just built
 $CurrentSetup = Split-Path $SetupPath -Leaf
-Get-ChildItem (Join-Path $ProjectRoot "dist") -Filter "video-strm-*-setup.exe" -ErrorAction SilentlyContinue |
+Get-ChildItem (Join-Path $ProjectRoot "dist") -Filter "up-video-strm-*-setup.exe" -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -ne $CurrentSetup } |
     ForEach-Object {
         Remove-Item $_.FullName -Force

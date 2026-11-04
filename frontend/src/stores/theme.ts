@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 
 export type ThemeMode = 'light' | 'dark' | 'auto'
 
-const STORAGE_KEY = 'video-strm-theme'
+const STORAGE_KEY = 'up-video-strm-theme'
 const VALID_MODES: ThemeMode[] = ['light', 'dark', 'auto']
 
 function readStoredMode(): ThemeMode {

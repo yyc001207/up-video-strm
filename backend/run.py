@@ -1,4 +1,4 @@
-"""video-strm 启动入口：源码运行 ``python run.py``，打包后由 PyInstaller 直接调用。
+"""up-video-strm 启动入口：源码运行 ``python run.py``，打包后由 PyInstaller 直接调用。
 
 两种运行态：
 
@@ -9,7 +9,7 @@
   点关闭按钮收进系统托盘继续后台运行，托盘菜单「退出」才结束进程；
   无控制台窗口，日志写入数据目录 ``logs/app.log``。
 
-调试用环境变量：``VIDEO_STRM_UI=window`` 可在源码运行下也打开原生窗口。
+调试用环境变量：``UP_VIDEO_STRM_UI=window`` 可在源码运行下也打开原生窗口。
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ from pathlib import Path
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 PORT_SCAN_LIMIT = 20
-MUTEX_NAME = "Local\\video-strm-single-instance"
-ACTIVATE_EVENT = "Local\\video-strm-activate"
+MUTEX_NAME = "Local\\up-video-strm-single-instance"
+ACTIVATE_EVENT = "Local\\up-video-strm-activate"
 ERROR_ALREADY_EXISTS = 183
 EVENT_MODIFY_STATE = 0x0002
 LOG_MAX_BYTES = 5 * 1024 * 1024
@@ -45,15 +45,15 @@ def _debug_enabled() -> bool:
 
 def _ui_mode() -> str:
     """UI 形态：window（原生窗口，打包默认）或 server（控制台服务，源码默认）。"""
-    mode = os.environ.get("VIDEO_STRM_UI", "").strip().lower()
+    mode = os.environ.get("UP_VIDEO_STRM_UI", "").strip().lower()
     if mode in ("window", "server"):
         return mode
     return "window" if _is_frozen() else "server"
 
 
 def _tray_enabled() -> bool:
-    """关闭按钮是否收进托盘：默认开启；``VIDEO_STRM_TRAY=0`` 时关闭（关窗即退出）。"""
-    flag = os.environ.get("VIDEO_STRM_TRAY")
+    """关闭按钮是否收进托盘：默认开启；``UP_VIDEO_STRM_TRAY=0`` 时关闭（关窗即退出）。"""
+    flag = os.environ.get("UP_VIDEO_STRM_TRAY")
     if flag is None:
         return True
     return flag.strip().lower() not in ("0", "false", "no", "off")
@@ -110,7 +110,7 @@ def _signal_activate() -> bool:
     return True
 
 
-def _message_box(text: str, title: str = "video-strm", error: bool = False) -> None:
+def _message_box(text: str, title: str = "up-video-strm", error: bool = False) -> None:
     if sys.platform == "win32":
         ctypes.windll.user32.MessageBoxW(None, text, title, 0x10 if error else 0x40)
     else:
@@ -228,7 +228,7 @@ def main() -> None:
                 if _acquire_single_instance():
                     break
             else:
-                print("video-strm 已在运行，已请求其显示窗口", flush=True)
+                print("up-video-strm 已在运行，已请求其显示窗口", flush=True)
                 return
         from app.core.desktop_prefs import load_prefs
 
@@ -238,9 +238,9 @@ def main() -> None:
         os.chdir(root)
         prefs = {}
 
-    host = os.environ.get("VIDEO_STRM_HOST", DEFAULT_HOST)
+    host = os.environ.get("UP_VIDEO_STRM_HOST", DEFAULT_HOST)
     try:
-        preferred_port = int(os.environ.get("VIDEO_STRM_PORT", DEFAULT_PORT))
+        preferred_port = int(os.environ.get("UP_VIDEO_STRM_PORT", DEFAULT_PORT))
     except ValueError:
         preferred_port = DEFAULT_PORT
 
@@ -250,7 +250,7 @@ def main() -> None:
         _fatal(str(exc))
 
     url = f"http://{host}:{port}"
-    print("正在启动 video-strm ...")
+    print("正在启动 up-video-strm ...")
     if port != preferred_port:
         print(f"端口 {preferred_port} 已被占用，自动切换到 {port}")
     print(f"服务地址: {url}")

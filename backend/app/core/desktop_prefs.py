@@ -1,9 +1,12 @@
 """桌面版偏好与开机自启。
 
 - 偏好（启动时最小化到托盘、关闭窗口是否收进托盘）存数据目录的 ``desktop.json``，
-  由启动器和 API 共同读写；不落数据库，避免影响 Docker 部署。
+  由启动器和 API 共同读写；不落数据库，避免污染业务数据。
 - 开机自启读写 ``HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run``，
-  仅 Windows 桌面版可用（源码运行与 Docker 一律视为不支持）。
+  仅 Windows 桌面版可用（源码运行与网页访问一律视为不支持）。
+
+命名迁移：自启项值名由旧版 ``video-strm`` 改为 ``up-video-strm``。读取时新值优先，
+旧值存在也视为已启用（旧版安装升级后无需重新勾选）；写入时同步删除旧值完成迁移。
 """
 
 from __future__ import annotations
@@ -16,7 +19,8 @@ from app.core.paths import data_root, is_frozen
 
 PREFS_FILE = "desktop.json"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-RUN_VALUE = "video-strm"
+RUN_VALUE = "up-video-strm"
+RUN_VALUE_LEGACY = "video-strm"
 DEFAULT_PREFS: dict[str, bool] = {
     "start_minimized": False,
     "close_to_tray": True,
@@ -67,21 +71,43 @@ def _exe_path() -> str:
     return str(Path(sys.executable).resolve())
 
 
-def is_autostart_enabled() -> bool:
-    if not autostart_supported():
-        return False
+def _run_value_enabled(value_name: str) -> bool:
+    """HKCU Run 下指定值是否存在且非空。"""
     import winreg
 
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            value, _ = winreg.QueryValueEx(key, RUN_VALUE)
+            value, _ = winreg.QueryValueEx(key, value_name)
     except OSError:
         return False
     return bool(str(value).strip())
 
 
+def _delete_run_value(value_name: str) -> None:
+    """删除 HKCU Run 下指定值（不存在时静默忽略）。"""
+    import winreg
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
+        ) as key:
+            winreg.DeleteValue(key, value_name)
+    except OSError:
+        pass
+
+
+def is_autostart_enabled() -> bool:
+    """新值优先；旧版自启值存在也视为已启用（升级后保持原有勾选状态）。"""
+    if not autostart_supported():
+        return False
+    return _run_value_enabled(RUN_VALUE) or _run_value_enabled(RUN_VALUE_LEGACY)
+
+
 def set_autostart(enabled: bool) -> None:
-    """写入/删除 HKCU Run 项；不支持的环境直接抛错由调用方转成 400。"""
+    """写入/删除 HKCU Run 项；不支持的环境直接抛错由调用方转成 400。
+
+    开启时写新值并删除旧值（完成旧版自启项迁移）；关闭时新值和旧值一并删除。
+    """
     if not autostart_supported():
         raise RuntimeError("当前运行方式不支持开机自启")
     import winreg
@@ -91,18 +117,17 @@ def set_autostart(enabled: bool) -> None:
             winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
         ) as key:
             winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, f'"{_exe_path()}"')
+        _delete_run_value(RUN_VALUE_LEGACY)
     else:
-        try:
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
-            ) as key:
-                winreg.DeleteValue(key, RUN_VALUE)
-        except OSError:
-            pass
+        _delete_run_value(RUN_VALUE)
+        _delete_run_value(RUN_VALUE_LEGACY)
 
 
 def refresh_autostart_path() -> None:
-    """应用被移动/重装后，修正注册表里指向旧路径的自启项。"""
+    """应用被移动/重装后，修正注册表里指向旧路径的自启项。
+
+    已启用时重写为当前 exe 路径；旧版值名会在此同时迁移为新值名。
+    """
     if not autostart_supported():
         return
     if is_autostart_enabled():

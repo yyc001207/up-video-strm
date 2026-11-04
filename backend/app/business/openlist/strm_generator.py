@@ -47,8 +47,8 @@ def resolve_output_base(output_dir: str, output_root: str | None = None) -> Path
     """把以 ``/`` 开头的任务输出目录解析为落盘路径。
 
     任务里填 ``/emby/电视剧`` 表示「相对输出根目录」，根目录取全局配置 ``output_root``：
-    - 未配置（None/空）：回退当前工作目录下的 ``output``，即 Docker 内 ``/app/output``、
-      源码运行 ``backend/output``、桌面版数据目录下的 ``output``，与改造前一致。
+    - 未配置（None/空）：回退当前工作目录下的 ``output``：
+      源码运行时为 ``backend/output``，桌面版为数据目录下的 ``output``，与改造前一致。
     - 已配置：相对该绝对路径解析，例如 ``D:\\Media\\strm`` + ``/emby`` -> ``D:\\Media\\strm\\emby``。
     """
     relative = (output_dir or "").strip().lstrip("/")

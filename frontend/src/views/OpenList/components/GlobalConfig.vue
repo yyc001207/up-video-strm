@@ -141,7 +141,7 @@ function openEditConfig() {
   configDialogVisible.value = true
 }
 
-/** 桌面版唤起系统文件夹选择框；浏览器/Docker 版没有该能力，提示手动填写。 */
+/** 桌面版唤起系统文件夹选择框；浏览器版没有该能力，提示手动填写。 */
 async function pickOutputRoot() {
   const bridge = (window as unknown as {
     pywebview?: { api?: { pick_directory?: (startDir?: string) => Promise<string> } }
@@ -340,7 +340,7 @@ defineExpose({ reload: load })
             <el-input v-model="configForm.output_root" placeholder="留空=程序目录下 output；如 D:\Media\strm" maxlength="512" />
             <el-button :icon="FolderOpened" @click="pickOutputRoot">选择</el-button>
           </div>
-          <div class="global-config__remark">任务输出目录以 / 开头时相对此目录生成；Docker 部署留空即可（等同 /app/output）</div>
+          <div class="global-config__remark">任务输出目录以 / 开头时相对此目录生成；留空时相对程序目录下的 output 生成</div>
         </el-form-item>
         <el-form-item label="输出目录前缀">
           <el-input v-model="configForm.output_dir_prefix" placeholder="如：/volume1/media（默认空）" maxlength="128" />

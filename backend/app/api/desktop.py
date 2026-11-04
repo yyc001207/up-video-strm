@@ -1,7 +1,7 @@
 """桌面版设置路由：开机自启 / 托盘偏好 / 数据目录。
 
 这些能力依赖 Windows 桌面运行环境（注册表、资源管理器），
-Docker 或源码调试模式下 ``is_desktop=false``，写操作统一返回 400。
+源码运行或网页访问时 ``is_desktop=false``，写操作统一返回 400。
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller 打包配置（onedir）。
 
-产物：``dist/video-strm/``（内含 video-strm.exe 与 _internal 依赖目录），
+产物：``dist/up-video-strm/``（内含 up-video-strm.exe 与 _internal 依赖目录），
 再由 ``packaging/installer.iss`` 封装成 ``setup.exe`` 安装包。
 
 前端产物需先就位：``backend/frontend/dist``（由 ``packaging/build.ps1`` 自动构建并复制）。
@@ -70,7 +70,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="video-strm",
+    name="up-video-strm",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -87,5 +87,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="video-strm",
+    name="up-video-strm",
 )

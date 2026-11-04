@@ -104,7 +104,7 @@ defineExpose({ reload: load })
         type="info"
         :closable="false"
         show-icon
-        title="当前为网页版（Docker / 源码调试）"
+        title="当前为网页版（源码运行）"
         description="开机自启、托盘等桌面能力仅在 Windows 安装版中可用；下方开关为只读展示。"
         class="settings__alert"
       />

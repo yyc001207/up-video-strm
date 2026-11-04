@@ -1,7 +1,7 @@
 <template>
   <div class="app-shell">
     <header class="app-shell__header">
-      <span class="app-shell__title">video-strm 任务调度</span>
+      <span class="app-shell__title">up-video-strm 任务调度</span>
       <span class="app-shell__subtitle">STRM 生成 · 多服务器 · 实时日志</span>
       <div class="app-shell__actions">
         <el-button v-if="!onSettingsPage" link :icon="Setting" @click="openSettings">设置</el-button>

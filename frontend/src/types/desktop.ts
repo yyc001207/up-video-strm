@@ -7,7 +7,7 @@ export interface ApiRes<T> {
 }
 
 export interface DesktopInfo {
-  /** 是否为打包后的桌面版（Docker/源码调试为 false） */
+  /** 是否为打包后的桌面版（源码运行/网页访问为 false） */
   is_desktop: boolean
   version: string
   autostart_supported: boolean

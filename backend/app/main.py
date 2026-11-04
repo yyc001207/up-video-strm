@@ -1,4 +1,4 @@
-"""video-strm API：OpenList 任务调度独立服务（本地部署，无登录/无 Redis/MySQL）。"""
+"""up-video-strm API：OpenList 任务调度独立服务（本地部署，无登录/无 Redis/MySQL）。"""
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="video-strm API",
+    title="up-video-strm API",
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",

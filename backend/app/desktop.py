@@ -6,7 +6,7 @@
 - 点窗口关闭按钮 → **收进系统托盘**，服务继续后台运行（适合长时间执行任务）
 - 托盘图标：左键/「打开主界面」恢复窗口；「设置…」直接跳到设置页；
   「快捷设置」子菜单可勾选开机自启、启动最小化、关窗收进托盘；「退出」才真正结束进程
-- 托盘不可用（或 ``VIDEO_STRM_TRAY=0``）时，关闭窗口即退出
+- 托盘不可用（或 ``UP_VIDEO_STRM_TRAY=0``）时，关闭窗口即退出
 
 不依赖浏览器：页面直接在 WebView2 中加载，窗口状态（主题、localStorage）
 持久化在数据目录的 ``webview`` 子目录下。
@@ -21,7 +21,7 @@ import threading
 import time
 from pathlib import Path
 
-WINDOW_TITLE = "video-strm"
+WINDOW_TITLE = "up-video-strm"
 WINDOW_SIZE = (1360, 900)
 WINDOW_MIN_SIZE = (1080, 700)
 TRAY_HINT = "程序已收进托盘，服务继续在后台运行。右键托盘图标可打开或退出。"
@@ -159,8 +159,8 @@ def run_window(
         for _ in range(4):
             try:
                 if window.evaluate_js(
-                    "window.__videoStrmNavigate "
-                    "? (window.__videoStrmNavigate('/settings'), true) : false"
+                    "window.__upVideoStrmNavigate "
+                    "? (window.__upVideoStrmNavigate('/settings'), true) : false"
                 ):
                     return
             except Exception as exc:  # noqa: BLE001
@@ -306,7 +306,7 @@ def run_window(
             import pystray
 
             tray_icon = pystray.Icon(
-                "video-strm",
+                "up-video-strm",
                 build_icon_image(64),
                 title,
                 pystray.Menu(

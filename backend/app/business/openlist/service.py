@@ -221,7 +221,7 @@ async def _validate_parent_dir_api(api: OpenListAPI, path: str) -> None:
         await api.list_files(path)
     except Exception as exc:
         raise BadRequestException(f"目录校验失败（{path}）：{exc}（目录不存在或无读取权限）")
-    temp_path = f"{path.rstrip('/')}/.video-strm-verify-{uuid4().hex[:8]}"
+    temp_path = f"{path.rstrip('/')}/.up-video-strm-verify-{uuid4().hex[:8]}"
     try:
         await api.create_dir(temp_path)
     except Exception as exc:

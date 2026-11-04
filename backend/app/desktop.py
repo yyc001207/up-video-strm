@@ -26,7 +26,7 @@ WINDOW_SIZE = (1360, 900)
 WINDOW_MIN_SIZE = (1080, 700)
 TRAY_HINT = "程序已收进托盘，服务继续在后台运行。右键托盘图标可打开或退出。"
 
-logger = logging.getLogger("navly")
+logger = logging.getLogger("up-video-strm")
 
 
 def build_icon_image(size: int = 256):

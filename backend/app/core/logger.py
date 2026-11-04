@@ -9,7 +9,7 @@ import logging
 
 _formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
 
-_app_logger = logging.getLogger("navly")
+_app_logger = logging.getLogger("up-video-strm")
 _strm_logger = logging.getLogger("strm")
 
 

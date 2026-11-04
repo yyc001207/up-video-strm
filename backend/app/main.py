@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.settings import settings
 from app.core.database import init_db
-from app.core.exceptions import NavlyException
+from app.core.exceptions import UpVideoStrmException
 from app.core.paths import exe_dir, is_frozen, resource_dir
 from app.utils.responses import success_response
 from app.api import desktop, openlist
@@ -51,8 +51,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-@app.exception_handler(NavlyException)
-async def navly_exception_handler(request: Request, exc: NavlyException):
+@app.exception_handler(UpVideoStrmException)
+async def up_video_strm_exception_handler(request: Request, exc: UpVideoStrmException):
     return JSONResponse(
         status_code=200,
         content={"code": exc.code, "msg": exc.msg, "data": None},

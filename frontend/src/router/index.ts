@@ -81,6 +81,16 @@ const router = createRouter({
       meta: { title: '上传历史', description: '按任务查看上传执行记录、文件明细与日志回放' }
     },
     {
+      path: '/automation',
+      redirect: '/automation/tasks'
+    },
+    {
+      path: '/automation/tasks',
+      name: 'AutomationTasks',
+      component: () => import('@/views/automation/TaskConfig.vue'),
+      meta: { title: '任务配置', description: '维护自动化任务：上传任务 + STRM 任务串联' }
+    },
+    {
       // 桌面托盘外壳经 window.__upVideoStrmNavigate('/settings') 跳转，此路径必须保持不变。
       path: '/settings',
       name: 'Settings',

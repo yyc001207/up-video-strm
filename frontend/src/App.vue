@@ -9,6 +9,7 @@ import {
   Expand,
   Fold,
   Monitor,
+  MagicStick,
   Setting,
   Upload,
   VideoPlay
@@ -103,6 +104,18 @@ const modules: NavModule[] = [
       {
         title: '记录',
         pages: [{ path: '/upload/history', label: '任务历史', icon: Clock }]
+      }
+    ]
+  },
+  {
+    id: 'automation',
+    label: '自动化任务',
+    icon: MagicStick,
+    basePath: '/automation',
+    groups: [
+      {
+        title: '配置',
+        pages: [{ path: '/automation/tasks', label: '任务配置', icon: Document }]
       }
     ]
   }

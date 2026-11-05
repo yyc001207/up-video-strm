@@ -4,8 +4,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
+import { uploaderApi } from '@/api/uploader'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListConfig, OpenListServer } from '@/types/openlist'
+import type { UploadPlatformConfig } from '@/types/uploader'
 
 const store = useOpenlistStore()
 
@@ -44,6 +46,39 @@ const serverForm = reactive({ server_url: '', token: '', parent_dirs: '', skip_v
 const formatDrawerVisible = ref(false)
 const savingFormats = ref(false)
 const formatForm = reactive({ video_formats: '', subtitle_formats: '' })
+
+// 123 云盘：clientID/clientSecret 保存后只回显脱敏值；token 由后端自动续期
+const pan123Config = ref<UploadPlatformConfig | null>(null)
+const pan123Form = reactive({ client_id: '', client_secret: '' })
+const savingPan123 = ref(false)
+const testingPan123 = ref(false)
+
+type Pan123Status = 'none' | 'checking' | 'online' | 'offline'
+const pan123Status = computed<Pan123Status>(() => {
+  const current = pan123Config.value
+  if (!current || !current.has_secret) return 'none'
+  if (current.token_status === 'valid') return 'online'
+  return 'offline'
+})
+const pan123StatusText = computed(() => {
+  const current = pan123Config.value
+  if (!current || !current.has_secret) return '未配置'
+  if (current.token_status === 'valid') return '已连接'
+  if (current.token_status === 'expired') return '凭证已过期'
+  return '待连接'
+})
+const pan123StatusTag = computed<'success' | 'danger' | 'warning' | 'info'>(() => {
+  if (pan123Status.value === 'online') return 'success'
+  if (pan123Status.value === 'offline') return 'warning'
+  return 'info'
+})
+const pan123TokenText = computed(() => {
+  const current = pan123Config.value
+  if (!current?.has_secret) return '未配置凭据'
+  if (current.token_status === 'valid') return '有效（请求时自动续期）'
+  if (current.token_status === 'expired') return '已过期（下次请求自动刷新）'
+  return '尚未获取'
+})
 
 async function load() {
   loading.value = true
@@ -223,8 +258,56 @@ async function handleSaveFormats() {
   }
 }
 
+async function loadPan123() {
+  try {
+    const res = await uploaderApi.getConfig()
+    pan123Config.value = res.data
+    pan123Form.client_id = res.data.client_id ?? ''
+    pan123Form.client_secret = ''
+  } catch {
+    /* 拦截器提示 */
+  }
+}
+
+/** 保存 123 云盘凭据：密钥留空表示保持不变。 */
+async function handleSavePan123() {
+  savingPan123.value = true
+  try {
+    const res = await uploaderApi.updateConfig({
+      client_id: pan123Form.client_id.trim(),
+      client_secret: pan123Form.client_secret.trim()
+    })
+    pan123Config.value = res.data
+    pan123Form.client_id = res.data.client_id ?? ''
+    pan123Form.client_secret = ''
+    ElMessage.success('123 云盘配置已保存')
+  } catch {
+    /* 拦截器提示 */
+  } finally {
+    savingPan123.value = false
+  }
+}
+
+/** 测试连通性：优先用输入框中的新凭据，留空时后端使用已保存凭据。 */
+async function handleTestPan123() {
+  testingPan123.value = true
+  try {
+    const res = await uploaderApi.testConnection({
+      client_id: pan123Form.client_id.trim() || undefined,
+      client_secret: pan123Form.client_secret.trim() || undefined
+    })
+    ElMessage.success(res.data.message || '连接成功')
+    await loadPan123()
+  } catch {
+    /* 拦截器提示 */
+  } finally {
+    testingPan123.value = false
+  }
+}
+
 onMounted(async () => {
   await load()
+  await loadPan123()
   await checkServerStatus()
   // 页面停留期间定时刷新服务器状态（60s）
   statusTimer = window.setInterval(() => {
@@ -332,6 +415,56 @@ defineExpose({ reload: load })
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 123 云盘：上传管理模块的凭据配置（全局唯一，密钥仅脱敏回显） -->
+    <el-card shadow="never" class="global-config__card pan123-card">
+      <template #header>
+        <div class="card-header">
+          <div class="card-header__left">
+            <span class="card-title">123 云盘</span>
+            <el-tag :type="pan123StatusTag" effect="light" size="small" class="server-status">
+              <span class="server-status__dot" :class="`server-status__dot--${pan123Status}`" />
+              {{ pan123StatusText }}
+            </el-tag>
+          </div>
+          <div class="card-header__actions">
+            <el-button :loading="testingPan123" @click="handleTestPan123">测试连接</el-button>
+            <el-button type="primary" :loading="savingPan123" @click="handleSavePan123">保存</el-button>
+          </div>
+        </div>
+      </template>
+
+      <el-form label-width="120px" class="pan123-form">
+        <el-form-item label="Client ID">
+          <el-input
+            v-model="pan123Form.client_id"
+            placeholder="123 云盘开放平台应用 Client ID"
+            maxlength="128"
+          />
+        </el-form-item>
+        <el-form-item label="Client Secret">
+          <el-input
+            v-model="pan123Form.client_secret"
+            type="password"
+            show-password
+            autocomplete="new-password"
+            :placeholder="
+              pan123Config?.has_secret
+                ? `已保存（${pan123Config.secret_masked}），留空表示不修改`
+                : '123 云盘开放平台应用 Client Secret'
+            "
+            maxlength="256"
+          />
+          <div class="remark">密钥使用 Windows DPAPI 加密存储，接口只回显脱敏值</div>
+        </el-form-item>
+        <el-form-item label="Token 状态">
+          <span class="pan123-token">{{ pan123TokenText }}</span>
+          <span v-if="pan123Config?.token_expires_at" class="global-config__muted">
+            （{{ pan123Config.token_expires_at }} 过期）
+          </span>
+        </el-form-item>
+      </el-form>
+    </el-card>
 
     <el-dialog
       v-model="serverDialogVisible"
@@ -540,5 +673,18 @@ defineExpose({ reload: load })
   display: flex;
   justify-content: flex-end;
   gap: var(--up-strm-space-2, 8px);
+}
+
+.pan123-card {
+  margin-top: var(--up-strm-space-4, 16px);
+}
+
+.pan123-form {
+  max-width: 720px;
+
+  .pan123-token {
+    font-size: var(--up-strm-font-size-sm, 13px);
+    color: var(--el-text-color-primary);
+  }
 }
 </style>

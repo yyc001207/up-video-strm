@@ -19,7 +19,12 @@
 
 ## 未发布（Unreleased）
 
-- 暂无。
+### 上传管理（阶段一：凭据与 API 客户端）
+
+- 新增 `upload_platform_config` 表与 `/api/upload/config` 接口：123 云盘 Client ID / Client Secret 配置，密钥使用 Windows DPAPI 加密存储、接口只回显脱敏值；Token 缓存到期前 5 分钟自动刷新。
+- 新增 `pan123_client.py`：123 云盘开放平台客户端（申请 Token、分页列目录、按路径解析目录且不自动创建、创建/分片/完成上传与异步结果、删除文件）。
+- 全局配置页新增「123 云盘」卡：凭据脱敏回显、Token 状态、测试连接与保存。
+- 文档：`manual/用户手册.md` §3、`docs/rules/frontend.md` 同步。
 
 ## [4.2.0] - 2026-11-05
 

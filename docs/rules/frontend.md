@@ -36,7 +36,7 @@ frontend/
 | `/` | — | 重定向到 `/schedule/execution` |
 | `/schedule/execution` | `views/schedule/Execution.vue` | 执行管理：选任务、设执行模式并启动 |
 | `/schedule/config` | — | 旧路径兼容，重定向到 `/config` |
-| `/config` | `views/config/GlobalConfig.vue` | 全局配置：服务器配置 + 视频/字幕格式 |
+| `/config` | `views/config/GlobalConfig.vue` | 全局配置：服务器配置 + 视频/字幕格式 + 123 云盘凭据 |
 | `/schedule/tasks` | `views/schedule/TaskManage.vue` | 任务 CRUD、快速添加、批量删除、默认运行参数 |
 | `/schedule/history` | `views/schedule/TaskHistory.vue` | 任务历史列表与详情、日志回放/下载 |
 | `/schedule/realtime` | `views/schedule/RealtimeLog.vue` | WebSocket 实时日志 |
@@ -51,7 +51,7 @@ frontend/
 ## 页面与组件
 
 - `Execution.vue`：一行三卡片（选择任务 / 执行参数 / 已选任务），执行模式用 `el-segmented`（增量 / 全量 / 仅 strm）；「已选任务」卡片承载摘要与「清空选择 / 执行任务」操作；「正在执行」表支持查看日志与取消，5s 轮询刷新。
-- `GlobalConfig.vue`：全局配置模块单页——左侧单服务器卡片（无服务器时为空态 + 新增；标题右侧显示连通状态标签：在线 / 离线 / 未配置 / 检测中，进入页面及每 60s 轮询探测；卡片展示服务器地址 / Token 是否配置 / 父级目录标签，可编辑、刷新缓存、删除），右侧视频与字幕格式摘要卡 + 编辑抽屉。
+- `GlobalConfig.vue`：全局配置模块单页——左侧单服务器卡片（无服务器时为空态 + 新增；标题右侧显示连通状态标签：在线 / 离线 / 未配置 / 检测中，进入页面及每 60s 轮询探测；卡片展示服务器地址 / Token 是否配置 / 父级目录标签，可编辑、刷新缓存、删除），右侧视频与字幕格式摘要卡 + 编辑抽屉；底部 123 云盘卡（Client ID / Client Secret 脱敏回显、Token 状态标签、测试连接与保存，凭据加密存储、Token 自动续期）。
 - `TaskManage.vue`：页顶部「默认运行参数」卡（最大并发、限流、SSL 校验、输出目录前缀与根目录）+ 编辑抽屉（配置全局生效，任务未单独设置时使用）；工具栏分组（搜索 / 新建、快速添加、批量删除）；表格任务名与路径双行；快速添加使用 `DirTreePanel.vue`（目录树勾选 + 搜索下钻 + 缓存刷新）。
 - `TaskHistory.vue`：列表（每任务最近执行 + 状态点）与页面级详情（分页 20、日志抽屉、下载日志）。
 - `RealtimeLog.vue`：三段式（进度摘要 / `LogViewer` 终端 / 级别与关键字过滤、清屏、下载日志）；状态帧结束即断开并提示前往任务历史。

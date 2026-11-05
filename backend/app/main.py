@@ -14,7 +14,7 @@ from app.core.database import init_db
 from app.core.exceptions import UpVideoStrmException
 from app.core.paths import APP_DIR_NAME, exe_dir, is_frozen, resource_dir
 from app.utils.responses import success_response
-from app.api import desktop, openlist
+from app.api import desktop, openlist, uploader
 from app.version import __version__
 
 
@@ -68,6 +68,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(openlist.router, prefix="/api/openlist", tags=["OpenList"])
+app.include_router(uploader.router, prefix="/api/upload", tags=["Upload"])
 app.include_router(desktop.router, prefix="/api/desktop", tags=["Desktop"])
 
 

@@ -15,7 +15,7 @@ frontend/
 ├── src/
 │   ├── main.ts / App.vue / router/index.ts  # 入口、壳层（侧栏 + 顶栏）、路由
 │   ├── api/                # axios 实例 + openlist / uploader / desktop 接口封装
-│   ├── stores/             # Pinia（openlist 业务 / theme 主题）
+│   ├── stores/             # Pinia（openlist 业务 / running 运行状态聚合 / theme 主题）
 │   ├── views/
 │   │   ├── schedule/       # 任务调度模块：四个路由页面 + components/DirTreePanel.vue
 │   │   ├── upload/         # 上传管理模块：任务配置 / 重命名规则 / 执行管理 / 实时日志 + components/RemoteDirPanel.vue
@@ -24,7 +24,7 @@ frontend/
 │   ├── components/         # 通用组件（StatusDot 状态点 / LogViewer 日志终端 / ThemeToggle 主题切换）
 │   ├── types/ / utils/     # 类型（openlist / uploader / desktop）、工具（date / ws）
 │   └── styles/             # variables（--up-strm-* 令牌）/ element-reset（EP 变量映射与表格统一）/ dark / global
-├── index.html              # 标题「up-video-strm 任务调度」+ 首屏主题预加载
+├── index.html              # 标题「up-video-strm 控制台」+ 首屏主题预加载
 ├── vite.config.ts          # 别名 @ → src；dev server :5173；/api 代理 → 127.0.0.1:8000（ws 透传）
 ├── .env.development / .env.production / tsconfig*.json
 └── package.json / package-lock.json / pnpm-lock.yaml
@@ -39,19 +39,19 @@ frontend/
 | `/schedule/config` | — | 旧路径兼容，重定向到 `/config` |
 | `/config` | `views/config/GlobalConfig.vue` | 全局配置：服务器配置 + 视频/字幕格式 + 123 云盘凭据 |
 | `/schedule/tasks` | `views/schedule/TaskManage.vue` | 任务 CRUD、快速添加、批量删除、默认运行参数 |
-| `/schedule/history` | `views/schedule/TaskHistory.vue` | 任务历史列表与详情、日志回放/下载 |
+| `/schedule/history` | `views/schedule/TaskHistory.vue` | 任务历史列表与详情、日志回放 / 打开日志文件夹 |
 | `/schedule/realtime` | `views/schedule/RealtimeLog.vue` | WebSocket 实时日志 |
 | `/upload` | — | 重定向到 `/upload/tasks` |
 | `/upload/tasks` | `views/upload/TaskConfig.vue` | 上传任务 CRUD：本地目录、云端目录、集数映射、命名规则 |
 | `/upload/rename` | `views/upload/RenameRules.vue` | 重命名规则 CRUD、可选自定义集数正则与模板预览 |
 | `/upload/execution` | `views/upload/Execution.vue` | 执行管理：三卡片（选任务 / 执行参数 / 已选任务）+ 正在执行列表 |
 | `/upload/realtime` | `views/upload/RealtimeLog.vue` | WebSocket 实时日志：6 阶段进度与逐文件输出，支持批量排队 |
-| `/upload/history` | `views/upload/TaskHistory.vue` | 上传历史：按任务汇总 → 执行记录 → 文件明细、日志回放/下载、重跑 |
+| `/upload/history` | `views/upload/TaskHistory.vue` | 上传历史：按任务汇总 → 执行记录 → 文件明细、日志回放 / 打开日志文件夹、重跑 |
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
 - 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前三个平级模块：「全局配置」（`/config`）、「任务调度」（`/schedule/*`）与「上传管理」（`/upload/*`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。
-- 顶栏标题/描述取路由 `meta.title` / `meta.description`；右侧运行状态胶囊轮询 `fetchRunning`（10s 间隔）。
+- 顶栏标题/描述取路由 `meta.title` / `meta.description`；右侧运行状态胶囊读 [stores/running.ts](../../frontend/src/stores/running.ts)（聚合两模块 `listExecutions({status:'running'})`，10s 轮询），三态「连接失败（30s 内失败，红）/ 运行中 N（黄）/ 空闲（灰）」，点击按来源分流到对应模块实时日志；导航「实时日志」带运行数徽标。后端不可达时顶栏下方展示可关闭的 `el-alert`「无法连接后端服务，正在自动重试…」，恢复后消失。
 - 原「五页签」语义改为独立路由页面：进入页面即按需加载，切换路由即刷新，不再依赖 tab 的 `reload`。
 - 执行管理 → 实时日志通过路由 query 传参：任务调度为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`），上传管理为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName}`）。实时日志页先建立 WebSocket，`onOpen` 后再调用 `startExecution`（保证先连日志再启动）；上传管理多个执行按队列串行启动与切换。
 - 时间统一按**北京时间**解释与展示：一律使用 `utils/date.ts` 的 `formatDateTime`（`YYYY-MM-DD HH:mm:ss`）、`formatDate`（`YYYY-MM-DD`）或 `beijingMillis`（耗时计算），不要直接调用 dayjs 格式化；后端返回无时区墙钟字符串时按 `Asia/Shanghai` 解析，自带 Z / 偏移则先换算到北京时间。
@@ -79,9 +79,9 @@ frontend/
 
 ## 接口与状态
 
-- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
+- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`；错误提示按文案 3s 去重；请求 config 传 `{ silent: true }` 时不弹提示，供轮询使用）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
 - 后端 API 基址由 `VITE_API_BASE_URL` 控制（默认 `/api`）。
-- Pinia store：[stores/openlist.ts](../../frontend/src/stores/openlist.ts)（业务，含 `runningCount`）、[stores/theme.ts](../../frontend/src/stores/theme.ts)（浅色/深色/跟随系统，localStorage 记忆，键名 `up-video-strm-theme`，首屏无闪烁）。
+- Pinia store：[stores/openlist.ts](../../frontend/src/stores/openlist.ts)（业务，含 `runningCount` 与 `fetchRunning(silent)`）、[stores/running.ts](../../frontend/src/stores/running.ts)（壳层运行状态聚合：两模块运行中数量、离线判定与顶栏胶囊 / 导航徽标）、[stores/theme.ts](../../frontend/src/stores/theme.ts)（浅色/深色/跟随系统，localStorage 记忆，键名 `up-video-strm-theme`，首屏无闪烁）。
 - WebSocket 工具：[utils/ws.ts](../../frontend/src/utils/ws.ts)，连接 `ws://.../api/openlist/ws/{execution_id}`。
 - 桌面外壳导航桥：[main.ts](../../frontend/src/main.ts) 把路由挂到 `window.__upVideoStrmNavigate(path)`，托盘菜单「设置…」通过它直接切页而不整页重载（后端 [desktop.py](../../backend/app/desktop.py) 调用）。
 

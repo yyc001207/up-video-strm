@@ -2,8 +2,8 @@
 /**
  * 任务调度 · 执行管理（/schedule/execution）。
  *
- * 双栏工作区：左「选择任务」（搜索 + 复选列表），右「执行参数」（分段模式）；
- * 底部常驻操作条展示已选任务 / 视频数并提供清空与执行；「正在执行」表 5s 轮询。
+ * 三张卡片一行工作区：左「选择任务」（搜索 + 复选列表）、中「执行参数」（分段模式）、
+ * 右「已选任务」（已选清单 + 清空/执行操作）；下方「正在执行」表 5s 轮询。
  *
  * 单服务器模式：任务列表直接展示全部任务配置，不再按服务器筛选，也不再传服务器参数。
  * 执行时序保持不变：本页只调用 batchCreateExecution 落库，随后带参跳转实时日志页，
@@ -12,7 +12,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, RefreshLeft, Search, VideoPlay } from '@element-plus/icons-vue'
+import { Close, Refresh, RefreshLeft, Search, VideoPlay } from '@element-plus/icons-vue'
 
 import StatusDot from '@/components/StatusDot.vue'
 import { useOpenlistStore } from '@/stores/openlist'
@@ -115,6 +115,11 @@ function toggleTask(task: OpenListTask): void {
 
 function clearSelection(): void {
   selectedTaskIds.value = []
+}
+
+/** 从已选任务卡片移除单个任务。 */
+function removeSelected(taskId: number): void {
+  selectedTaskIds.value = selectedTaskIds.value.filter(id => id !== taskId)
 }
 
 /**
@@ -370,7 +375,7 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- 右栏：执行参数 -->
+        <!-- 中栏：执行参数 -->
         <aside class="exec-panel exec-panel--params">
           <header class="exec-panel__head">
             <div class="exec-panel__heading">
@@ -396,6 +401,64 @@ onUnmounted(() => {
             </p>
           </div>
         </aside>
+
+        <!-- 右栏：已选任务 -->
+        <section class="exec-panel exec-panel--selected">
+          <header class="exec-panel__head">
+            <div class="exec-panel__heading">
+              <h2 class="exec-panel__title">已选任务</h2>
+              <p class="exec-panel__sub">确认选中项后执行，参数应用到全部任务</p>
+            </div>
+            <span class="exec-panel__count">{{ selectedTaskIds.length }}</span>
+          </header>
+
+          <div class="exec-panel__body">
+            <el-empty
+              v-if="selectedTasks.length === 0"
+              class="exec-panel__empty"
+              description="在左侧勾选要执行的任务"
+              :image-size="64"
+            />
+            <div v-else class="selected-list">
+              <div v-for="task in selectedTasks" :key="task.id" class="selected-row">
+                <span class="selected-row__info">
+                  <span class="selected-row__name">{{ task.name }}</span>
+                  <span class="selected-row__path" :title="task.process_path">{{ task.process_path }}</span>
+                </span>
+                <el-button
+                  link
+                  :icon="Close"
+                  :disabled="starting"
+                  aria-label="移除该任务"
+                  @click="removeSelected(task.id)"
+                />
+              </div>
+            </div>
+
+            <div class="selected-summary" title="视频数按各任务最近一次执行的视频总数估算">
+              已选 <strong class="selected-summary__num">{{ selectedTaskIds.length }}</strong> 个任务 ·
+              共 <strong class="selected-summary__num">{{ totalVideos }}</strong> 个视频
+            </div>
+            <div class="selected-actions">
+              <el-button
+                :icon="RefreshLeft"
+                :disabled="selectedTaskIds.length === 0 || starting"
+                @click="clearSelection"
+              >
+                清空选择
+              </el-button>
+              <el-button
+                type="primary"
+                :icon="VideoPlay"
+                :loading="starting"
+                :disabled="!canStart"
+                @click="handleStart"
+              >
+                执行任务
+              </el-button>
+            </div>
+          </div>
+        </section>
       </div>
 
       <!-- 正在执行 -->
@@ -459,38 +522,6 @@ onUnmounted(() => {
         </el-table>
       </section>
     </div>
-
-    <!-- 底部常驻操作条 -->
-    <footer class="exec-footer">
-      <div
-        class="exec-footer__summary"
-        title="视频数按各任务最近一次执行的视频总数估算"
-      >
-        <span class="exec-footer__text">
-          已选 <strong class="exec-footer__num">{{ selectedTaskIds.length }}</strong> 个任务 ·
-          共 <strong class="exec-footer__num">{{ totalVideos }}</strong> 个视频
-        </span>
-        <span v-if="selectedTaskIds.length === 0" class="exec-footer__hint">选择任务后可执行</span>
-      </div>
-      <div class="exec-footer__actions">
-        <el-button
-          :icon="RefreshLeft"
-          :disabled="selectedTaskIds.length === 0 || starting"
-          @click="clearSelection"
-        >
-          清空选择
-        </el-button>
-        <el-button
-          type="primary"
-          :icon="VideoPlay"
-          :loading="starting"
-          :disabled="!canStart"
-          @click="handleStart"
-        >
-          执行任务
-        </el-button>
-      </div>
-    </footer>
   </div>
 </template>
 
@@ -507,16 +538,18 @@ onUnmounted(() => {
 
 .exec-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.85fr) minmax(260px, 0.95fr);
   gap: var(--up-strm-space-4);
   align-items: stretch;
-  min-height: 420px;
+  height: clamp(380px, 52vh, 560px);
+  min-height: 380px;
 }
 
 // 面板通用骨架
 .exec-panel {
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
   background: var(--el-bg-color);
@@ -596,7 +629,6 @@ onUnmounted(() => {
   flex: 1;
   flex-direction: column;
   gap: var(--up-strm-space-2);
-  max-height: min(46vh, 420px);
   min-height: 0;
   overflow-y: auto;
   padding-right: var(--up-strm-space-1);
@@ -789,74 +821,103 @@ onUnmounted(() => {
   }
 }
 
-// 底部常驻操作条：始终可见（P0-2）
-.exec-footer {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--up-strm-space-4);
-  padding: var(--up-strm-space-3) var(--up-strm-space-4);
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color-light);
-  border-radius: var(--up-strm-radius-lg);
-  box-shadow: var(--up-strm-shadow-md);
-
-  &__summary {
+// 已选任务卡片
+.exec-panel--selected {
+  .selected-list {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    gap: var(--up-strm-space-1);
+    gap: var(--up-strm-space-2);
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: var(--up-strm-space-1);
+  }
+
+  .selected-row {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--up-strm-space-2);
+    padding: var(--up-strm-space-2) var(--up-strm-space-3);
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: var(--up-strm-radius-md);
+    background: var(--el-fill-color-lighter);
+  }
+
+  .selected-row__info {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
     min-width: 0;
   }
 
-  &__text {
+  .selected-row__name {
+    overflow: hidden;
+    color: var(--el-text-color-primary);
+    font-size: var(--up-strm-font-size-sm);
+    font-weight: 500;
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selected-row__path {
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selected-summary {
+    flex: none;
+    padding-top: var(--up-strm-space-3);
+    border-top: 1px solid var(--el-border-color-lighter);
     color: var(--el-text-color-regular);
-    font-size: var(--up-strm-font-size-base);
+    font-size: var(--up-strm-font-size-sm);
     line-height: 1.5;
   }
 
-  &__num {
+  .selected-summary__num {
     color: var(--el-text-color-primary);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
 
-  &__hint {
-    color: var(--el-text-color-secondary);
-    font-size: var(--up-strm-font-size-xs);
-    line-height: 1.5;
-  }
-
-  &__actions {
+  .selected-actions {
     display: flex;
     flex: none;
-    align-items: center;
+    justify-content: flex-end;
     gap: var(--up-strm-space-2);
+  }
+}
+
+@media (max-width: 1200px) {
+  .exec-workspace {
+    grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.8fr) minmax(240px, 0.9fr);
   }
 }
 
 @media (max-width: 1100px) {
   .exec-workspace {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
     min-height: 0;
+  }
+
+  .exec-panel {
+    height: auto;
+    min-height: 320px;
   }
 
   .task-list {
     max-height: min(40vh, 320px);
   }
-}
 
-@media (max-width: 720px) {
-  .exec-footer {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .exec-footer__actions {
-    justify-content: flex-end;
+  .exec-panel--selected .selected-list {
+    max-height: 240px;
   }
 }
 </style>

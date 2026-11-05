@@ -41,6 +41,7 @@ backend/
 ## 数据层
 
 - 无 Alembic；启动时 [database.py](../../backend/app/core/database.py) 用 `create_all` 建表 + `PRAGMA`/`ALTER TABLE` 轻量列级迁移，并写入默认全局配置。
+- 废弃列清理：`obsolete_column_statements()` 会针对旧库中已不再映射的物理列（`open_list_execution.strip_series`/`server_name`、`open_list_config.log_to_db`、`open_list_server.name`）生成 `ALTER TABLE ... DROP COLUMN`，`init_db()` 在 SQLite ≥ 3.35 时执行，避免旧库 `NOT NULL` 列导致新代码 INSERT 失败（4.1.1 修复）。
 - 数据表：`open_list_config`、`open_list_server`、`open_list_server_dir`、`open_list_task`、`open_list_execution`、`open_list_log`。
 - 输出根目录：`open_list_config.output_root`（可空）。任务输出目录以 `/` 开头时由 [strm_generator.resolve_output_base()](../../backend/app/business/openlist/strm_generator.py) 相对其解析；为空回退 `CWD/output`（源码运行即 `backend/output`；冻结运行已 `chdir` 到数据目录，落在 `%LOCALAPPDATA%\up-video-strm\output`）。
 - 默认 SQLite 路径：`./data/up_video_strm.db`（见 [settings.py](../../backend/app/core/settings.py)）；冻结运行指向数据目录下 `data/up_video_strm.db`。

@@ -21,6 +21,22 @@
 
 - 暂无。
 
+## [4.1.1] - 2026-11-05
+
+**级别：PATCH（缺陷修复 + 布局调整）** · 代码 `2274002`、`8f218eb`
+
+### 修复
+
+- 升级后旧数据库点击「执行任务」返回 500：旧库遗留的 `open_list_execution.strip_series` 为 `NOT NULL` 且无默认值，新代码不再写该列，`INSERT` 触发 `IntegrityError`。启动时由 `obsolete_column_statements()` 生成 `ALTER TABLE ... DROP COLUMN`（SQLite ≥ 3.35），清理 `open_list_execution.strip_series`/`server_name`、`open_list_config.log_to_db`、`open_list_server.name`，升级用户无需重建数据库。
+
+### 变更
+
+- 执行管理改为「选择任务 / 执行参数 / 已选任务」三卡片一行展示；「已选任务」卡片承载逐条移除、清空选择、摘要与「执行任务」按钮，移除底部常驻操作条；窄屏（< 1100px）回退为纵向堆叠。「正在执行」表格与业务流程不变。
+
+### 文档
+
+- `manual/用户手册.md` §6 执行管理、`docs/rules/frontend.md`、`docs/design/ui-redesign-plan.md` §3.1 与验收清单、`docs/rules/backend.md` 数据层同步。
+
 ## [4.1.0] - 2026-11-05
 
 **级别：MINOR（新增能力）** · 代码 `b22fbc2`

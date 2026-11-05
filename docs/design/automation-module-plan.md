@@ -76,7 +76,7 @@ A 失败/取消 → run fail，不提交指纹（下一轮自动补偿）
    - 致命（终止本轮并停任务）：任务/目录不存在、凭据失效、云端目录不可读、B 完全无进展（`success+skipped==0`）、校验目录不可访问。
    - 可继续（partial）：部分文件失败但 `success+skipped>0`；OpenList 只校验成功文件，继续 A；run 最终记为 `partial`，失败文件在 run 详情列出。
 6. **持续运行**：只有两种终止方式——用户手动停止、致命错误；瞬时故障（网络抖动等）也按致命处理并**主动通知**，用户修复后手动继续（连续失败自动暂停为后续增强）。
-7. **绑定任务运行期串行化**：同一 A/B 任务允许被多个自动化任务绑定，但必须按 `(kind, id)` 的 **FIFO 锁**互斥：锁内完成「检查空闲 + 创建执行 + 启动」，不得 check-then-act；C 的停止只取消本轮自己创建的执行。
+7. **绑定唯一 + 运行期串行化**：同一 A/B 任务**只能被一个自动化任务绑定**（数据库部分唯一索引 + 应用层校验，冲突返回 400 并提示占用任务名）；运行期仍按 `(kind, id)` 的 **FIFO 锁**在「检查空闲 + 创建执行 + 启动」内互斥，防止 check-then-act 及与手动执行的竞争，C 的停止只取消本轮自己创建的执行。
 8. **无变更轮**：不建 run、不落日志文件，仅在实时日志页推一行「无本地变更，跳过本轮」（回放不可见）。
 9. **停止语义**：只取消 `trigger_ref == automation_run:{本轮 id}` 的 B/A 执行；等待空闲/OpenList 等待/轮次间隔阶段可立即打断；先进入 `stopping`，等 B/A 终态（或 `stage_timeout`）后 run 记 `cancelled`，补日志结束行与 WS 终帧。
 
@@ -87,14 +87,14 @@ A 失败/取消 → run fail，不提交指纹（下一轮自动补偿）
 - 列表：名称搜索、分页（10/20/50，默认 20）、批量删除（沿用列表页 `list-page` 骨架）。
 - 新建/编辑抽屉：
   - 任务名称；
-  - 绑定**一个**模块 B 上传任务、**一个**模块 A 调度任务（下拉，仅可选未删除的任务；允许重复绑定，运行期按 FIFO 锁串行化）；
+  - 绑定**一个**模块 B 上传任务、**一个**模块 A 调度任务（下拉，仅可选未删除的任务）；**同一 A/B 任务只能被一个自动化任务绑定**，保存时校验，冲突返回 400 并提示占用任务名；
   - 模块 B 执行参数：并发数（1-8，默认 2）、重试次数（0-10，默认 3）；冲突策略固定 `skip`，不提供配置；
   - 模块 A 执行参数：`openlist_mode` 单选（`incremental` 增量 / `full` 全量 / `strm_only` 仅 STRM），替代原三个布尔；
   - **OpenList 校验目录 `check_dir`（必填）**：B 的云端目录在 OpenList 中的对应路径；默认按 `openlist_remote_prefix`（可选映射，见 §6）推导，提供「检测目录映射」按钮；
   - 超时：`wait_interval_seconds`（5-120，默认 15）、`openlist_wait_timeout`（60-3600，默认 600）、`idle_wait_timeout`（60-3600，默认 600）、`stage_timeout`（60-7200，默认 3600）；
   - 循环间隔：`interval_seconds`（0-3600，默认 60，0=立即；界面建议最小 10s）；
   - 变更指纹只读展示（`scan_time`）＋「重新扫描并补齐 STRM」按钮（`reset-fingerprint`），文案不写「强制上传」。
-- 保存校验：B/A 任务必须存在且未删除；A 任务所属服务器必须启用；`check_dir` 非空；调用 OpenList 检测 `check_dir` 可访问（不可达时警告但允许保存，运行期启动前再校验一次）。
+- 保存校验：B/A 任务必须存在且未删除；同一 A/B 任务未被其它自动化任务绑定（编辑时排除自身）；A 任务所属服务器必须启用；`check_dir` 非空；调用 OpenList 检测 `check_dir` 可访问（不可达时警告但允许保存，运行期启动前再校验一次）。
 - **不提供试运行参数**：自动化链路要求真实上传；B 模块自身保留试运行能力。
 - **运行中限制编辑**：任务运行中，编辑抽屉只读（绑定/参数/`check_dir`/指纹均不可改）；停止后可改。
 
@@ -134,8 +134,8 @@ A 失败/取消 → run fail，不提交指纹（下一轮自动补偿）
 |----|------|------|
 | id | int PK | |
 | name | varchar(128) | 任务名称 |
-| upload_task_id | int FK upload_task | 绑定的模块 B 任务（允许重复绑定） |
-| openlist_task_id | int FK open_list_task | 绑定的模块 A 任务（允许重复绑定） |
+| upload_task_id | int FK upload_task | 绑定的模块 B 任务（`is_deleted=0` 部分唯一索引） |
+| openlist_task_id | int FK open_list_task | 绑定的模块 A 任务（`is_deleted=0` 部分唯一索引） |
 | upload_concurrency | int | 默认 2（范围 1-8） |
 | upload_retry_times | int | 默认 3（范围 0-10） |
 | openlist_mode | varchar(16) | `incremental` / `full` / `strm_only`，默认 incremental |
@@ -198,7 +198,7 @@ A 失败/取消 → run fail，不提交指纹（下一轮自动补偿）
 | 文件 | 职责 |
 |------|------|
 | `schema.py` | 任务/运行/启动参数 Pydantic 模型 |
-| `service.py` | 任务 CRUD（软删、允许重复绑定）、run 查询与保留清理、启动/停止/批量启动入口、check_dir 检测 |
+| `service.py` | 任务 CRUD（软删、绑定唯一校验）、run 查询与保留清理、启动/停止/批量启动入口、check_dir 检测 |
 | `registry.py` | 运行实例表 `{task_id: asyncio.Task}`、按 `(kind,id)` 的 FIFO 锁、停止事件 `asyncio.Event` |
 | `execution_engine.py` | 可恢复状态机：指纹判定 → FIFO 锁 → B → 校验 → A → 记录 run → 下一轮；`stopping` 收尾 |
 | `change_detector.py` | 视频文件 stat 指纹（范围复用 B 的扩展名与跳过规则）、比对与提交 |
@@ -323,8 +323,7 @@ C 调用 A 时：`openlist_mode=incremental` → `is_incremental=True,is_force=F
 
 | 场景 | 判定 | run 结果 | 处理 |
 |------|------|----------|------|
-| B 任务/本地目录不存在 | 致命 | fail（`B_TASK_INVALID`） | 终止任务，通知 |
-| B 凭据/123 云盘不可达 | 致命 | fail（`B_CLOUD_ERROR`） | 终止任务，通知 |
+| B 任务/本地目录不存在 | 致命 | fail（`B_TASK_INVALID`） | 终止任务，通知 || B 凭据/123 云盘不可达 | 致命 | fail（`B_CLOUD_ERROR`） | 终止任务，通知 |
 | B 部分文件失败 | 可继续 | partial | 继续 A，失败文件列在 run 详情 |
 | B 完全无进展（success+skipped=0） | 致命 | fail（`B_NO_PROGRESS`） | 终止任务，不提交指纹 |
 | OpenList 校验目录不可访问 | 致命 | fail（`CHECK_DIR_INVALID`） | 终止任务，提示改 check_dir |
@@ -369,7 +368,7 @@ C 调用 A 时：`openlist_mode=incremental` → `is_incremental=True,is_force=F
   - 状态机主链路：新文件 → 校验 → A 成功 → success + 指纹提交；A 失败 → 不提交指纹；下一轮无新增仍执行 A（补偿）；首次配置云端已有文件 → skipped 校验但执行 A。
   - 变更探测：无变更不建 run；检测范围与 B 的扩展名/跳过规则一致；手动启动忽略指纹。
   - 失败分级：B 无进展 → fail；B 部分失败 → partial 继续 A；OpenList 超时 → fail 不提交指纹；check_dir 无效 → fail。
-  - 并发/串行化：两个自动化绑定同一 A 任务同时启动 → 严格串行（FIFO），无并发 A 执行；停止仅取消自己创建的执行。
+  - 绑定唯一：第二个自动化任务保存绑定同一 A/B 任务 → 400 并提示占用任务名（编辑自身不误报）；并发/串行化：自动化启动时若绑定任务已有手动运行中执行 → 等待空闲/超时失败；FIFO 锁保证检查+创建+启动不可被 check-then-act；停止仅取消自己创建的执行。
   - 停止时机：等待空闲/OpenList 等待/轮次间隔三种时机停止都能立即结束，run=cancelled 且有结束日志与 WS 终帧。
   - 重启：启动清理把残留 running/stopping 置 fail。
   - 来源：创建 A/B 执行带 trigger_source/ref/name；trigger_source 索引存在。
@@ -383,7 +382,7 @@ C 调用 A 时：`openlist_mode=incremental` → `is_incremental=True,is_force=F
 - [ ] A 执行失败 → 下一轮**无新增文件**也能再次触发 A，直到成功（自动补偿）。
 - [ ] 首次配置且文件早已在云端 → B 全部 skip，仍执行 A 并生成 STRM。
 - [ ] 进程在 B 或 A 阶段重启 → 残留 running 全部标 fail；自动化不自动恢复；手动启动可继续。
-- [ ] 同一 A 任务被两个自动化绑定 → 同时启动严格串行，无并发 A 执行；停止任一不影响另一个。
+- [ ] 同一 A 任务已绑定一个自动化任务 → 再保存第二个绑定同一 A 任务被拒绝（400 提示占用任务名）；自动化启动与手动执行并发 → 不出现重复创建，按空闲等待/超时处理。
 - [ ] A 的 `process_path` 为父目录、B 上传到子目录 → 校验能按相对路径正确找到文件。
 - [ ] 单个文件无法解析集数 → 本轮 partial，其余文件继续进入 A，自动化不终止。
 - [ ] 本地无任何变更 → 不建 run，仅实时日志一行「无本地变更，跳过本轮」。
@@ -400,7 +399,7 @@ C 调用 A 时：`openlist_mode=incremental` → `is_incremental=True,is_force=F
 | 2 | 失败处理 | **分级**：致命错误立即终止整个自动化任务；文件级失败为 partial 继续（第一轮评审 P0-5 修订） |
 | 3 | 重启恢复 | 不自动恢复；启动清理残留 running 为 fail（「进程重启中断」），用户手动启动 |
 | 4 | 批量启动 | 执行管理多选批量启动：`POST /tasks/batch-start`，逐项返回结果 |
-| 5 | 绑定关系 | **允许同一 A/B 任务被多个自动化任务绑定**；运行期 FIFO 锁串行化（不采用唯一约束） |
+| 5 | 绑定关系 | **同一 A/B 任务只能被一个自动化任务绑定**（`is_deleted=0` 部分唯一索引 + 应用层校验，冲突 400 提示占用任务名）；运行期 FIFO 锁仍保留，防止 check-then-act 及与手动执行竞争（用户确认，不采用评审的「允许多绑定+串行化」） |
 | 6 | 模块顺序 | 自动化任务在侧栏「上传管理」之后：全局配置 / 任务调度 / 上传管理 / 自动化任务 |
 | 7 | 轮次变更探测 | 每轮先 stat 指纹比对；无变化跳过（不建 B 执行/不记 run）；指纹 = 上次完整成功；手动启动忽略指纹 |
 | 8 | 冲突策略 | 固定「跳过」，不提供覆盖/追加后缀与试运行参数 |
@@ -417,10 +416,11 @@ C 调用 A 时：`openlist_mode=incremental` → `is_incremental=True,is_force=F
 | P0-1 失败不可恢复 | 指纹改为 A 成功后提交；无新增也执行 A；reset 文案改「重新扫描并补齐 STRM」；手动启动强制一轮 |
 | P0-2 僵尸 running | 启动统一清理三表 running/stopping；A/B 活跃注册表 + DB 陈旧判定；A `started_time` 移到 start_execution |
 | P0-3 串行化竞态/取消误杀 | `(kind,id)` FIFO 锁内完成检查+创建+启动；A 取消键改 `execution_id`；C 停止只取消自有执行 |
+| 绑定关系（评审 D-2） | 不采用评审的「允许多绑定+串行化」；按用户确认改为**唯一绑定**（部分唯一索引 + 应用层校验），FIFO 锁仅用于防竞态 |
 | P0-4 校验目录不匹配 | `check_dir` 必填 + 映射检测按钮；递归相对路径校验；首次 refresh、后续退避 + 抖动 |
 | P0-5 单文件失败即终止 | 失败分级：致命终止 / partial 继续；`partial` 状态；B 有进展判定 |
 | P0-6 停止语义 | `stopping` 中间态；只取消自有执行；打断等待；finally 写终态/日志/WS |
-| P1 | 超时三拆、指纹范围对齐 B、轮询退避、保留策略、顶栏独立指示器、数据模型修正（phase 32、去 is_enabled、openlist_mode）、删除语义、API 补缺、日志目录闭环、运行中只读、重复绑定公平性、失败通知 |
+| P1 | 超时三拆、指纹范围对齐 B、轮询退避、保留策略、顶栏独立指示器、数据模型修正（phase 32、去 is_enabled、openlist_mode）、删除语义、API 补缺、日志目录闭环、运行中只读、绑定唯一校验、失败通知 |
 | P2 | 分页 10/20/50、版本不写死、API 风格、无变更日志只推 WS、round_no/skipped 定义、来源列口径、索引、测试与文档范围、必备章节、清理 pycache、终止通知 |
 
 ## 13. 实施阶段（第二轮评审通过后）
@@ -444,7 +444,7 @@ C 调用 A 时：`openlist_mode=incremental` → `is_incremental=True,is_force=F
 | RK-02 | 重启残留 running 阻塞 | 1（已修） | 5 | 5 低 | P0-2：启动清理 + 活跃注册表 |
 | RK-03 | 校验目录/递归不匹配 | 2 | 5 | 10 中 | P0-4：check_dir 必填 + 检测按钮 + 递归相对路径 |
 | RK-04 | 单文件失败导致永久停摆 | 1（已修） | 4 | 4 低 | P0-5：失败分级 + partial |
-| RK-05 | 重复绑定并发启动同一 A/B | 2 | 4 | 8 中 | P0-3：FIFO 锁 + A 取消键 `execution_id` + 自有执行校验 |
+| RK-05 | 同一 A/B 任务被自动化与手动执行并发启动 | 2 | 4 | 8 中 | 绑定唯一（部分唯一索引 + 400 校验）+ P0-3 FIFO 锁 + 空闲等待 + A/B 信号量排队 |
 | RK-06 | OpenList 轮询限流/拖慢 | 3 | 3 | 9 中 | 退避 + 抖动 + 串行化轮询 |
 | RK-07 | 历史/日志增长淹没数据 | 2 | 3 | 6 中 | 保留策略 + A/B 来源筛选 |
 | RK-08 | 用户误以为会同步文件更新 | 4 | 3 | 12 中 | 文档与界面写明「只处理新增」 |

@@ -21,6 +21,18 @@
 
 - 暂无。
 
+## [4.9.1] - 2026-11-05
+
+**级别：PATCH（回归缺陷修复 + 一致性收敛）** · 代码见本次提交
+
+按 [docs/design/ui-review-round2.md](docs/design/ui-review-round2.md) 第 7 节修复回归问题：
+
+- 执行管理（调度 / 上传）竖向压缩缺陷：两页根节点是 flex 列容器，卡片区默认 `flex-shrink: 1`，窗口变矮时被压扁导致「正在执行」卡片重叠、上传页 running 卡被压到 2px；现为卡片区（调度 `.exec-workspace`、上传 `.upload-execution__cards` 与 `.running-card`）显式 `flex: none`，内容过高时由外层滚动，全高度下卡片完整可见。
+- 工具栏布局原语收敛到 `frontend/src/styles/global.scss` 的 `.toolbar`（含 `__left/__right`，右侧 `margin-left: auto` 恒贴右），五个列表页删除各自重复定义，仅保留页面专有规则（`.toolbar__keyword`、`.toolbar__hint`）；同时重建并同步 `frontend/dist` 与 `backend/frontend/dist`，排除「看到的仍是旧构建产物」。
+- 侧栏导航选中态：移除 `font-weight: 600`（Windows 微软雅黑映射为 Bold 会加宽文字、观感像换字体），改为「主色文字 + 12% 主色底 + 左侧 2px 主色指示条」。
+- 顶栏标题改为「模块 · 页面」（如「任务调度 · 任务配置」）；单页模块同名只显示一次（全局配置），无模块归属显示页面名（设置）；新增动态 `document.title`（`<页面标题> - up-video-strm`，默认「up-video-strm 控制台」）。
+- 验证：`npx vue-tsc -b --force` 0 错误；`npm run build` 成功并同步两份 dist。
+
 ## [4.9.0] - 2026-11-05
 
 **级别：MINOR（新增交互与 UI 治理）** · 代码见本次提交

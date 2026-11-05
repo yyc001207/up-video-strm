@@ -50,11 +50,13 @@ frontend/
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
-- 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前三个平级模块：「全局配置」（`/config`）、「任务调度」（`/schedule/*`）与「上传管理」（`/upload/*`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。
-- 顶栏标题/描述取路由 `meta.title` / `meta.description`；右侧运行状态胶囊读 [stores/running.ts](../../frontend/src/stores/running.ts)（聚合两模块 `listExecutions({status:'running'})`，10s 轮询），三态「连接失败（30s 内失败，红）/ 运行中 N（黄）/ 空闲（灰）」，点击按来源分流到对应模块实时日志；导航「实时日志」带运行数徽标。后端不可达时顶栏下方展示可关闭的 `el-alert`「无法连接后端服务，正在自动重试…」，恢复后消失。
+- 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前三个平级模块：「全局配置」（`/config`）、「任务调度」（`/schedule/*`）与「上传管理」（`/upload/*`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。导航选中态只用「主色文字 + 12% 主色底 + 左侧 2px 主色指示条」表达，**不使用 `font-weight` 加重**（Windows 微软雅黑会把 600 映射为 Bold，导致文字变宽跳位）。
+- 顶栏标题按「模块 · 页面」拼接（`pageTitle`），单页模块与页面同名只显示一次（如「全局配置」），无模块归属时显示页面名（如「设置」）；描述取路由 `meta.description`；`document.title` 同步为「`<页面标题> - up-video-strm`」，默认「up-video-strm 控制台」。右侧运行状态胶囊读 [stores/running.ts](../../frontend/src/stores/running.ts)（聚合两模块 `listExecutions({status:'running'})`，10s 轮询），三态「连接失败（30s 内失败，红）/ 运行中 N（黄）/ 空闲（灰）」，点击按来源分流到对应模块实时日志；导航「实时日志」带运行数徽标。后端不可达时顶栏下方展示可关闭的 `el-alert`「无法连接后端服务，正在自动重试…」，恢复后消失。
 - 原「五页签」语义改为独立路由页面：进入页面即按需加载，切换路由即刷新，不再依赖 tab 的 `reload`。
 - 执行管理 → 实时日志通过路由 query 传参：任务调度为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`），上传管理为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName}`）。实时日志页先建立 WebSocket，`onOpen` 后再调用 `startExecution`（保证先连日志再启动）；上传管理多个执行按队列串行启动与切换。
 - 时间统一按**北京时间**解释与展示：一律使用 `utils/date.ts` 的 `formatDateTime`（`YYYY-MM-DD HH:mm:ss`）、`formatDate`（`YYYY-MM-DD`）或 `beijingMillis`（耗时计算），不要直接调用 dayjs 格式化；后端返回无时区墙钟字符串时按 `Asia/Shanghai` 解析，自带 Z / 偏移则先换算到北京时间。
+- 列表页工具栏统一使用 `styles/global.scss` 的 `.toolbar` 原语：`.toolbar__left` 放搜索/筛选/提示，`.toolbar__right` 放操作组且恒贴右（`margin-left: auto`），间距 12px / 组内 8px；页面样式只保留专有规则（如 `.toolbar__keyword`、`.toolbar__hint`），不再各自定义布局。
+- 执行类页面的卡片区（调度 `.exec-workspace`、上传 `.upload-execution__cards` 与 `.running-card`）固定 `flex: none`：窗口变矮时不压缩卡片，内容过高由外层容器滚动。
 
 ## 页面与组件
 

@@ -21,7 +21,9 @@ import threading
 import time
 from pathlib import Path
 
-WINDOW_TITLE = "up-video-strm"
+from app.core.paths import APP_DIR_NAME
+
+WINDOW_TITLE = APP_DIR_NAME
 WINDOW_SIZE = (1360, 900)
 WINDOW_MIN_SIZE = (1080, 700)
 TRAY_HINT = "程序已收进托盘，服务继续在后台运行。右键托盘图标可打开或退出。"
@@ -306,7 +308,7 @@ def run_window(
             import pystray
 
             tray_icon = pystray.Icon(
-                "up-video-strm",
+                APP_DIR_NAME,
                 build_icon_image(64),
                 title,
                 pystray.Menu(

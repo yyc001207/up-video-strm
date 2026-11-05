@@ -5,8 +5,9 @@
 - 开机自启读写 ``HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run``，
   仅 Windows 桌面版可用（源码运行与网页访问一律视为不支持）。
 
-命名迁移：自启项值名由旧版 ``video-strm`` 改为 ``up-video-strm``。读取时新值优先，
+命名迁移：正式版自启项值名由旧版 ``video-strm`` 改为 ``up-video-strm``。读取时新值优先，
 旧值存在也视为已启用（旧版安装升级后无需重新勾选）；写入时同步删除旧值完成迁移。
+测试版（``up-video-strm-test``）只读写自己的自启项，不迁移也不清理正式版的值。
 """
 
 from __future__ import annotations
@@ -15,12 +16,19 @@ import json
 import sys
 from pathlib import Path
 
-from app.core.paths import data_root, is_frozen
+from app.core.paths import (
+    APP_DIR_NAME,
+    APP_PROFILE,
+    TEST_PROFILE,
+    data_root,
+    is_frozen,
+)
 
 PREFS_FILE = "desktop.json"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-RUN_VALUE = "up-video-strm"
-RUN_VALUE_LEGACY = "video-strm"
+RUN_VALUE = APP_DIR_NAME
+# 旧版自启项值名：仅正式版做一次性迁移；测试版不碰正式版的自启项
+RUN_VALUES_LEGACY: tuple[str, ...] = () if APP_PROFILE == TEST_PROFILE else ("video-strm",)
 DEFAULT_PREFS: dict[str, bool] = {
     "start_minimized": False,
     "close_to_tray": True,
@@ -100,13 +108,13 @@ def is_autostart_enabled() -> bool:
     """新值优先；旧版自启值存在也视为已启用（升级后保持原有勾选状态）。"""
     if not autostart_supported():
         return False
-    return _run_value_enabled(RUN_VALUE) or _run_value_enabled(RUN_VALUE_LEGACY)
+    return any(_run_value_enabled(value) for value in (RUN_VALUE, *RUN_VALUES_LEGACY))
 
 
 def set_autostart(enabled: bool) -> None:
     """写入/删除 HKCU Run 项；不支持的环境直接抛错由调用方转成 400。
 
-    开启时写新值并删除旧值（完成旧版自启项迁移）；关闭时新值和旧值一并删除。
+    开启时写新值并删除旧值（完成旧版自启项迁移；测试版无旧值可迁移）；关闭时新值和旧值一并删除。
     """
     if not autostart_supported():
         raise RuntimeError("当前运行方式不支持开机自启")
@@ -117,10 +125,12 @@ def set_autostart(enabled: bool) -> None:
             winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
         ) as key:
             winreg.SetValueEx(key, RUN_VALUE, 0, winreg.REG_SZ, f'"{_exe_path()}"')
-        _delete_run_value(RUN_VALUE_LEGACY)
+        for legacy in RUN_VALUES_LEGACY:
+            _delete_run_value(legacy)
     else:
         _delete_run_value(RUN_VALUE)
-        _delete_run_value(RUN_VALUE_LEGACY)
+        for legacy in RUN_VALUES_LEGACY:
+            _delete_run_value(legacy)
 
 
 def refresh_autostart_path() -> None:

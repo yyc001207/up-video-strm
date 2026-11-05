@@ -1,4 +1,4 @@
-# up-video-strm Windows packaging script (onedir + Inno Setup installer)
+﻿# up-video-strm Windows packaging script (onedir + Inno Setup installer)
 #
 # Usage (from repo root or anywhere):
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1
@@ -8,19 +8,29 @@
 #   powershell -ExecutionPolicy Bypass -File packaging\build.ps1 -Python C:\Python312\python.exe
 #       (defaults to backend\.venv\Scripts\python.exe, then python on PATH; CI uses the latter)
 #
-# Outputs:
+# 测试版请使用 packaging\build-test.ps1（内部以 -Profile test 调用本脚本），不要把本脚本
+# 当测试版入口直接使用。测试版 exe/安装目录/数据目录/自启项/单实例均带 -test 后缀，
+# 可与正式版同时安装、同时运行。
+#
+# Outputs (正式版):
 #   dist\up-video-strm-<version>-win-x64-setup.exe     Inno Setup installer (only deliverable)
 #   PyInstaller onedir staging dir dist\up-video-strm is removed after packaging (-KeepStage keeps it)
+# Outputs (测试版):
+#   dist\up-video-strm-test-<version>-win-x64-setup.exe
+#   staging dir dist\up-video-strm-test（默认同样清理）
 
 param(
     [switch]$SkipFrontend,
     [switch]$SkipInstaller,
-    # keep the PyInstaller onedir staging folder (dist\up-video-strm)
+    # keep the PyInstaller onedir staging folder (dist\up-video-strm[-test])
     [switch]$KeepStage,
     # dev mode: build onedir only and keep it (installers may be blocked by Smart App Control)
     [switch]$Dev,
     # python executable for PyInstaller; defaults to backend\.venv, then PATH
-    [string]$Python = ""
+    [string]$Python = "",
+    # 构建配置：prod=正式版（默认），test=测试版（推荐用 packaging\build-test.ps1 调用）
+    [ValidateSet("prod", "test")]
+    [string]$Profile = "prod"
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +49,13 @@ $VersionInfoFile = Join-Path $PSScriptRoot "version_info.txt"
 $VersionMatch = [regex]::Match((Get-Content $VersionFile -Raw), '__version__\s*=\s*"([^"]+)"')
 if (-not $VersionMatch.Success) { throw "cannot read __version__ from $VersionFile" }
 $Version = $VersionMatch.Groups[1].Value
+
+# 构建配置决定应用名：正式版 up-video-strm，测试版 up-video-strm-test
+$Suffix = if ($Profile -eq "test") { "-test" } else { "" }
+$AppName = "up-video-strm$Suffix"
+$StagePath = Join-Path $ProjectRoot "dist\$AppName"
+$ExePath = Join-Path $StagePath "$AppName.exe"
+$SetupPath = Join-Path $ProjectRoot "dist\$AppName-$Version-win-x64-setup.exe"
 
 $PkgVersion = (Get-Content (Join-Path $FrontendDir "package.json") -Raw | ConvertFrom-Json).version
 if ($PkgVersion -ne $Version) {
@@ -70,10 +87,10 @@ if (-not $Python -or -not (Test-Path $Python)) {
 if ($Dev) {
     $SkipInstaller = $true
     $KeepStage = $true
-    Write-Host "==> Dev mode: onedir only, staging kept (run dist\up-video-strm\up-video-strm.exe)" -ForegroundColor Yellow
+    Write-Host "==> Dev mode: onedir only, staging kept (run dist\$AppName\$AppName.exe)" -ForegroundColor Yellow
 }
 
-Write-Host "==> Version $Version" -ForegroundColor Cyan
+Write-Host "==> Profile $Profile / version $Version / app $AppName" -ForegroundColor Cyan
 
 if (-not $SkipFrontend) {
     Write-Host "==> Build frontend (npm run build)" -ForegroundColor Cyan
@@ -96,7 +113,9 @@ if (Test-Path $BackendDist) { Remove-Item $BackendDist -Recurse -Force }
 New-Item -ItemType Directory -Path $BackendDist -Force | Out-Null
 Copy-Item (Join-Path $FrontendDist "*") $BackendDist -Recurse -Force
 
-Write-Host "==> PyInstaller build (onedir)" -ForegroundColor Cyan
+Write-Host "==> PyInstaller build (onedir, profile=$Profile)" -ForegroundColor Cyan
+$PreviousProfileEnv = $env:UP_STRM_BUILD_PROFILE
+$env:UP_STRM_BUILD_PROFILE = $Profile
 Push-Location $ProjectRoot
 try {
     & $Python -m PyInstaller --noconfirm --clean $SpecFile
@@ -104,14 +123,19 @@ try {
 }
 finally {
     Pop-Location
+    if ($null -eq $PreviousProfileEnv) {
+        Remove-Item Env:UP_STRM_BUILD_PROFILE -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:UP_STRM_BUILD_PROFILE = $PreviousProfileEnv
+    }
 }
 
-$ExePath = Join-Path $ProjectRoot "dist\up-video-strm\up-video-strm.exe"
 if (-not (Test-Path $ExePath)) { throw "build output missing: $ExePath" }
 Write-Host "==> Built $ExePath" -ForegroundColor Green
 
 if ($SkipInstaller) {
-    Write-Host "==> Installer skipped (-SkipInstaller); staging folder kept at dist\up-video-strm" -ForegroundColor Yellow
+    Write-Host "==> Installer skipped (-SkipInstaller); staging folder kept at dist\$AppName" -ForegroundColor Yellow
     exit 0
 }
 
@@ -124,15 +148,16 @@ $Iscc = $Candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $Iscc) {
     Write-Host "==> Inno Setup (ISCC.exe) not found, installer skipped" -ForegroundColor Yellow
     Write-Host "    Install Inno Setup 6, then rerun this script to produce setup.exe." -ForegroundColor Yellow
-    Write-Host "    Staging folder dist\up-video-strm\ kept for manual use." -ForegroundColor Yellow
+    Write-Host "    Staging folder dist\$AppName\ kept for manual use." -ForegroundColor Yellow
     exit 0
 }
 
 Write-Host "==> Build installer ($Iscc)" -ForegroundColor Cyan
-& $Iscc "/DMyAppVersion=$Version" $IssFile
+$IsccArgs = @("/DMyAppVersion=$Version")
+if ($Profile -eq "test") { $IsccArgs += "/DMyTestBuild=1" }
+& $Iscc @IsccArgs $IssFile
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (exit $LASTEXITCODE)" }
 
-$SetupPath = Join-Path $ProjectRoot "dist\up-video-strm-$Version-win-x64-setup.exe"
 if (Test-Path $SetupPath) {
     Write-Host "==> Built $SetupPath" -ForegroundColor Green
 }
@@ -142,14 +167,13 @@ else {
 
 # Only the installer is delivered: clean staging dir and legacy portable zip
 if (-not $KeepStage) {
-    $StagePath = Join-Path $ProjectRoot "dist\up-video-strm"
     if (Test-Path $StagePath) {
         try {
             Remove-Item $StagePath -Recurse -Force -ErrorAction Stop
-            Write-Host "==> Removed staging folder dist\up-video-strm (use -KeepStage to keep it)" -ForegroundColor DarkGray
+            Write-Host "==> Removed staging folder dist\$AppName (use -KeepStage to keep it)" -ForegroundColor DarkGray
         }
         catch {
-            Write-Host "==> Could not remove dist\up-video-strm (program may be running): $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "==> Could not remove dist\$AppName (program may be running): $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
 }
@@ -159,9 +183,9 @@ Get-ChildItem (Join-Path $ProjectRoot "dist") -Filter "*-portable.zip" -ErrorAct
         Write-Host "==> Removed legacy portable zip $($_.Name)" -ForegroundColor DarkGray
     }
 
-# Keep only the installer just built
+# Keep only the installer just built（只清理当前应用的旧安装包，不碰另一构建配置的产物）
 $CurrentSetup = Split-Path $SetupPath -Leaf
-Get-ChildItem (Join-Path $ProjectRoot "dist") -Filter "up-video-strm-*-setup.exe" -ErrorAction SilentlyContinue |
+Get-ChildItem (Join-Path $ProjectRoot "dist") -Filter "$AppName-*-setup.exe" -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -ne $CurrentSetup } |
     ForEach-Object {
         Remove-Item $_.FullName -Force

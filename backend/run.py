@@ -22,11 +22,14 @@ import threading
 import time
 from pathlib import Path
 
+from app.core.paths import APP_DIR_NAME
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 PORT_SCAN_LIMIT = 20
-MUTEX_NAME = "Local\\up-video-strm-single-instance"
-ACTIVATE_EVENT = "Local\\up-video-strm-activate"
+# 单实例互斥体/唤醒事件按应用目录名区分：测试版（up-video-strm-test）可与正式版并存运行
+MUTEX_NAME = f"Local\\{APP_DIR_NAME}-single-instance"
+ACTIVATE_EVENT = f"Local\\{APP_DIR_NAME}-activate"
 ERROR_ALREADY_EXISTS = 183
 EVENT_MODIFY_STATE = 0x0002
 LOG_MAX_BYTES = 5 * 1024 * 1024
@@ -110,7 +113,7 @@ def _signal_activate() -> bool:
     return True
 
 
-def _message_box(text: str, title: str = "up-video-strm", error: bool = False) -> None:
+def _message_box(text: str, title: str = APP_DIR_NAME, error: bool = False) -> None:
     if sys.platform == "win32":
         ctypes.windll.user32.MessageBoxW(None, text, title, 0x10 if error else 0x40)
     else:
@@ -228,7 +231,7 @@ def main() -> None:
                 if _acquire_single_instance():
                     break
             else:
-                print("up-video-strm 已在运行，已请求其显示窗口", flush=True)
+                print(f"{APP_DIR_NAME} 已在运行，已请求其显示窗口", flush=True)
                 return
         from app.core.desktop_prefs import load_prefs
 
@@ -250,7 +253,7 @@ def main() -> None:
         _fatal(str(exc))
 
     url = f"http://{host}:{port}"
-    print("正在启动 up-video-strm ...")
+    print(f"正在启动 {APP_DIR_NAME} ...")
     if port != preferred_port:
         print(f"端口 {preferred_port} 已被占用，自动切换到 {port}")
     print(f"服务地址: {url}")

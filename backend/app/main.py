@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.settings import settings
 from app.core.database import init_db
 from app.core.exceptions import UpVideoStrmException
-from app.core.paths import exe_dir, is_frozen, resource_dir
+from app.core.paths import APP_DIR_NAME, exe_dir, is_frozen, resource_dir
 from app.utils.responses import success_response
 from app.api import desktop, openlist
 from app.version import __version__
@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="up-video-strm API",
+    title=f"{APP_DIR_NAME} API",
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",

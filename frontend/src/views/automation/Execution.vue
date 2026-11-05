@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 自动化任务 · 执行管理：
- * - 列出全部自动化任务与运行态（3s 轮询），支持逐项/批量启动与停止；
+ * - 列出全部自动化任务与运行态；仅存在运行中任务且页面可见时每 5s 刷新运行态；
  * - 启动可覆盖本次运行的并发、重试与生成模式（不写回任务配置）；
  * - 运行中的任务展示阶段、轮次与下一轮时间，并可重置指纹、清空待校验文件。
  */
@@ -60,6 +60,19 @@ const MODE_OPTIONS: { value: AutomationOpenListMode; label: string }[] = [
 const activeMap = computed(() => new Map(active.value.map(item => [item.task_id, item])))
 const runningCount = computed(() => active.value.length)
 
+/** 轮次结束/任务停止时刷新一次任务行（待校验计数、运行状态），不额外轮询。 */
+const ROUND_END_PHASES = new Set(['interval', 'backoff', 'idle', 'stopped', 'done'])
+let lastPhases = new Map<number, string>()
+
+async function refreshAfterRoundEnd(next: AutomationActiveTask[], previousActive: AutomationActiveTask[]): Promise<void> {
+  const finishedRound = next.some(item => {
+    const previous = lastPhases.get(item.task_id)
+    return previous !== undefined && !ROUND_END_PHASES.has(previous) && ROUND_END_PHASES.has(item.phase ?? '')
+  })
+  const stopped = previousActive.length > 0 && next.length === 0
+  if (finishedRound || stopped) await loadTasks(true)
+}
+
 function phaseText(task: AutomationTask): string {
   const state = activeMap.value.get(task.id)
   if (state?.phase) return PHASE_LABELS[state.phase] ?? state.phase
@@ -74,13 +87,18 @@ function nextRoundText(task: AutomationTask): string {
 async function loadActive(): Promise<void> {
   const res = await automationRunApi.active()
   active.value = res.data ?? []
+  lastPhases = new Map(active.value.map(item => [item.task_id, item.phase ?? '']))
   syncTimer()
 }
 
 async function pollActive(): Promise<void> {
   try {
     const res = await automationRunApi.active()
-    active.value = res.data ?? []
+    const previous = active.value
+    const next = res.data ?? []
+    active.value = next
+    lastPhases = new Map(next.map(item => [item.task_id, item.phase ?? '']))
+    await refreshAfterRoundEnd(next, previous)
   } finally {
     syncTimer()
   }

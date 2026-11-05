@@ -1,4 +1,4 @@
-﻿/** 自动化任务（模块 C）类型定义：任务配置、绑定选项与目录检测。 */
+/** 自动化任务（模块 C）类型定义：任务配置、绑定选项与目录检测。 */
 
 export type AutomationOpenListMode = 'incremental' | 'full' | 'strm_only'
 
@@ -168,5 +168,14 @@ export interface AutomationRunLogResult {
 export type AutomationWsFrame =
   | { type: 'log'; level: string; message: string; ts: string }
   | { type: 'progress'; data: Record<string, unknown> }
-  | { type: 'status'; status?: string; run_id?: number; round_no?: number; phase?: string }
+  | {
+      type: 'status'
+      status?: string
+      run_id?: number
+      round_no?: number
+      phase?: string
+      pending?: number
+      checked?: number
+      missed?: number
+    }
   | { type: 'alert'; status?: string; message: string; task_id?: number }

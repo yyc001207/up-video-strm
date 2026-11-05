@@ -91,6 +91,7 @@ function onFrame(frame: AutomationWsFrame): void {
   if (frame.type === 'status') {
     if (frame.phase) phase.value = frame.phase
     if (frame.round_no) roundNo.value = frame.round_no
+    if (typeof frame.pending === 'number') pendingCount.value = frame.pending
     return
   }
   if (frame.type === 'alert') {

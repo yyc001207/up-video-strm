@@ -161,8 +161,16 @@ async def _update_run(run_id: int, **fields) -> None:
         await db.commit()
 
 
-async def _finish_run(run_id: int, status: str, **fields) -> None:
+async def _finish_run(run_id: int, log: AutomationLogger, status: str, **fields) -> None:
+    """写入 run 终态，并广播带 ``pending`` 的 status 帧（页面操作栏实时归零）。"""
     await _update_run(run_id, status=status, phase="done", finished_time=beijing_now(), **fields)
+    pending = fields.get("pending_file_count")
+    if pending is None:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(AutomationRun.pending_file_count).where(AutomationRun.id == run_id))
+            value = result.scalar_one_or_none()
+        pending = 0 if value is None else int(value)
+    await log.status(status=status, run_id=run_id, phase="done", pending=pending)
 
 
 # ---------- 对外入口 ----------
@@ -362,13 +370,13 @@ async def _execute_round(
         idle_started = time.monotonic()
         idle_status = await _wait_idle(snapshot, log)
         if idle_status == "cancelled":
-            await _finish_run(run_id, "cancelled", error_code="B_CANCELLED", error_message="用户停止")
+            await _finish_run(run_id, log, "cancelled", error_code="B_CANCELLED", error_message="用户停止")
             return {"status": "cancelled"}
         if idle_status == "timeout":
             message = f"等待 A/B 空闲超过 {snapshot.idle_wait_timeout} 秒"
             await log.error(message)
             await _finish_run(
-                run_id,
+                run_id, log,
                 "fail",
                 error_code="IDLE_TIMEOUT",
                 error_message=message[:500],
@@ -388,11 +396,11 @@ async def _execute_round(
                 skipped_file_count=b_result.get("file_skipped", 0),
             )
             if b_status == "cancelled":
-                await _finish_run(run_id, "cancelled", error_code="B_CANCELLED", error_message="用户停止")
+                await _finish_run(run_id, log, "cancelled", error_code="B_CANCELLED", error_message="用户停止")
                 return {"status": "cancelled"}
             if b_status == "fail" and b_result.get("fatal"):
                 await _finish_run(
-                    run_id,
+                    run_id, log,
                     "fail",
                     error_code=b_result.get("error_code") or "B_SCAN_ERROR",
                     error_message=(b_result.get("message") or "上传扫描失败")[:500],
@@ -408,7 +416,7 @@ async def _execute_round(
                     message = b_result.get("message") or "上传失败，本轮无任何进展"
                     await log.error(message)
                     await _finish_run(
-                        run_id,
+                        run_id, log,
                         "fail",
                         error_code=b_result.get("error_code") or "B_CLOUD_ERROR",
                         error_message=message[:500],
@@ -439,7 +447,7 @@ async def _execute_round(
             )
             if not pending:
                 await log.info("本轮没有需要校验的新文件，跳过 A 调度")
-                await _finish_run(run_id, "success", pending_file_count=0)
+                await _finish_run(run_id, log, "success", pending_file_count=0)
                 return {
                     "status": "success",
                     "committed_fingerprint": fingerprint,
@@ -457,12 +465,12 @@ async def _execute_round(
             pending_file_count=len(pending),
         )
         if check_status == "cancelled":
-            await _finish_run(run_id, "cancelled", error_code="A_CANCELLED", error_message="用户停止")
+            await _finish_run(run_id, log, "cancelled", error_code="A_CANCELLED", error_message="用户停止")
             return {"status": "cancelled"}
         if check_status == "invalid_dir":
             message = f"校验目录不可访问：{snapshot.check_dir}"
             await log.error(message)
-            await _finish_run(run_id, "fail", error_code="CHECK_DIR_INVALID", error_message=message[:500])
+            await _finish_run(run_id, log, "fail", error_code="CHECK_DIR_INVALID", error_message=message[:500])
             await notify_abnormal(snapshot.task_id, snapshot.task_name, message)
             return {"status": "fail", "error_code": "CHECK_DIR_INVALID", "message": message, "fatal": True}
         if check_status == "timeout":
@@ -470,7 +478,7 @@ async def _execute_round(
             await log.warning(message)
             await _update_task(snapshot.task_id, pending_files=dump_pending(pending))
             await _finish_run(
-                run_id,
+                run_id, log,
                 "fail",
                 error_code="OPENLIST_TIMEOUT",
                 error_message=message[:500],
@@ -488,13 +496,13 @@ async def _execute_round(
         a_result = await _run_openlist_stage(snapshot, run_id, log)
         await _update_run(run_id, openlist_execution_id=a_result.get("execution_id"), pending_file_count=len(pending))
         if a_result["status"] == "cancelled":
-            await _finish_run(run_id, "cancelled", error_code="A_CANCELLED", error_message="用户停止")
+            await _finish_run(run_id, log, "cancelled", error_code="A_CANCELLED", error_message="用户停止")
             return {"status": "cancelled"}
         if a_result["status"] == "fail":
             message = a_result.get("message") or "STRM 任务执行失败"
             await log.error(message)
             await _finish_run(
-                run_id,
+                run_id, log,
                 "fail",
                 error_code=a_result.get("error_code") or "A_FAILED",
                 error_message=message[:500],
@@ -516,7 +524,7 @@ async def _execute_round(
         )
         await log.info("A 调度成功，本轮链路完成，已清空待校验文件")
         await _finish_run(
-            run_id,
+            run_id, log,
             "partial" if b_partial else "success",
             pending_file_count=0,
             skipped_file_count=b_skipped,
@@ -529,7 +537,7 @@ async def _execute_round(
     except Exception as exc:  # noqa: BLE001 - 单轮异常记录后按轮次失败处理
         logger.exception("自动化任务 %s 第 %s 轮异常", snapshot.task_id, run_id)
         await log.error(f"本轮异常：{exc}")
-        await _finish_run(run_id, "fail", error_code="INTERNAL_ERROR", error_message=str(exc)[:500])
+        await _finish_run(run_id, log, "fail", error_code="INTERNAL_ERROR", error_message=str(exc)[:500])
         return {"status": "fail", "error_code": "INTERNAL_ERROR", "message": str(exc), "fatal": False}
 
 

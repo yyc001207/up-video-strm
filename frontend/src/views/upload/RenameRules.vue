@@ -124,10 +124,10 @@ onMounted(() => void load())
   <div class="page upload-rules">
     <div class="toolbar">
       <div class="toolbar__left">
-        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <span class="toolbar__hint">模板变量：{season} / {episode} / {ext}，支持 :02 补零</span>
       </div>
       <div class="toolbar__right">
+        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建规则</el-button>
       </div>
     </div>
@@ -172,6 +172,10 @@ onMounted(() => void load())
         </el-form-item>
         <el-form-item label="命名模板" prop="template">
           <el-input v-model="form.template" placeholder="S{season:02}E{episode:02}.{ext}" />
+          <div class="form-tip">
+            可用变量：{season}（输出季数）、{episode}（换算后的季内集号）、{ext}（扩展名）；必须同时包含
+            episode 与 ext，最终输出需为 SxxExx.ext 形式。
+          </div>
         </el-form-item>
         <el-form-item label="集数提取正则（可选）">
           <el-input
@@ -188,10 +192,6 @@ onMounted(() => void load())
             <code>- (\d{1,4}) \(</code> 可从 <code>Show - 13 (1080p).mp4</code> 中提取 13。
           </div>
         </el-form-item>
-        <div class="form-tip">
-          可用变量：{season}（输出季数）、{episode}（换算后的季内集号）、{ext}（扩展名）；必须同时包含
-          episode 与 ext，最终输出需为 SxxExx.ext 形式。
-        </div>
       </el-form>
 
       <div class="preview">
@@ -225,11 +225,29 @@ onMounted(() => void load())
 
 <style scoped lang="scss">
 .upload-rules {
+  display: flex;
+  flex-direction: column;
   gap: var(--up-strm-space-3);
 
+  // 工具栏：左侧模板变量帮助，右侧「刷新 → 主操作」
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--up-strm-space-3, 12px);
+
+    &__left,
+    &__right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--up-strm-space-2, 8px);
+    }
+  }
+
   .toolbar__hint {
-    margin-left: var(--up-strm-space-2);
-    color: var(--el-text-color-placeholder);
+    color: var(--el-text-color-secondary);
     font-size: var(--up-strm-font-size-xs);
   }
 
@@ -247,8 +265,9 @@ onMounted(() => void load())
   }
 
   .form-tip {
-    margin-top: calc(-1 * var(--up-strm-space-1));
-    color: var(--el-text-color-placeholder);
+    flex-basis: 100%; // 独占 el-form-item 内容区一行，避免与输入框挤压
+    margin-top: var(--up-strm-space-1); // 正值：原 -4px 负边距是提示压住输入框的根因
+    color: var(--el-text-color-secondary);
     font-size: var(--up-strm-font-size-xs);
     line-height: 1.5;
   }

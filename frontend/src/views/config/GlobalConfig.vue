@@ -362,7 +362,7 @@ defineExpose({ reload: load })
 
 <template>
   <div class="page global-config">
-    <el-row :gutter="16">
+    <el-row :gutter="16" class="global-config__row">
       <!-- 左 8 栏：唯一服务器配置卡 -->
       <el-col :xs="24" :lg="16">
         <el-card v-loading="loading" shadow="never" class="global-config__card">
@@ -420,7 +420,7 @@ defineExpose({ reload: load })
             </dl>
           </div>
 
-          <el-empty v-else-if="!loading" description="尚未配置 OpenList 服务器" :image-size="90">
+          <el-empty v-else-if="!loading" description="尚未配置 OpenList 服务器" :image-size="60">
             <el-button type="primary" plain :icon="Plus" @click="openCreateServer">新增服务器</el-button>
           </el-empty>
         </el-card>
@@ -446,7 +446,7 @@ defineExpose({ reload: load })
               <dd>{{ config.subtitle_formats || '—' }}</dd>
             </div>
           </dl>
-          <el-empty v-else description="暂无格式设置" :image-size="70" />
+          <el-empty v-else description="暂无格式设置" :image-size="60" />
         </el-card>
       </el-col>
     </el-row>
@@ -497,7 +497,7 @@ defineExpose({ reload: load })
           <dd>{{ formatDateTime(pan123Config.token_expires_at) }}</dd>
         </div>
       </dl>
-      <el-empty v-else description="尚未配置 123 云盘凭据" :image-size="70">
+      <el-empty v-else description="尚未配置 123 云盘凭据" :image-size="60">
         <el-button type="primary" plain :icon="Edit" @click="openPan123Edit">立即配置</el-button>
       </el-empty>
     </el-card>
@@ -620,8 +620,11 @@ defineExpose({ reload: load })
   }
 }
 
-.server-card {
-  display: flex;
+.global-config__row {
+  align-items: flex-start;
+}
+
+.server-card {  display: flex;
   flex-direction: column;
   gap: var(--up-strm-space-3, 12px);
   padding: var(--up-strm-space-4, 16px);

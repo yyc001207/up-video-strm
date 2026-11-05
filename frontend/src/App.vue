@@ -16,13 +16,13 @@ import {
 import type { Component } from 'vue'
 
 import ThemeToggle from '@/components/ThemeToggle.vue'
-import { useOpenlistStore } from '@/stores/openlist'
+import { RUNNING_POLL_MS, useRunningStore } from '@/stores/running'
 
 interface NavPage {
   path: string
   label: string
   icon: Component
-  badge?: 'running'
+  badge?: 'running' | 'upload-running'
 }
 
 interface NavGroup {
@@ -97,7 +97,7 @@ const modules: NavModule[] = [
         title: '运行',
         pages: [
           { path: '/upload/execution', label: '执行管理', icon: VideoPlay },
-          { path: '/upload/realtime', label: '实时日志', icon: Monitor }
+          { path: '/upload/realtime', label: '实时日志', icon: Monitor, badge: 'upload-running' }
         ]
       },
       {
@@ -109,22 +109,41 @@ const modules: NavModule[] = [
 ]
 
 const COLLAPSE_KEY = 'up-video-strm-sidebar-collapsed'
-const RUNNING_POLL_MS = 10000
 
 const route = useRoute()
 const router = useRouter()
-const openlistStore = useOpenlistStore()
+const runningStore = useRunningStore()
 
 const collapsed = ref(readCollapsed())
+const offlineDismissed = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const currentModule = computed(
   () => modules.find(module => route.path.startsWith(module.basePath)) ?? null
 )
 const flatPages = computed(() => currentModule.value?.groups.flatMap(group => group.pages) ?? [])
-const runningCount = computed(() => openlistStore.runningCount)
 const pageTitle = computed(() => (route.meta.title as string | undefined) ?? 'up-video-strm')
 const pageDescription = computed(() => (route.meta.description as string | undefined) ?? '')
+
+/** 顶栏状态胶囊三态：连接失败（30s 内失败）优先于运行中，其余为空闲。 */
+type CapsuleState = 'error' | 'busy' | 'idle'
+const capsuleState = computed<CapsuleState>(() => {
+  if (runningStore.isConnectFailed()) return 'error'
+  return runningStore.total > 0 ? 'busy' : 'idle'
+})
+const capsuleText = computed(() => {
+  if (capsuleState.value === 'error') return '连接失败'
+  if (capsuleState.value === 'busy') return `运行中 ${runningStore.total}`
+  return '空闲'
+})
+const showOfflineAlert = computed(() => runningStore.offline && !offlineDismissed.value)
+
+/** 导航徽标值：任务调度与上传管理分别取各自模块的运行数。 */
+function badgeCount(badge: NavPage['badge']): number {
+  if (badge === 'running') return runningStore.scheduleCount
+  if (badge === 'upload-running') return runningStore.uploadCount
+  return 0
+}
 
 function readCollapsed(): boolean {
   try {
@@ -151,15 +170,23 @@ function isActive(path: string): boolean {
   return route.path === path
 }
 
+/** 按运行来源分流：调度优先，其次上传；都空闲时维持跳任务调度实时日志。 */
 function goRealtime() {
-  router.push('/schedule/realtime')
+  if (runningStore.scheduleCount > 0) {
+    router.push('/schedule/realtime')
+  } else if (runningStore.uploadCount > 0) {
+    router.push('/upload/realtime')
+  } else {
+    router.push('/schedule/realtime')
+  }
 }
 
 async function refreshRunning() {
   try {
-    await openlistStore.fetchRunning()
+    await runningStore.fetchCounts()
+    offlineDismissed.value = false
   } catch {
-    // 运行状态仅用于导航徽标，接口失败时静默保持旧值
+    // fetchCounts 内部已记录离线状态，这里不再重复提示
   }
 }
 
@@ -221,8 +248,8 @@ onBeforeUnmount(() => {
               >
                 <el-icon :size="16"><component :is="page.icon" /></el-icon>
                 <span class="nav-page__label">{{ page.label }}</span>
-                <span v-if="page.badge === 'running' && runningCount > 0" class="nav-page__badge">
-                  {{ runningCount }}
+                <span v-if="page.badge && badgeCount(page.badge) > 0" class="nav-page__badge">
+                  {{ badgeCount(page.badge) }}
                 </span>
               </router-link>
             </div>
@@ -267,15 +294,26 @@ onBeforeUnmount(() => {
         <div class="app-topbar__actions">
           <button
             class="run-capsule"
-            :class="{ 'run-capsule--busy': runningCount > 0 }"
+            :class="`run-capsule--${capsuleState}`"
             type="button"
+            :aria-label="`运行状态：${capsuleText}`"
             @click="goRealtime"
           >
             <span class="run-capsule__dot" />
-            <span>{{ runningCount > 0 ? `运行中 ${runningCount}` : '空闲' }}</span>
+            <span>{{ capsuleText }}</span>
           </button>
         </div>
       </header>
+
+      <el-alert
+        v-if="showOfflineAlert"
+        class="app-offline"
+        type="error"
+        :closable="true"
+        show-icon
+        title="无法连接后端服务，正在自动重试…"
+        @close="offlineDismissed = true"
+      />
 
       <main class="app-content">
         <router-view />
@@ -346,8 +384,8 @@ onBeforeUnmount(() => {
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   margin-left: auto;
   border: none;
   border-radius: var(--up-strm-radius-sm);
@@ -413,7 +451,7 @@ onBeforeUnmount(() => {
 
   &__title {
     padding: 0 var(--up-strm-space-3) var(--up-strm-space-1);
-    color: var(--el-text-color-placeholder);
+    color: var(--el-text-color-secondary);
     font-size: var(--up-strm-font-size-xs);
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -553,10 +591,10 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: var(--up-strm-space-2);
-  height: 28px;
+  height: 32px;
   padding: 0 var(--up-strm-space-3);
   border: 1px solid var(--el-border-color);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--el-bg-color);
   color: var(--el-text-color-secondary);
   font-size: var(--up-strm-font-size-xs);
@@ -582,6 +620,19 @@ onBeforeUnmount(() => {
       background: var(--el-color-warning);
     }
   }
+
+  &--error {
+    border-color: var(--el-color-danger-light-5);
+    color: var(--el-color-danger);
+
+    .run-capsule__dot {
+      background: var(--el-color-danger);
+    }
+  }
+}
+
+.app-offline {
+  margin: var(--up-strm-space-2) var(--up-strm-space-4) 0;
 }
 
 .app-content {

@@ -36,10 +36,11 @@ interface LaunchNavItem {
   launch: boolean
 }
 
+// 选项文案精简：完整含义由选项下方的 MODE_HINT 说明承载
 const MODE_OPTIONS: Array<{ label: string; value: ExecutionMode }> = [
-  { label: '增量更新', value: 'incremental' },
-  { label: '全量重生成', value: 'full' },
-  { label: '仅更新 strm', value: 'strm-only' }
+  { label: '增量', value: 'incremental' },
+  { label: '全量', value: 'full' },
+  { label: '仅 strm', value: 'strm-only' }
 ]
 
 const MODE_FLAGS: Record<ExecutionMode, ModeFlags> = {
@@ -146,7 +147,8 @@ function lastExecutionText(task: OpenListTask): string {
 async function refreshRunning(silent = false): Promise<void> {
   if (!silent) runningLoading.value = true
   try {
-    await store.fetchRunning()
+    // silent 同时透传到 axios 请求：轮询失败不再弹窗，交给全局错误治理
+    await store.fetchRunning(silent)
   } catch {
     /* 拦截器已提示 */
   } finally {
@@ -538,7 +540,7 @@ onUnmounted(() => {
 
 .exec-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.85fr) minmax(260px, 0.95fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr) minmax(280px, 1fr);
   gap: var(--up-strm-space-4);
   align-items: stretch;
   height: clamp(380px, 52vh, 560px);
@@ -894,13 +896,7 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 1200px) {
-  .exec-workspace {
-    grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.8fr) minmax(240px, 0.9fr);
-  }
-}
-
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
   .exec-workspace {
     grid-template-columns: minmax(0, 1fr);
     height: auto;

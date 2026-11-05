@@ -763,6 +763,7 @@ onBeforeUnmount(() => {
     flex-direction: column;
     align-items: flex-end;
     gap: 2px;
+    min-width: 96px;
   }
 
   &__elapsed-label {

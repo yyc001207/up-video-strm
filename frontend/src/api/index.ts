@@ -16,6 +16,19 @@ const request = axios.create({
   timeout: 30000
 })
 
+/** 同一错误文案去重窗口：并发失败/轮询失败只弹一条，避免 toast 轰炸。 */
+const ERROR_DEDUPE_MS = 3000
+let lastError: { message: string; at: number } | null = null
+
+function showError(message: string): void {
+  const now = Date.now()
+  if (lastError && lastError.message === message && now - lastError.at < ERROR_DEDUPE_MS) {
+    return
+  }
+  lastError = { message, at: now }
+  ElMessage.error(message)
+}
+
 request.interceptors.response.use(
   (response: AxiosResponse) => {
     const res = response.data as { code: number; msg?: string }
@@ -25,14 +38,14 @@ request.interceptors.response.use(
       return response.data as unknown as AxiosResponse
     }
     if (res.code === 429) {
-      if (!silent) ElMessage.warning('请求过于频繁，请稍后再试')
+      if (!silent) showError('请求过于频繁，请稍后再试')
       return Promise.reject(res)
     }
-    if (!silent) ElMessage.error(res.msg || '请求失败')
+    if (!silent) showError(res.msg || '请求失败')
     return Promise.reject(res)
   },
   error => {
-    if (error?.config?.silent !== true) ElMessage.error('网络异常，请稍后重试')
+    if (error?.config?.silent !== true) showError('网络异常，请稍后重试')
     return Promise.reject(error)
   }
 )

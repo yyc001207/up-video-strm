@@ -101,7 +101,7 @@ defineExpose({ reload: load })
       <template #header>
         <div class="settings__header">
           <span>常规</span>
-          <el-button link type="primary" :icon="Refresh" @click="load">刷新</el-button>
+          <el-button link :icon="Refresh" @click="load">刷新</el-button>
         </div>
       </template>
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, FolderAdd, FolderOpened, Plus, Search } from '@element-plus/icons-vue'
+import { Delete, Edit, FolderAdd, FolderOpened, Plus, Refresh, Search } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
 import { useOpenlistStore } from '@/stores/openlist'
@@ -26,10 +26,15 @@ const form = reactive({
   pause_time: '' as string
 })
 
-/** 空状态文案：有搜索条件时区分「无匹配」与「无数据」。 */
-const emptyDescription = computed(() =>
-  keyword.value.trim() ? '没有匹配的任务配置' : '暂无任务配置'
-)
+/** 是否已配置默认运行参数：首访空态据此分层引导。 */
+const paramsConfigured = computed(() => store.config !== null)
+
+/** 空状态文案：有搜索条件时区分「无匹配」；首访未配置参数时引导先配置。 */
+const emptyDescription = computed(() => {
+  if (keyword.value.trim()) return '没有匹配的任务配置'
+  if (!paramsConfigured.value) return '先完成默认运行参数，再创建任务'
+  return '暂无任务配置'
+})
 
 // 默认运行参数（全局生效；其余运行参数已从全局配置页迁入本页）
 const paramsDrawerVisible = ref(false)
@@ -341,14 +346,14 @@ async function handleQuickAddParentDir() {
 }
 
 function openParams() {
+  // 首次未配置时也允许打开抽屉：字段回落到默认值，保存后即完成配置
   const current = store.config
-  if (!current) return
-  paramsForm.max_concurrent = current.max_concurrent || 1
-  paramsForm.pause_count = current.pause_count || 50
-  paramsForm.pause_time = current.pause_time || '0,3,5'
-  paramsForm.disable_ssl_verify = current.disable_ssl_verify ?? false
-  paramsForm.output_dir_prefix = current.output_dir_prefix ?? ''
-  paramsForm.output_root = current.output_root ?? ''
+  paramsForm.max_concurrent = current?.max_concurrent || 1
+  paramsForm.pause_count = current?.pause_count || 50
+  paramsForm.pause_time = current?.pause_time || '0,3,5'
+  paramsForm.disable_ssl_verify = current?.disable_ssl_verify ?? false
+  paramsForm.output_dir_prefix = current?.output_dir_prefix ?? ''
+  paramsForm.output_root = current?.output_root ?? ''
   paramsDrawerVisible.value = true
 }
 
@@ -441,7 +446,9 @@ defineExpose({ reload: load })
           <dd>{{ store.config.output_root || '默认（程序目录下 output）' }}</dd>
         </div>
       </dl>
-      <el-empty v-else description="暂无运行参数" :image-size="60" />
+      <el-empty v-else description="暂无运行参数" :image-size="60">
+        <el-button type="primary" :icon="Edit" @click="openParams">配置默认参数</el-button>
+      </el-empty>
     </el-card>
 
     <!-- 工具栏：左侧搜索/筛选，右侧动作（主次分明） -->
@@ -462,6 +469,7 @@ defineExpose({ reload: load })
       </div>
 
       <div class="toolbar__right">
+        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button
           type="danger"
           plain
@@ -503,7 +511,9 @@ defineExpose({ reload: load })
 
         <template #empty>
           <el-empty :description="emptyDescription" :image-size="80">
-            <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
+            <el-button v-if="paramsConfigured" type="primary" :icon="Plus" @click="openCreate">
+              创建第一个任务
+            </el-button>
           </el-empty>
         </template>
       </el-table>

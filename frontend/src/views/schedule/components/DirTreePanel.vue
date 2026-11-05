@@ -203,7 +203,9 @@ async function handleRefresh() {
         @input="handleSearchInput"
         @clear="searchResults = []"
       />
-      <el-button :loading="refreshing" :disabled="!parentDir" @click="handleRefresh">刷新缓存</el-button>
+      <el-button size="small" :loading="refreshing" :disabled="!parentDir" @click="handleRefresh">
+        刷新缓存
+      </el-button>
     </div>
 
     <div v-if="searchResults.length && !browseMode" class="dir-tree-panel__results">

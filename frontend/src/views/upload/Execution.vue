@@ -59,8 +59,12 @@ async function loadTasks(): Promise<void> {
   tasks.value = res.data
 }
 
-async function loadRunning(): Promise<void> {
-  const res = await uploaderApi.listExecutions({ status: 'running', page: 1, pageSize: 50 })
+async function loadRunning(silent = false): Promise<void> {
+  // silent 同时透传到 axios 请求：轮询失败不再弹窗，交给全局错误治理
+  const res = await uploaderApi.listExecutions(
+    { status: 'running', page: 1, pageSize: 50 },
+    { silent }
+  )
   running.value = res.data.list
 }
 
@@ -146,7 +150,7 @@ function openRealtime(row: UploadExecution): void {
 
 onMounted(() => {
   void load()
-  pollTimer = setInterval(() => void loadRunning(), 5000)
+  pollTimer = setInterval(() => void loadRunning(true), 5000)
 })
 
 onBeforeUnmount(() => {
@@ -294,7 +298,7 @@ onBeforeUnmount(() => {
       <template #header>
         <div class="exec-card__header">
           <span class="exec-card__title">正在执行</span>
-          <el-button link :icon="Refresh" @click="loadRunning">刷新</el-button>
+          <el-button link :icon="Refresh" @click="loadRunning()">刷新</el-button>
         </div>
       </template>
       <el-table :data="running" row-key="id" style="width: 100%">
@@ -336,7 +340,7 @@ onBeforeUnmount(() => {
 
   &__cards {
     display: grid;
-    grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.85fr) minmax(260px, 0.95fr);
+    grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr) minmax(280px, 1fr);
     gap: var(--up-strm-space-4, 16px);
     align-items: start;
   }
@@ -499,13 +503,7 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-regular);
 }
 
-@media (max-width: 1200px) {
-  .upload-execution__cards {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr) minmax(240px, 0.9fr);
-  }
-}
-
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
   .upload-execution__cards {
     grid-template-columns: 1fr;
   }

@@ -164,10 +164,9 @@ onMounted(() => void load())
 <template>
   <div class="page upload-tasks">
     <div class="toolbar">
-      <div class="toolbar__left">
-        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      </div>
+      <div class="toolbar__left" />
       <div class="toolbar__right">
+        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
       </div>
     </div>
@@ -196,7 +195,7 @@ onMounted(() => void load())
         </el-table-column>
         <template #empty>
           <el-empty description="还没有上传任务，先创建一个吧">
-            <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
+            <el-button type="primary" :icon="Plus" @click="openCreate">创建第一个任务</el-button>
           </el-empty>
         </template>
       </el-table>
@@ -267,7 +266,26 @@ onMounted(() => void load())
 
 <style scoped lang="scss">
 .upload-tasks {
+  display: flex;
+  flex-direction: column;
   gap: var(--up-strm-space-3);
+
+  // 工具栏：左侧搜索/筛选（暂无），右侧「刷新 → 主操作」
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--up-strm-space-3, 12px);
+
+    &__left,
+    &__right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--up-strm-space-2, 8px);
+    }
+  }
 
   .cell-main {
     color: var(--el-text-color-primary);

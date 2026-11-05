@@ -43,8 +43,11 @@ export const useOpenlistStore = defineStore('openlist', () => {
     tasks.value = res.data.list
   }
 
-  async function fetchRunning(): Promise<void> {
-    const res = await openlistApi.listExecutions({ status: 'running', page: 1, pageSize: 50 })
+  async function fetchRunning(silent = false): Promise<void> {
+    const res = await openlistApi.listExecutions(
+      { status: 'running', page: 1, pageSize: 50 },
+      { silent }
+    )
     runningExecutions.value = res.data.list
   }
 

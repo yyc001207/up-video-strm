@@ -142,11 +142,14 @@ export const openlistApi = {
     return request.post('/openlist/executions/cancel', { execution_id: executionId })
   },
   /** 执行记录列表（分页）。 */
-  listExecutions(params: { task_id?: number; status?: ExecutionStatus; page: number; pageSize: number }): Promise<Res<{ list: OpenListExecution[] }>> {
-    return request.get('/openlist/executions', { params })
+  listExecutions(
+    params: { task_id?: number; status?: ExecutionStatus; page: number; pageSize: number },
+    config?: { silent?: boolean }
+  ): Promise<Res<{ list: OpenListExecution[] }>> {
+    return request.get('/openlist/executions', { params, ...config })
   },
-  getExecutionDetail(id: number): Promise<Res<{ execution: OpenListExecution; logs: OpenListLog[] }>> {
-    return request.get(`/openlist/executions/${id}`)
+  getExecutionDetail(id: number, config?: { silent?: boolean }): Promise<Res<{ execution: OpenListExecution; logs: OpenListLog[] }>> {
+    return request.get(`/openlist/executions/${id}`, config)
   },
 
   /** 任务历史：每个任务最近一次执行。 */

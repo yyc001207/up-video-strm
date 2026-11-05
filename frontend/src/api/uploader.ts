@@ -72,11 +72,14 @@ export const uploaderApi = {
       '/upload/executions/cancel',
       { execution_id: executionId }
     ),
-  listExecutions: (params: { task_id?: number; status?: UploadExecutionStatus; page: number; pageSize: number }) =>
-    request.get<unknown, Res<{ list: UploadExecution[] }>>('/upload/executions', { params }),
-  getExecutionDetail: (executionId: number) =>
+  listExecutions: (
+    params: { task_id?: number; status?: UploadExecutionStatus; page: number; pageSize: number },
+    config?: { silent?: boolean }
+  ) => request.get<unknown, Res<{ list: UploadExecution[] }>>('/upload/executions', { params, ...config }),
+  getExecutionDetail: (executionId: number, config?: { silent?: boolean }) =>
     request.get<unknown, Res<{ execution: UploadExecution; records: UploadFileRecord[] }>>(
-      `/upload/executions/${executionId}`
+      `/upload/executions/${executionId}`,
+      config
     ),
   listFileRecords: (executionId: number, page: number, pageSize: number) =>
     request.get<unknown, Res<{ list: UploadFileRecord[] }>>(`/upload/executions/${executionId}/records`, {

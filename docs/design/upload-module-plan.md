@@ -67,8 +67,8 @@
 |----|----------|------|
 | `upload_platform_config` | `id`、`client_id`、`client_secret`、`access_token`、`token_expires_at`、`updated_time` | §3，单行 |
 | `upload_rename_rule` | `id`、`name`、`template`、`description`、`enabled`、`created_time`、`updated_time` | 命名模板列表（§6.2） |
-| `upload_task` | `id`、`name`、`local_dirs`(JSON)、`remote_dir`、`season`、`rename_rule_id`、`recursive`、`exclude_dirs`(JSON)、`created_time`、`updated_time` | 上传任务；`remote_dir` 为 123 云盘目标目录路径（如 `/test`）；`season` 为季数（用户指定，默认 1） |
-| `upload_execution` | `id`、`task_id`、`task_name`、`local_dirs`(JSON)、`remote_dir`、`rename_rule_id`、`season`、`conflict_policy`、`concurrency`、`slice_size`、`max_retries`、`dry_run`、`status`、`file_total`、`file_success`、`file_skipped`、`file_overwritten`、`file_failed`、`bytes_uploaded`、`duration_seconds`、`log_path`、`started_time`、`finished_time`、`created_time` | 一次执行（`status`: running/success/fail/cancelled）；执行参数与季数在启动时固化 |
+| `upload_task` | `id`、`name`、`local_dirs`(JSON)、`remote_dir`、`season`、`start_episode`、`rename_rule_id`、`recursive`、`exclude_dirs`(JSON)、`created_time`、`updated_time` | 上传任务；`remote_dir` 为 123 云盘目标目录路径（如 `/test`）；`season` 为季数（用户指定，默认 1）；`start_episode` 为源起始集号（默认 1，见 §6.2.1） |
+| `upload_execution` | `id`、`task_id`、`task_name`、`local_dirs`(JSON)、`remote_dir`、`rename_rule_id`、`season`、`start_episode`、`conflict_policy`、`concurrency`、`slice_size`、`max_retries`、`dry_run`、`status`、`file_total`、`file_success`、`file_skipped`、`file_overwritten`、`file_failed`、`bytes_uploaded`、`duration_seconds`、`log_path`、`started_time`、`finished_time`、`created_time` | 一次执行（`status`: running/success/fail/cancelled）；执行参数、季数与起始集号在启动时固化 |
 | `upload_file_record` | `id`、`execution_id`、`local_path`、`remote_name`、`size`、`md5`、`status`、`phase`、`reason`、`remote_file_id`、`replaced_file_id`、`created_time` | 文件粒度历史（支持「仅重跑失败项」、覆盖留痕） |
 
 - 迁移策略对齐现有模块：`core/database.py` 启动时建表 / `_ensure_*_columns` 兼容旧库，不破坏已有数据。
@@ -108,7 +108,7 @@ create_file(parentFileId, filename, etag/md5, size, duplicate)
 |------|------|----------|
 | 1. 扫描本地文件 | 遍历任务 `local_dirs`（`recursive` 控制递归，跳过 `exclude_dirs`）、跳过系统/隐藏文件 | 目录不存在 → 执行失败并提示 |
 | 2. 过滤视频文件 | 复用**全局配置的「视频格式」**扩展名列表（如 `mp4,mkv,avi`） | 无匹配 → 执行成功但文件数为 0 |
-| 3. 重命名 | 按命名规则（§6.2）用「任务季数 + 从文件名解析出的集数 + 原扩展名」生成 `SxxExx.ext`（如 `S01E03.mp4`） | 集数解析失败 → 该文件标记失败并给出提示，继续后续文件 |
+| 3. 重命名 | 按命名规则（§6.2）用「任务季数 + 集数映射后的季内集号（§6.2.1） + 原扩展名」生成 `SxxExx.ext`（如 `S01E03.mp4`） | 集数解析失败 → 该文件标记失败并给出提示，继续后续文件 |
 | 4. 预上传清单 | 产出 `本地路径 / 大小 / MD5 / 新文件名`，落 `upload_file_record`；`dry_run` 时到此为止，页面可预览清单 | — |
 | 5. 重复检查 | 分页拉取目标目录文件列表并缓存为 `name → fileId`；同名文件按执行参数决策 | 目标目录读取失败 → 执行失败（不盲传） |
 | 6. 上传 | 逐文件走 §5.2 流程；并发受限额；每文件状态写入记录与日志 | 单文件失败不影响其他文件，执行最终标记为 fail 并给出失败数 |
@@ -118,6 +118,7 @@ create_file(parentFileId, filename, etag/md5, size, duplicate)
 命名目标固定为剧集格式：**`S{季数}E{集数}.{扩展名}`**，例如 `S01E03.mp4`。
 
 - **季数由用户指定**：在「任务配置」中填写季数（整数，默认 1，范围 1–99），不从文件名推断。
+- **起始集号（集数映射）**：任务配置填写「源起始集号」（整数，默认 1），用于把数据源的绝对集号映射为该季的季内集号（见 §6.2.1）。数据源常见 `S01E13`、`013`、`ep13`、`13` 都解析为绝对集号 13；若配置输出季数=2、起始集号=13，则输出 `S02E01.mp4`。
 - **只从文件名获取集数与扩展名**：扩展名原样保留；集数按下方规则从文件名解析，解析不到则该文件跳过并记录原因（不猜测）。
 - 「重命名规则」页维护**名称格式列表**，每条规则是一个模板；默认模板 `S{season:02}E{episode:02}.{ext}`，任务配置选用一条启用中的规则。
 - 模板变量仅三个：
@@ -125,7 +126,7 @@ create_file(parentFileId, filename, etag/md5, size, duplicate)
 | 变量 | 来源 | 示例 |
 |------|------|------|
 | `{season}` / `{season:02}` | 任务季数（用户填写） | `1` / `01` |
-| `{episode}` / `{episode:02}` | 从文件名解析出的集数 | `3` / `03` |
+| `{episode}` / `{episode:02}` | 集数映射后的季内集号（§6.2.1 公式） | `3` / `03` |
 | `{ext}` | 原扩展名（不含点） | `mp4` |
 
 - 模板校验：必须包含 `{episode}` 与 `{ext}`，保存时用示例数据渲染，结果须符合 `SxxExx.ext` 形态，否则拒绝保存。
@@ -137,9 +138,24 @@ create_file(parentFileId, filename, etag/md5, size, duplicate)
   | `EP03.mp4`、`E03.mp4` | 3 |
   | `[03].mp4`、`03 - 标题.mp4` | 3 |
   | 完全无数字（如 `预告.mp4`） | 解析失败 → 跳过并记录原因 |
+
 - 渲染后统一做非法字符清洗（`\ / : * ? " < > \|`）与长度截断，正常模板不会触发。
 - 规则页提供实时预览：输入示例文件名 + 季数 → 展示「原名 → 新名」与解析出的集数。
 - 一期不做剧名 / 日期 / 自定义前后缀变量（用户确认只保留季、集、扩展名）。
+
+#### 6.2.1 集数映射（跨季绝对集号）
+
+解析出的集号一律视为**绝对集号**（`S01E13` 的 `S01` 不参与季号计算），再由任务配置换算成该季的季内集号。数据源可能跨季连续编号（如第 1 季 12 集，`S01E13` 实际是第 2 季第 1 集），刮削平台要求 `S02E01`，因此需要映射：
+
+| 配置项 | 说明 | 默认 |
+|--------|------|------|
+| 输出季数 | 最终文件名的季号 `Sxx` | 1 |
+| 源起始集号 | 本季第 1 集在数据源中的绝对集号 | 1 |
+
+- 映射公式：`季内集号 = 绝对集号 − 源起始集号 + 1`。
+- 示例：输出季数=2、源起始集号=13 → `S01E13` / `013` / `ep13` / `13` 均输出 `S02E01.mp4`。
+- 越界处理：`季内集号 < 1` 说明文件可能不属于本季 → 跳过该文件并记录「集号不在配置范围内」，不猜季号。
+- 二期可选（一期不实现）：按「每季集数」自动切季（如每季 12 集，绝对集号 25 → `S03E01`），届时以可选项形式加入任务配置。
 
 ### 6.3 冲突策略（执行参数，执行管理页选择）
 
@@ -159,6 +175,7 @@ create_file(parentFileId, filename, etag/md5, size, duplicate)
 | 参数 | 位置 | 默认 |
 |------|------|------|
 | 冲突策略 | 执行管理页（每次执行可选） | 跳过 |
+| 季数 / 起始集号 | 任务配置（启动时固化到执行） | 1 / 1 |
 | 并发数 | 任务配置「默认运行参数」+ 执行时可调 | 2 |
 | 分片大小 | 任务配置「默认运行参数」 | 由 API 返回的 `sliceSize` 为准，可用配置覆盖 |
 | 失败重试次数 | 任务配置「默认运行参数」 | 3 |
@@ -210,7 +227,7 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 
 ## 10. 页面设计要点（样式对齐任务调度）
 
-- **任务配置**：顶部「默认运行参数」卡（并发、分片、重试、默认冲突策略）+ 编辑抽屉；任务字段：任务名、本地扫描目录（可多个）、云端目标目录（联调固定 `/test`）、**季数（用户指定）**、命名规则；工具栏搜索 / 新建 / 批量删除；表格列：任务名（主行）+ 本地目录/云端目录（副行）、季数、最近执行、操作；空态 CTA。
+- **任务配置**：顶部「默认运行参数」卡（并发、分片、重试、默认冲突策略）+ 编辑抽屉；任务字段：任务名、本地扫描目录（可多个）、云端目标目录（联调固定 `/test`）、**季数（用户指定）**、**源起始集号（默认 1，见 §6.2.1）**、命名规则；工具栏搜索 / 新建 / 批量删除；表格列：任务名（主行）+ 本地目录/云端目录（副行）、季数/起始集号、最近执行、操作；空态 CTA。
 - **重命名规则**：列表（名称、模板、示例、启用状态、操作）；新建/编辑弹窗含模板输入、三个变量（`{season}` / `{episode}` / `{ext}`）说明、集数解析示例与实时预览；删除确认写明影响。
 - **执行管理**：三卡片一行（选择任务 / 执行参数 / 已选任务）+ 正在执行表（状态圆点、计数右对齐、取消）；`dry-run` 开关生成清单预览。
 - **实时日志**：进度摘要（文件总数 / 成功 / 跳过 / 失败 / 字节数）+ 终端日志区（级别着色、行号、自动滚动）+ 底部工具条（级别过滤、搜索、清屏、下载）。
@@ -220,7 +237,7 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 ## 11. 实施阶段
 
 1. **阶段一：凭据与 API 封装**——`upload_platform_config` 表、全局配置「123 云盘」卡、`pan123_client`（token / 列目录 / create_file / 分片 / 删除）+ mock 单测；在 `/test` 目录手工验证凭据与列目录。
-2. **阶段二：任务与规则**——`upload_task` / `upload_rename_rule` 表与接口、任务配置页、重命名规则页（含预览）、`rename_engine` + `scanner` 单测。
+2. **阶段二：任务与规则**——`upload_task` / `upload_rename_rule` 表与接口、任务配置页、重命名规则页（含预览）、`rename_engine`（含 §6.2.1 集数映射）+ `scanner` 单测。
 3. **阶段三：执行流水线**——清单 / 重复检查 / 上传 / 删除兜底 / 取消；执行管理页（三卡片 + 执行参数 + 正在执行）；WS 实时日志；在 `/test` 做端到端验证（三种冲突策略各覆盖一次）。
 4. **阶段四：历史与收尾**——文件粒度历史、日志回放/下载、失败重跑；手册 / README / rules 文档同步；`bump_version.py minor`（4.2.0 → 4.3.0）+ CHANGELOG 条目；打包验证（`build.ps1 -SkipFrontend` 或完整构建）。
 
@@ -237,6 +254,7 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 | 3 | 命名规则 | 季数由用户指定；只从文件名解析集数与扩展名；最终文件名固定 `S{季数}E{集数}.{ext}`（如 `S01E03.mp4`）；不做剧名/日期变量 |
 | 4 | 上传后删除本地源文件 | **不删除**（默认保留） |
 | 5 | 覆盖策略语义 | 先传新文件、成功后删除云端旧文件：用 `create_file` 的 `duplicate=2` 覆盖 + 按预检旧 `fileID` 幂等删除兜底；实施前在 `/test` 实测确认 |
+| 6 | 集数映射（跨季绝对集号） | **基础模式**：任务配置「输出季数 + 源起始集号（默认 1）」；解析出的集号一律视为绝对集号，`季内集号 = 绝对集号 − 源起始集号 + 1`；越界（<1）跳过并告警；每季集数自动切季列二期。
 
 遗留待评审 / 待实测（不阻塞文档评审）：
 

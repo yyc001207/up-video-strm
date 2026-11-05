@@ -6,7 +6,9 @@
 - 从文件名解析**绝对集号**（``S01E13`` 的 ``S01`` 不参与季号）；
 - 输出季内集号 ``= 绝对集号 - 源起始集号 + 1``，例如输出季数 2、源起始集号 13 时，
   源文件第 13 集输出为 ``S02E01``；
-- 输出文件名由模板渲染，默认 ``S{season:02}E{episode:02}.{ext}``。
+- 输出文件名由模板渲染，默认 ``S{season:02}E{episode:02}.{ext}``；
+- 集数默认由内置正则解析；规则可配置 ``episode_pattern`` 覆盖默认解析（见
+  [重命名规则模型](../../core/models/uploader/rename_rule.py)）。
 """
 
 from __future__ import annotations
@@ -20,14 +22,19 @@ DEFAULT_TEMPLATE = "S{season:02}E{episode:02}.{ext}"
 _MAX_SEASON = 99
 _MAX_EPISODE = 9999
 
-# 集数解析：按顺序匹配，命中即取第一组数字；未命中时回退到「文件名中最后一个数字」。
+# 集数解析：按顺序匹配，命中即取第一组数字；未命中时回退到「独立的最后一个数字」。
+# 说明：`EPxx` / `SxxExx` 均要求前面不是字母数字，避免把哈希串（如 `[5AAEB1E9]`）里的
+# `E9` 误识别成第 9 集；裸集数要求前后不是字母数字，避免把 `1920x1080` 等分辨率当集数。
 _EPISODE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"第\s*(\d{1,4})\s*[集话話]"), "第N集"),
-    (re.compile(r"(?i)[Ss]\d{1,3}\s*[Ee][Pp]?\s*(\d{1,4})"), "SxxExx"),
-    (re.compile(r"(?i)(?:^|[^A-Za-z])E[Pp]?\s*(\d{1,4})(?![0-9])"), "EPxx"),
+    (re.compile(r"(?i)(?<![A-Za-z0-9])[Ss]\d{1,3}\s*[Ee][Pp]?\s*(\d{1,4})(?![0-9])"), "SxxExx"),
+    (re.compile(r"(?i)(?<![A-Za-z0-9])[Ee][Pp]\s*[-_ ]?(\d{1,4})(?![0-9])"), "EPxx"),
     (re.compile(r"[\[【(]\s*(\d{1,4})\s*[\]】)]"), "[xx]"),
-    (re.compile(r"(?:^|[\s._-])(\d{1,4})(?:\s*[-_.\s]|$)"), "xx"),
+    (re.compile(r"(?<![A-Za-z0-9])(\d{1,4})(?=\s*[-_.\s]|$)"), "xx"),
 )
+
+# 末位回退：只认前后都不是字母数字的独立数字（避免哈希串、分辨率等噪声）。
+_STANDALONE_DIGITS = re.compile(r"(?<![A-Za-z0-9])(\d{1,4})(?![A-Za-z0-9])")
 
 _INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\r\n\t]')
 _ILLEGAL_CHARS = _INVALID_FILENAME_CHARS
@@ -63,17 +70,58 @@ def parse_extension(filename: str) -> str:
     return ext
 
 
-def parse_episode(filename: str) -> int | None:
-    """从文件名解析绝对集号；无法解析返回 None。"""
+def validate_episode_pattern(pattern: str | None) -> str | None:
+    """校验用户自定义的集数提取正则；空字符串返回 None（使用默认规则）。
+
+    自定义正则必须合法且至少包含一个分组（取第 1 个分组作为集数），
+    例如 ``r"-\\s*(\\d{1,4})\\s*\\("``。
+    """
+    if pattern is None:
+        return None
+    candidate = pattern.strip()
+    if not candidate:
+        return None
+    if len(candidate) > 256:
+        raise RenameError("集数提取正则过长（最多 256 个字符）")
+    try:
+        compiled = re.compile(candidate)
+    except re.error as exc:
+        raise RenameError(f"集数提取正则不合法：{exc}") from exc
+    if compiled.groups < 1:
+        raise RenameError("集数提取正则至少需要一个分组，例如 (\\d+)")
+    return candidate
+
+
+def _parse_episode_with_pattern(stem: str, pattern: str) -> int | None:
+    """用自定义正则解析集号：取第 1 个分组，必须为纯数字且在合法范围内。"""
+    match = re.compile(pattern).search(stem)
+    if match is None:
+        return None
+    raw = match.group(1)
+    if raw is None or not raw.isdigit():
+        return None
+    value = int(raw)
+    if 0 < value <= _MAX_EPISODE:
+        return value
+    return None
+
+
+def parse_episode(filename: str, pattern: str | None = None) -> int | None:
+    """从文件名解析绝对集号；无法解析返回 None。
+
+    ``pattern`` 不为空时只使用该自定义正则（第 1 个分组），不再回退默认规则。
+    """
     name = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     stem = name.rsplit(".", 1)[0] if "." in name else name
-    for pattern, _label in _EPISODE_PATTERNS:
-        matches = pattern.findall(stem)
+    if pattern:
+        return _parse_episode_with_pattern(stem, pattern)
+    for regex, _label in _EPISODE_PATTERNS:
+        matches = regex.findall(stem)
         if matches:
             value = int(matches[-1])
             if 0 < value <= _MAX_EPISODE:
                 return value
-    digits = re.findall(r"\d{1,4}", stem)
+    digits = _STANDALONE_DIGITS.findall(stem)
     if digits:
         value = int(digits[-1])
         if 0 < value <= _MAX_EPISODE:
@@ -129,12 +177,14 @@ def plan_rename(
     season: int,
     start_episode: int = 1,
     template: str = DEFAULT_TEMPLATE,
+    episode_pattern: str | None = None,
 ) -> RenamePlan:
     """为单个源文件生成重命名计划；集号越界或无集数时抛 RenameError。"""
     season, start_episode = validate_season_episode(season, start_episode)
     template = validate_template(template)
+    episode_pattern = validate_episode_pattern(episode_pattern)
     ext = parse_extension(filename)
-    absolute = parse_episode(filename)
+    absolute = parse_episode(filename, episode_pattern)
     if absolute is None:
         raise RenameError("文件名中未解析到集数，无法重命名")
     episode = absolute - start_episode + 1

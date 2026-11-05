@@ -23,11 +23,13 @@ export interface UploadTestConnectionRequest {
   client_secret?: string
 }
 
-/** 重命名规则：`{season}`/`{episode}`/`{ext}` 模板。 */
+/** 重命名规则：`{season}`/`{episode}`/`{ext}` 模板；可附带自定义集数提取正则。 */
 export interface UploadRenameRule {
   id: number
   name: string
   template: string
+  /** 自定义集数提取正则（第 1 个分组为集号）；为空表示使用默认解析。 */
+  episode_pattern: string | null
   created_time: string | null
   updated_time: string | null
 }
@@ -35,6 +37,8 @@ export interface UploadRenameRule {
 export interface UploadRenameRuleCreate {
   name: string
   template: string
+  /** 留空使用默认集数解析。 */
+  episode_pattern?: string | null
 }
 
 export type UploadRenameRuleUpdate = Partial<UploadRenameRuleCreate>
@@ -44,6 +48,8 @@ export interface UploadRenamePreviewRequest {
   filename: string
   season: number
   start_episode: number
+  /** 留空时使用规则或默认集数解析。 */
+  episode_pattern?: string | null
 }
 
 export interface UploadRenamePreviewResponse {
@@ -113,6 +119,7 @@ export interface UploadExecution {
   start_episode: number
   rename_rule_id: number | null
   template: string
+  episode_pattern: string | null
   conflict_policy: UploadConflictPolicy
   concurrency: number
   retry_times: number

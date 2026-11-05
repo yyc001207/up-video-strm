@@ -42,21 +42,32 @@ class UploadRenameRuleCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=128)
     template: Optional[str] = Field(default=None, max_length=256)
+    episode_pattern: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description="自定义集数提取正则（第 1 个分组为集号）；留空使用默认规则",
+    )
 
 
 class UploadRenameRuleUpdate(BaseModel):
-    """修改重命名规则：字段为 None 表示不修改。"""
+    """修改重命名规则：字段为 None 表示不修改（episode_pattern 传空串表示清空）。"""
 
     model_config = ConfigDict(extra="forbid")
 
     name: Optional[str] = Field(default=None, min_length=1, max_length=128)
     template: Optional[str] = Field(default=None, max_length=256)
+    episode_pattern: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description="自定义集数提取正则（第 1 个分组为集号）；空串清空并恢复默认规则",
+    )
 
 
 class UploadRenameRuleResponse(BaseModel):
     id: int
     name: str
     template: str
+    episode_pattern: Optional[str] = None
     created_time: Optional[datetime] = None
     updated_time: Optional[datetime] = None
 
@@ -71,6 +82,11 @@ class UploadRenamePreviewRequest(BaseModel):
     start_episode: int = Field(default=1, ge=1, le=9999)
     rename_rule_id: Optional[int] = Field(default=None, ge=1)
     template: Optional[str] = Field(default=None, max_length=256)
+    episode_pattern: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description="自定义集数提取正则；留空时使用规则或默认规则",
+    )
 
 
 class UploadRenamePreviewResponse(BaseModel):
@@ -207,6 +223,7 @@ class UploadExecutionResponse(BaseModel):
     start_episode: int
     rename_rule_id: Optional[int] = None
     template: str
+    episode_pattern: Optional[str] = None
     conflict_policy: str
     concurrency: int
     retry_times: int

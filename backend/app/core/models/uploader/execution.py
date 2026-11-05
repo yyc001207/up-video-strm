@@ -1,7 +1,7 @@
 """上传管理：执行记录模型。
 
-每次执行在启动时固化任务参数（目录、季数、起始集号、模板、冲突策略、并发、
-重试、试运行），保证历史可复现；文件粒度结果写入 ``upload_file_record``。
+每次执行在启动时固化任务参数（目录、季数、起始集号、模板、集数正则、冲突策略、
+并发、重试、试运行），保证历史可复现；文件粒度结果写入 ``upload_file_record``。
 """
 
 from datetime import datetime
@@ -28,6 +28,9 @@ class UploadExecution(Base):
     start_episode: Mapped[int] = mapped_column(Integer, nullable=False, default=1, comment="源起始集号快照")
     rename_rule_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="命名规则 ID 快照")
     template: Mapped[str] = mapped_column(String(256), nullable=False, comment="命名模板快照")
+    episode_pattern: Mapped[Optional[str]] = mapped_column(
+        String(256), nullable=True, comment="集数提取正则快照；为空使用默认规则"
+    )
     conflict_policy: Mapped[str] = mapped_column(
         String(16), nullable=False, default="skip", comment="冲突策略：skip/overwrite/suffix"
     )

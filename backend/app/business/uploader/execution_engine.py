@@ -196,6 +196,7 @@ async def _run_pipeline(
                     season=execution.season,
                     start_episode=execution.start_episode,
                     template=template,
+                    episode_pattern=execution.episode_pattern,
                 )
             except rename_engine.RenameError as exc:
                 exe_logger.warning("跳过 %s：%s", scanned.name, exc)

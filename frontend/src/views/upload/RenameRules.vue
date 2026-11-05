@@ -20,7 +20,8 @@ const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 const form = reactive<UploadRenameRuleCreate>({
   name: '',
-  template: 'S{season:02}E{episode:02}.{ext}'
+  template: 'S{season:02}E{episode:02}.{ext}',
+  episode_pattern: ''
 })
 
 const formRules: FormRules = {
@@ -49,6 +50,7 @@ function openCreate(): void {
   editingId.value = null
   form.name = ''
   form.template = 'S{season:02}E{episode:02}.{ext}'
+  form.episode_pattern = ''
   preview.result = null
   formRef.value?.clearValidate()
   dialogVisible.value = true
@@ -58,6 +60,7 @@ function openEdit(rule: UploadRenameRule): void {
   editingId.value = rule.id
   form.name = rule.name
   form.template = rule.template
+  form.episode_pattern = rule.episode_pattern ?? ''
   preview.result = null
   formRef.value?.clearValidate()
   dialogVisible.value = true
@@ -70,7 +73,11 @@ async function handleSave(): Promise<void> {
   }
   saving.value = true
   try {
-    const payload: UploadRenameRuleCreate = { name: form.name.trim(), template: form.template.trim() }
+    const payload: UploadRenameRuleCreate = {
+      name: form.name.trim(),
+      template: form.template.trim(),
+      episode_pattern: form.episode_pattern?.trim() || null
+    }
     if (editingId.value === null) {
       await uploaderApi.createRenameRule(payload)
       ElMessage.success('重命名规则已创建')
@@ -104,7 +111,8 @@ async function handlePreview(): Promise<void> {
   const res = await uploaderApi.previewRename({
     filename: preview.filename.trim(),
     season: preview.season,
-    start_episode: preview.start_episode
+    start_episode: preview.start_episode,
+    episode_pattern: form.episode_pattern?.trim() || null
   })
   preview.result = res.data
 }
@@ -129,6 +137,12 @@ onMounted(() => void load())
         <el-table-column label="规则名称" prop="name" min-width="160" />
         <el-table-column label="命名模板" min-width="240">
           <template #default="{ row }"><code class="template">{{ row.template }}</code></template>
+        </el-table-column>
+        <el-table-column label="集数正则" min-width="180">
+          <template #default="{ row }">
+            <code v-if="row.episode_pattern" class="template">{{ row.episode_pattern }}</code>
+            <span v-else class="default-pattern">默认规则</span>
+          </template>
         </el-table-column>
         <el-table-column label="更新时间" width="180">
           <template #default="{ row }">{{ formatDateTime(row.updated_time) }}</template>
@@ -158,6 +172,21 @@ onMounted(() => void load())
         </el-form-item>
         <el-form-item label="命名模板" prop="template">
           <el-input v-model="form.template" placeholder="S{season:02}E{episode:02}.{ext}" />
+        </el-form-item>
+        <el-form-item label="集数提取正则（可选）">
+          <el-input
+            v-model="form.episode_pattern"
+            placeholder="留空使用默认规则；至少包含 1 个分组，取第 1 个分组作为集号"
+            clearable
+            maxlength="256"
+          >
+            <template #prepend>/</template>
+            <template #append>/</template>
+          </el-input>
+          <div class="form-tip">
+            留空表示使用默认集数解析；填写后只按该正则提取（取第 1 个分组），例如
+            <code>- (\d{1,4}) \(</code> 可从 <code>Show - 13 (1080p).mp4</code> 中提取 13。
+          </div>
         </el-form-item>
         <div class="form-tip">
           可用变量：{season}（输出季数）、{episode}（换算后的季内集号）、{ext}（扩展名）；必须同时包含
@@ -211,6 +240,10 @@ onMounted(() => void load())
     color: var(--el-text-color-regular);
     font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
     font-size: var(--up-strm-font-size-xs);
+  }
+
+  .default-pattern {
+    color: var(--el-text-color-placeholder);
   }
 
   .form-tip {

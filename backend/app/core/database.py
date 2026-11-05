@@ -115,6 +115,21 @@ async def _drop_obsolete_columns() -> None:
             logger.info("已清理旧库废弃列：%s", len(statements))
 
 
+async def _ensure_upload_columns() -> None:
+    """上传管理表补齐集数正则列（create_all 对已存在表不生效，需 ALTER）。"""
+    migrations = {
+        "upload_rename_rule": {"episode_pattern": "VARCHAR(256)"},
+        "upload_execution": {"episode_pattern": "VARCHAR(256)"},
+    }
+    async with engine.begin() as conn:
+        for table, new_columns in migrations.items():
+            result = await conn.execute(text(f"PRAGMA table_info({table})"))
+            existing = {row[1] for row in result}
+            for column, ddl in new_columns.items():
+                if column not in existing:
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+
+
 async def _bind_orphan_tasks_to_default_server() -> None:
     """迁移：旧任务（server_id 为空）绑定到第一个启用服务器（幂等）。"""
     from sqlalchemy import select
@@ -155,6 +170,7 @@ async def init_db() -> None:
     await _ensure_config_columns()
     await _ensure_execution_columns()
     await _ensure_task_columns()
+    await _ensure_upload_columns()
     await _drop_obsolete_columns()
     async with AsyncSessionLocal() as session:
         await seed_default_openlist_config(session)

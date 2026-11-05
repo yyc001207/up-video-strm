@@ -163,6 +163,7 @@ def _rule_to_dict(rule: UploadRenameRule) -> dict:
         "id": rule.id,
         "name": rule.name,
         "template": rule.template,
+        "episode_pattern": rule.episode_pattern,
         "created_time": rule.created_time,
         "updated_time": rule.updated_time,
     }
@@ -192,9 +193,10 @@ async def _get_rule(db: AsyncSession, rule_id: int) -> UploadRenameRule:
 async def create_rename_rule(db: AsyncSession, data: UploadRenameRuleCreate) -> dict:
     try:
         template = rename_engine.validate_template(data.template or DEFAULT_TEMPLATE)
+        episode_pattern = rename_engine.validate_episode_pattern(data.episode_pattern)
     except rename_engine.RenameError as exc:
         raise BadRequestException(str(exc)) from exc
-    rule = UploadRenameRule(name=data.name.strip(), template=template)
+    rule = UploadRenameRule(name=data.name.strip(), template=template, episode_pattern=episode_pattern)
     db.add(rule)
     await db.commit()
     await db.refresh(rule)
@@ -208,6 +210,11 @@ async def update_rename_rule(db: AsyncSession, rule_id: int, data: UploadRenameR
     if data.template is not None:
         try:
             rule.template = rename_engine.validate_template(data.template)
+        except rename_engine.RenameError as exc:
+            raise BadRequestException(str(exc)) from exc
+    if data.episode_pattern is not None:
+        try:
+            rule.episode_pattern = rename_engine.validate_episode_pattern(data.episode_pattern)
         except rename_engine.RenameError as exc:
             raise BadRequestException(str(exc)) from exc
     await db.commit()
@@ -225,27 +232,43 @@ async def delete_rename_rule(db: AsyncSession, rule_id: int) -> dict:
     return {"id": rule_id}
 
 
-async def _resolve_template(db: AsyncSession, rename_rule_id: Optional[int], template: Optional[str]) -> str:
-    """预览/执行时确定模板：显式模板 > 规则模板 > 默认模板。"""
-    if template:
-        try:
-            return rename_engine.validate_template(template)
-        except rename_engine.RenameError as exc:
-            raise BadRequestException(str(exc)) from exc
-    if rename_rule_id is not None:
-        return (await _get_rule(db, rename_rule_id)).template
-    return DEFAULT_TEMPLATE
+async def _resolve_rename_config(
+    db: AsyncSession,
+    rename_rule_id: Optional[int],
+    template: Optional[str],
+    episode_pattern: Optional[str] = None,
+) -> tuple[str, Optional[str]]:
+    """预览/执行时确定模板与集数正则：显式值 > 规则 > 默认。"""
+    rule: Optional[UploadRenameRule] = None
+    if template is None and rename_rule_id is not None:
+        rule = await _get_rule(db, rename_rule_id)
+    try:
+        resolved_template = rename_engine.validate_template(
+            template or (rule.template if rule is not None else DEFAULT_TEMPLATE)
+        )
+        if episode_pattern is not None:
+            resolved_pattern = rename_engine.validate_episode_pattern(episode_pattern)
+        elif rule is not None:
+            resolved_pattern = rule.episode_pattern
+        else:
+            resolved_pattern = None
+    except rename_engine.RenameError as exc:
+        raise BadRequestException(str(exc)) from exc
+    return resolved_template, resolved_pattern
 
 
 async def preview_rename(db: AsyncSession, data: UploadRenamePreviewRequest) -> dict:
     """按任务参数预览单个文件的重命名结果（不落库）。"""
-    template = await _resolve_template(db, data.rename_rule_id, data.template)
+    template, episode_pattern = await _resolve_rename_config(
+        db, data.rename_rule_id, data.template, data.episode_pattern
+    )
     try:
         plan = rename_engine.plan_rename(
             data.filename,
             season=data.season,
             start_episode=data.start_episode,
             template=template,
+            episode_pattern=episode_pattern,
         )
     except rename_engine.RenameError as exc:
         return {"matched": False, "message": str(exc), "source_name": data.filename}
@@ -413,6 +436,7 @@ def execution_to_dict(execution: UploadExecution) -> dict:
         "start_episode": execution.start_episode,
         "rename_rule_id": execution.rename_rule_id,
         "template": execution.template,
+        "episode_pattern": execution.episode_pattern,
         "conflict_policy": execution.conflict_policy,
         "concurrency": execution.concurrency,
         "retry_times": execution.retry_times,
@@ -456,19 +480,20 @@ async def _get_execution(db: AsyncSession, execution_id: int) -> UploadExecution
     return execution
 
 
-async def _resolve_task_template(db: AsyncSession, task: UploadTask) -> str:
-    """执行创建时固化命名模板：规则模板 > 默认模板。"""
+async def _resolve_task_rename(db: AsyncSession, task: UploadTask) -> tuple[str, Optional[str]]:
+    """执行创建时固化命名模板与集数正则：规则 > 默认。"""
     if task.rename_rule_id is not None:
         rule = await db.get(UploadRenameRule, task.rename_rule_id)
         if rule is not None:
-            return rule.template
-    return DEFAULT_TEMPLATE
+            return rule.template, rule.episode_pattern
+    return DEFAULT_TEMPLATE, None
 
 
 async def _create_execution_row(db: AsyncSession, data: UploadExecutionCreate) -> UploadExecution:
     task = await db.get(UploadTask, data.task_id)
     if task is None:
         raise BadRequestException("上传任务不存在")
+    template, episode_pattern = await _resolve_task_rename(db, task)
     execution = UploadExecution(
         task_id=task.id,
         task_name=task.name,
@@ -477,7 +502,8 @@ async def _create_execution_row(db: AsyncSession, data: UploadExecutionCreate) -
         season=task.season,
         start_episode=task.start_episode,
         rename_rule_id=task.rename_rule_id,
-        template=await _resolve_task_template(db, task),
+        template=template,
+        episode_pattern=episode_pattern,
         conflict_policy=data.conflict_policy,
         concurrency=data.concurrency,
         retry_times=data.retry_times,
@@ -675,6 +701,7 @@ async def retry_execution(db: AsyncSession, execution_id: int) -> dict:
         start_episode=execution.start_episode,
         rename_rule_id=execution.rename_rule_id,
         template=execution.template,
+        episode_pattern=execution.episode_pattern,
         conflict_policy=execution.conflict_policy,
         concurrency=execution.concurrency,
         retry_times=execution.retry_times,

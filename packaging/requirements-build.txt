@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 打包专用依赖（运行依赖 + PyInstaller + 原生窗口外壳）
 # 安装：backend\.venv\Scripts\python.exe -m pip install -r packaging\requirements-build.txt
 -r ../backend/requirements.txt

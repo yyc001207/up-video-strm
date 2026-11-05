@@ -1,6 +1,6 @@
 # 上传管理模块 · 设计计划
 
-> 状态：计划评审中（已按确认意见更新，**评审通过后再实施**，评审前不改代码）
+> 状态：**已实现并交付（v4.3.0，阶段一~四）** —— 本文件作为设计记录保留，实现细节以代码与 `docs/rules/frontend.md` 为准
 > 模块定位：与「任务调度」平级的新模块，自动把本地视频上传到 123 云盘
 > 参考实现：任务调度模块（`frontend/src/views/schedule/`、`backend/app/business/openlist/`、`App.vue` 模块化导航）
 > 外部依赖：123 云盘开放平台 API（凭据 `clientID` + `clientSecret`）

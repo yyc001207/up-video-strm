@@ -46,6 +46,7 @@ frontend/
 | `/upload/rename` | `views/upload/RenameRules.vue` | 重命名规则 CRUD 与模板预览 |
 | `/upload/execution` | `views/upload/Execution.vue` | 执行管理：三卡片（选任务 / 执行参数 / 已选任务）+ 正在执行列表 |
 | `/upload/realtime` | `views/upload/RealtimeLog.vue` | WebSocket 实时日志：6 阶段进度与逐文件输出，支持批量排队 |
+| `/upload/history` | `views/upload/TaskHistory.vue` | 上传历史：按任务汇总 → 执行记录 → 文件明细、日志回放/下载、重跑 |
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
@@ -66,6 +67,7 @@ frontend/
 - `RenameRules.vue`（上传管理）：规则列表 + 模板编辑对话框（变量 `{season}` / `{episode}` / `{ext}`，`:02` 补零）+ 文件名预览（显示解析出的绝对集号或原因）；被任务引用的规则不可删除。
 - `Execution.vue`（上传管理）：一行三卡片（选择任务 / 执行参数 / 已选任务）；执行参数为冲突策略（跳过 / 覆盖 / 追加后缀）、并发上传、失败重试、试运行；批量创建执行记录后跳转实时日志页，由 WS 连接成功后逐个启动；「正在执行」表 5s 轮询，可查看日志或取消。
 - `RealtimeLog.vue`（上传管理）：顶部连接状态与执行选择、6 阶段进度摘要（总数 / 成功 / 跳过 / 失败 / 已上传字节 / 用时 / 当前文件）、日志终端与级别 / 关键字过滤；状态帧结束后自动切到下一个排队执行，全部结束停留回放最近日志。
+- `TaskHistory.vue`（上传管理）：列表按任务汇总（最近执行 + 累计次数），进入详情后展示该任务全部执行记录（状态 / 冲突策略 / 文件统计），可查看文件粒度明细抽屉、日志回放 / 下载，并按原执行固化参数重跑（跳转实时日志自动启动）。
 
 ## 设计与令牌
 

@@ -29,6 +29,7 @@ export const uploaderApi = {
   getConfig: () => request.get<unknown, Res<UploadPlatformConfig>>('/upload/config'),
   updateConfig: (data: UploadPlatformConfigUpdate) =>
     request.put<unknown, Res<UploadPlatformConfig>>('/upload/config', data),
+  clearConfig: () => request.delete<unknown, Res<UploadPlatformConfig>>('/upload/config'),
   testConnection: (data: UploadTestConnectionRequest, config?: { silent?: boolean }) =>
     request.post<unknown, Res<{ message: string }>>('/upload/config/test-connection', data, config),
 

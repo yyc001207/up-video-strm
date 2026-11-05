@@ -40,6 +40,11 @@ async def update_platform_config(data: UploadPlatformConfigUpdate, db: AsyncSess
     return success_response(data=await service.update_config(db, data))
 
 
+@router.delete("/config", summary="清空 123 云盘凭据")
+async def clear_platform_config(db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.clear_config(db))
+
+
 @router.post("/config/test-connection", summary="测试 123 云盘凭据连通性")
 async def test_platform_connection(data: UploadTestConnectionRequest, db: AsyncSession = Depends(get_db)):
     return success_response(data=await service.test_connection(db, data))

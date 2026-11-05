@@ -96,6 +96,18 @@ async def update_config(db: AsyncSession, data: UploadPlatformConfigUpdate) -> d
     return await get_config(db)
 
 
+async def clear_config(db: AsyncSession) -> dict:
+    """清空 123 云盘凭据（删除配置）：clientID、clientSecret 与缓存的 Token 一并清空。"""
+    config = await _load_config(db)
+    config.client_id = None
+    config.client_secret = None
+    config.access_token = None
+    config.token_expires_at = None
+    await db.commit()
+    await db.refresh(config)
+    return await get_config(db)
+
+
 async def _resolve_credentials(
     db: AsyncSession,
     client_id: Optional[str] = None,

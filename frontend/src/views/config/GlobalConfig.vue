@@ -54,6 +54,7 @@ const pan123Form = reactive({ client_id: '', client_secret: '' })
 const pan123DialogVisible = ref(false)
 const savingPan123 = ref(false)
 const testingPan123 = ref(false)
+const clearingPan123 = ref(false)
 
 type Pan123Status = 'none' | 'checking' | 'online' | 'offline'
 const pan123Status = computed<Pan123Status>(() => {
@@ -298,9 +299,33 @@ async function handleSavePan123() {
   }
 }
 
+/** 删除（清空）123 云盘凭据：需二次确认，删除后上传管理不可用。 */
+async function handleClearPan123() {
+  try {
+    await ElMessageBox.confirm(
+      '确认删除 123 云盘配置？删除后上传管理将无法上传，需要重新填写 Client ID / Client Secret。',
+      '删除 123 云盘配置',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  clearingPan123.value = true
+  try {
+    const res = await uploaderApi.clearConfig()
+    pan123Config.value = res.data
+    pan123Form.client_id = ''
+    pan123Form.client_secret = ''
+    ElMessage.success('123 云盘配置已删除')
+  } catch {
+    /* 拦截器提示 */
+  } finally {
+    clearingPan123.value = false
+  }
+}
+
 /** 测试连通性：优先用输入框中的新凭据，留空时后端使用已保存凭据。 */
-async function handleTestPan123() {
-  testingPan123.value = true
+async function handleTestPan123() {  testingPan123.value = true
   try {
     const res = await uploaderApi.testConnection({
       client_id: pan123Form.client_id.trim() || undefined,
@@ -351,10 +376,10 @@ defineExpose({ reload: load })
                 </el-tag>
               </div>
               <div v-if="server" class="card-header__actions">
-                <el-button :icon="Refresh" :loading="refreshingCache" @click="handleRefreshCache(server)">
+                <el-button plain :icon="Refresh" :loading="refreshingCache" @click="handleRefreshCache(server)">
                   刷新缓存
                 </el-button>
-                <el-button :icon="Edit" @click="openEditServer(server)">编辑</el-button>
+                <el-button plain :icon="Edit" @click="openEditServer(server)">编辑</el-button>
                 <el-button type="danger" plain :icon="Delete" @click="handleDeleteServer(server)">删除</el-button>
               </div>
             </div>
@@ -396,7 +421,7 @@ defineExpose({ reload: load })
           </div>
 
           <el-empty v-else-if="!loading" description="尚未配置 OpenList 服务器" :image-size="90">
-            <el-button type="primary" :icon="Plus" @click="openCreateServer">新增服务器</el-button>
+            <el-button type="primary" plain :icon="Plus" @click="openCreateServer">新增服务器</el-button>
           </el-empty>
         </el-card>
       </el-col>
@@ -407,7 +432,7 @@ defineExpose({ reload: load })
           <template #header>
             <div class="card-header">
               <span class="card-title">视频与字幕格式</span>
-              <el-button :icon="Edit" :disabled="!config" @click="openEditFormats">编辑</el-button>
+              <el-button plain :icon="Edit" :disabled="!config" @click="openEditFormats">编辑</el-button>
             </div>
           </template>
 
@@ -438,8 +463,18 @@ defineExpose({ reload: load })
             </el-tag>
           </div>
           <div class="card-header__actions">
-            <el-button :loading="testingPan123" @click="handleTestPan123">测试连接</el-button>
-            <el-button type="primary" :icon="Edit" @click="openPan123Edit">编辑</el-button>
+            <el-button plain :loading="testingPan123" @click="handleTestPan123">测试连接</el-button>
+            <el-button plain :icon="Edit" @click="openPan123Edit">编辑</el-button>
+            <el-button
+              v-if="pan123Config?.client_id || pan123Config?.has_secret"
+              type="danger"
+              plain
+              :icon="Delete"
+              :loading="clearingPan123"
+              @click="handleClearPan123"
+            >
+              删除
+            </el-button>
           </div>
         </div>
       </template>
@@ -463,7 +498,7 @@ defineExpose({ reload: load })
         </div>
       </dl>
       <el-empty v-else description="尚未配置 123 云盘凭据" :image-size="70">
-        <el-button type="primary" :icon="Edit" @click="openPan123Edit">立即配置</el-button>
+        <el-button type="primary" plain :icon="Edit" @click="openPan123Edit">立即配置</el-button>
       </el-empty>
     </el-card>
 

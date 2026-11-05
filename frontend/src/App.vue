@@ -116,6 +116,13 @@ const modules: NavModule[] = [
       {
         title: '配置',
         pages: [{ path: '/automation/tasks', label: '任务配置', icon: Document }]
+      },
+      {
+        title: '运行',
+        pages: [
+          { path: '/automation/execution', label: '执行管理', icon: VideoPlay },
+          { path: '/automation/realtime', label: '实时日志', icon: Monitor }
+        ]
       }
     ]
   }

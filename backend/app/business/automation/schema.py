@@ -53,3 +53,25 @@ class AutomationCheckDirRequest(BaseModel):
     upload_task_id: int = Field(gt=0)
     check_dir: str = Field(default="", max_length=512)
     task_id: Optional[int] = None
+
+
+class AutomationStartRequest(BaseModel):
+    """手动启动参数覆盖（不写回任务配置，仅本次运行实例生效）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    upload_concurrency: Optional[int] = Field(default=None, ge=1, le=8)
+    upload_retry_times: Optional[int] = Field(default=None, ge=0, le=10)
+    openlist_mode: Optional[str] = None
+
+
+class AutomationBatchStartRequest(AutomationStartRequest):
+    task_ids: list[int] = Field(min_length=1)
+
+
+class AutomationPendingClearRequest(BaseModel):
+    """清空待校验文件：给定名单只移除名单内文件，否则清空全部。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    remote_names: Optional[list[str]] = None

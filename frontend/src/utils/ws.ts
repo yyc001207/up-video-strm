@@ -2,9 +2,11 @@
 
 import type { WsFrame } from '@/types/openlist'
 import type { UploadWsFrame } from '@/types/uploader'
+import type { AutomationWsFrame } from '@/types/automation'
 
 export type WsHandler = (frame: WsFrame) => void
 export type UploadWsHandler = (frame: UploadWsFrame) => void
+export type AutomationWsHandler = (frame: AutomationWsFrame) => void
 
 export interface WsOptions {
   onMessage: WsHandler
@@ -20,13 +22,23 @@ export interface UploadWsOptions {
   onError?: () => void
 }
 
+export interface AutomationWsOptions {
+  onMessage: AutomationWsHandler
+  onOpen?: () => void
+  onClose?: () => void
+  onError?: () => void
+}
+
 export type WsState = 'connecting' | 'connected' | 'disconnected'
 
-/** 拼出 WS 地址；模块决定后端路由前缀（openlist / upload）。 */
-export function buildWsUrl(executionId: number, module: 'openlist' | 'upload' = 'openlist'): string {
+/** 拼出 WS 地址；模块决定后端路由前缀（openlist / upload / automation）。 */
+export function buildWsUrl(
+  targetId: number,
+  module: 'openlist' | 'upload' | 'automation' = 'openlist'
+): string {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   const base = import.meta.env.VITE_API_BASE_URL ?? '/api'
-  return `${proto}://${location.host}${base}/${module}/ws/${executionId}`
+  return `${proto}://${location.host}${base}/${module}/ws/${targetId}`
 }
 
 function openSocket<T>(url: string, options: {
@@ -57,6 +69,11 @@ export function connectWs(executionId: number, options: WsOptions): WebSocket {
 /** 上传管理模块的实时日志连接（不同路由前缀）。 */
 export function connectUploadWs(executionId: number, options: UploadWsOptions): WebSocket {
   return openSocket<UploadWsFrame>(buildWsUrl(executionId, 'upload'), options)
+}
+
+/** 自动化任务模块的实时日志连接（按任务维度，非执行维度）。 */
+export function connectAutomationWs(taskId: number, options: AutomationWsOptions): WebSocket {
+  return openSocket<AutomationWsFrame>(buildWsUrl(taskId, 'automation'), options)
 }
 
 export function disconnectWs(ws: WebSocket | null): void {

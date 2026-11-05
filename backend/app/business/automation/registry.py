@@ -13,6 +13,8 @@ import asyncio
 
 RUNNING: dict[int, asyncio.Task] = {}
 STOP_EVENTS: dict[int, asyncio.Event] = {}
+#: 运行态快照（``/active`` 与前端运行指示使用）：task_id -> dict
+RUNTIME: dict[int, dict] = {}
 _LOCKS: dict[tuple[str, int], asyncio.Lock] = {}
 
 
@@ -60,8 +62,24 @@ def lock_for(kind: str, target_id: int) -> asyncio.Lock:
     return lock
 
 
+def set_runtime(task_id: int, **fields) -> dict:
+    """更新运行态快照并返回最新值（字段增量合并）。"""
+    state = RUNTIME.setdefault(task_id, {})
+    state.update(fields)
+    return state
+
+
+def get_runtime(task_id: int) -> dict:
+    return dict(RUNTIME.get(task_id) or {})
+
+
+def clear_runtime(task_id: int) -> None:
+    RUNTIME.pop(task_id, None)
+
+
 def clear() -> None:
     """测试辅助：清空全部进程内状态。"""
     RUNNING.clear()
     STOP_EVENTS.clear()
+    RUNTIME.clear()
     _LOCKS.clear()

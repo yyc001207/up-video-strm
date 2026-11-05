@@ -91,6 +91,18 @@ const router = createRouter({
       meta: { title: '任务配置', description: '维护自动化任务：上传任务 + STRM 任务串联' }
     },
     {
+      path: '/automation/execution',
+      name: 'AutomationExecution',
+      component: () => import('@/views/automation/Execution.vue'),
+      meta: { title: '执行管理', description: '启动/停止自动化任务并查看运行态与待校验文件' }
+    },
+    {
+      path: '/automation/realtime',
+      name: 'AutomationRealtime',
+      component: () => import('@/views/automation/RealtimeLog.vue'),
+      meta: { title: '实时日志', description: '实时查看自动化任务每轮链路的执行日志' }
+    },
+    {
       // 桌面托盘外壳经 window.__upVideoStrmNavigate('/settings') 跳转，此路径必须保持不变。
       path: '/settings',
       name: 'Settings',

@@ -3,8 +3,13 @@
 import request from './index'
 import type { Res } from '@/types/openlist'
 import type {
+  AutomationActiveTask,
+  AutomationBatchStartItem,
   AutomationBindOptions,
   AutomationCheckDirResult,
+  AutomationRun,
+  AutomationRunLogResult,
+  AutomationStartPayload,
   AutomationTask,
   AutomationTaskPayload,
   AutomationTaskSaveResult
@@ -27,4 +32,32 @@ export const automationApi = {
     }),
   checkDir: (data: { upload_task_id: number; check_dir: string; task_id?: number }) =>
     request.post<unknown, Res<AutomationCheckDirResult>>('/automation/tasks/check-dir', data)
+}
+
+// ---------- 执行管理 / 运行历史（阶段③） ----------
+
+export const automationRunApi = {
+  start: (id: number, data?: AutomationStartPayload) =>
+    request.post<unknown, Res<{ started: boolean; task_id: number }>>(`/automation/tasks/${id}/start`, data ?? {}),
+  batchStart: (taskIds: number[], data?: AutomationStartPayload) =>
+    request.post<unknown, Res<AutomationBatchStartItem[]>>('/automation/tasks/batch-start', {
+      task_ids: taskIds,
+      ...(data ?? {})
+    }),
+  stop: (id: number) => request.post<unknown, Res<{ stopping: boolean }>>(`/automation/tasks/${id}/stop`),
+  active: () => request.get<unknown, Res<AutomationActiveTask[]>>('/automation/active'),
+  resetFingerprint: (id: number) =>
+    request.post<unknown, Res<AutomationTask>>(`/automation/tasks/${id}/reset-fingerprint`),
+  clearPending: (id: number, remoteNames?: string[]) =>
+    request.post<unknown, Res<AutomationTask>>(`/automation/tasks/${id}/pending/clear`, {
+      remote_names: remoteNames
+    }),
+  listRuns: (params: { task_id?: number; status?: string; page?: number; page_size?: number }) =>
+    request.get<unknown, Res<AutomationRun[]>>('/automation/runs', { params }),
+  getRun: (id: number) => request.get<unknown, Res<AutomationRun>>(`/automation/runs/${id}`),
+  runLogs: (id: number, offset = 0, limit = 200) =>
+    request.get<unknown, Res<AutomationRunLogResult>>(`/automation/runs/${id}/logs`, {
+      params: { offset, limit }
+    }),
+  retryFailed: (id: number) => request.post<unknown, Res<AutomationTask>>(`/automation/runs/${id}/retry-failed`)
 }

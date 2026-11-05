@@ -1,4 +1,4 @@
-/** 自动化任务（模块 C）类型定义：任务配置、绑定选项与目录检测。 */
+﻿/** 自动化任务（模块 C）类型定义：任务配置、绑定选项与目录检测。 */
 
 export type AutomationOpenListMode = 'incremental' | 'full' | 'strm_only'
 
@@ -81,3 +81,92 @@ export interface AutomationCheckDirResult {
   error: string | null
   message: string
 }
+
+// ---------- 执行管理 / 运行历史 / 实时日志（阶段③） ----------
+
+export type AutomationRunStatus = 'running' | 'success' | 'partial' | 'fail' | 'cancelled'
+
+/** 自动化任务一轮运行记录。 */
+export interface AutomationRun {
+  id: number
+  task_id: number
+  task_name: string
+  round_no: number
+  status: AutomationRunStatus
+  phase: string
+  upload_execution_id: number | null
+  openlist_execution_id: number | null
+  new_file_count: number
+  pending_file_count: number
+  checked_file_count: number
+  skipped_file_count: number
+  wait_seconds: number
+  idle_wait_seconds: number
+  missed_files: string[]
+  error_code: string | null
+  error_message: string | null
+  log_path: string | null
+  started_time: string | null
+  finished_time: string | null
+  created_time: string | null
+  upload: AutomationExecutionBrief | null
+  openlist: AutomationExecutionBrief | null
+}
+
+/** 运行记录关联的 A/B 执行摘要。 */
+export interface AutomationExecutionBrief {
+  id: number
+  status: string
+  error_code: string | null
+  error_message: string | null
+  started_time: string | null
+  finished_time: string | null
+  log_path: string | null
+  file_total?: number
+  file_success?: number
+  file_skipped?: number
+  file_failed?: number
+}
+
+/** 运行中的自动化任务（进程内运行态快照）。 */
+export interface AutomationActiveTask {
+  task_id: number
+  task_name: string | null
+  phase: string | null
+  run_id: number | null
+  round_no: number | null
+  next_round_at: string | null
+  log_path: string | null
+  started_time: string | null
+}
+
+/** 手动启动参数覆盖（仅本次运行实例生效）。 */
+export interface AutomationStartPayload {
+  upload_concurrency?: number
+  upload_retry_times?: number
+  openlist_mode?: AutomationOpenListMode
+}
+
+export interface AutomationBatchStartItem {
+  task_id: number
+  ok: boolean
+  message: string
+}
+
+export interface AutomationRunLogLine {
+  index: number
+  level: string
+  message: string
+}
+
+export interface AutomationRunLogResult {
+  total: number
+  lines: AutomationRunLogLine[]
+}
+
+/** 自动化任务 WS 帧：日志 / 进度 / 状态 / 异常通知。 */
+export type AutomationWsFrame =
+  | { type: 'log'; level: string; message: string; ts: string }
+  | { type: 'progress'; data: Record<string, unknown> }
+  | { type: 'status'; status?: string; run_id?: number; round_no?: number; phase?: string }
+  | { type: 'alert'; status?: string; message: string; task_id?: number }

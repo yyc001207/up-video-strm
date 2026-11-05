@@ -16,6 +16,7 @@ from app.core.exceptions import UpVideoStrmException
 from app.core.logger import logger
 from app.core.paths import APP_DIR_NAME, exe_dir, is_frozen, resource_dir
 from app.business.automation.retention import cleanup_once, daily_cleanup_loop
+from app.business.execution_registry import clear as clear_execution_registry
 from app.utils.responses import success_response
 from app.api import automation, desktop, openlist, uploader
 from app.version import __version__
@@ -24,6 +25,8 @@ from app.version import __version__
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # 进程重启后内存中的执行闸门不再可信，清空以免残留占位
+    clear_execution_registry()
     # 自动化任务历史：进程启动清理一次，并注册每日定时清理
     try:
         async with AsyncSessionLocal() as db:

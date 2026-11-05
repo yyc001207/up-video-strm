@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Optional
 
 from sqlalchemy import func, or_, select
@@ -24,10 +25,13 @@ from app.business.automation.schema import (
 from app.business.openlist.openlist_api import OpenListAPI
 from app.business.openlist.service import get_active_server
 from app.core.exceptions import BadRequestException, NotFoundException
-from app.core.models.automation import AutomationTask
+from app.core.models.automation import AutomationRun, AutomationTask
 from app.core.models.openlist.config import OpenListConfig
+from app.core.models.openlist.execution import OpenListExecution
 from app.core.models.openlist.task import OpenListTask
 from app.core.models.uploader import UploadTask
+from app.core.models.uploader.execution import UploadExecution
+from app.core.settings import settings
 
 _OPENLIST_MODES = {"incremental", "full", "strm_only"}
 _MAX_SAMPLE_FILES = 20
@@ -428,3 +432,219 @@ async def check_dir(db: AsyncSession, data: AutomationCheckDirRequest) -> dict[s
         "error": probe["error"],
         "message": message,
     }
+
+
+# ---------------------------------------------------------------------------
+# 运行管理：运行态、运行历史、日志（阶段③）
+# ---------------------------------------------------------------------------
+
+
+def run_to_dict(run: AutomationRun, *, upload: Any = None, openlist: Any = None) -> dict[str, Any]:
+    """运行记录序列化（时间统一北京时间字符串）。"""
+    missed: list[str] = []
+    if run.missed_files:
+        try:
+            data = json.loads(run.missed_files)
+            if isinstance(data, list):
+                missed = [str(item) for item in data]
+        except (TypeError, ValueError):
+            missed = []
+    return {
+        "id": run.id,
+        "task_id": run.task_id,
+        "task_name": run.task_name,
+        "round_no": run.round_no,
+        "status": run.status,
+        "phase": run.phase,
+        "upload_execution_id": run.upload_execution_id,
+        "openlist_execution_id": run.openlist_execution_id,
+        "new_file_count": run.new_file_count,
+        "pending_file_count": run.pending_file_count,
+        "checked_file_count": run.checked_file_count,
+        "skipped_file_count": run.skipped_file_count,
+        "wait_seconds": run.wait_seconds,
+        "idle_wait_seconds": run.idle_wait_seconds,
+        "missed_files": missed,
+        "error_code": run.error_code,
+        "error_message": run.error_message,
+        "log_path": run.log_path,
+        "started_time": _fmt_time(run.started_time),
+        "finished_time": _fmt_time(run.finished_time),
+        "created_time": _fmt_time(run.created_time),
+        "upload": upload,
+        "openlist": openlist,
+    }
+
+
+def _fmt_time(value: Any) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    except AttributeError:  # pragma: no cover
+        return str(value)
+
+
+def _execution_brief(execution: Any, kind: str) -> Optional[dict]:
+    """A/B 执行记录的轻量摘要，供运行详情展示。"""
+    if execution is None:
+        return None
+    data = {
+        "id": execution.id,
+        "status": execution.status,
+        "error_code": getattr(execution, "error_code", None),
+        "error_message": getattr(execution, "error_message", None),
+        "started_time": _fmt_time(getattr(execution, "started_time", None)),
+        "finished_time": _fmt_time(getattr(execution, "finished_time", None)),
+        "log_path": getattr(execution, "log_path", None),
+    }
+    if kind == "upload":
+        data.update(
+            {
+                "file_total": getattr(execution, "file_total", 0),
+                "file_success": getattr(execution, "file_success", 0),
+                "file_skipped": getattr(execution, "file_skipped", 0),
+                "file_failed": getattr(execution, "file_failed", 0),
+            }
+        )
+    return data
+
+
+async def list_runs(
+    db: AsyncSession,
+    task_id: Optional[int] = None,
+    status: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict[str, Any]], int]:
+    stmt = select(AutomationRun)
+    if task_id is not None:
+        stmt = stmt.where(AutomationRun.task_id == task_id)
+    if status:
+        stmt = stmt.where(AutomationRun.status == status)
+    total = await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = (
+        await db.scalars(
+            stmt.order_by(AutomationRun.id.desc()).offset((page - 1) * page_size).limit(page_size)
+        )
+    ).all()
+    return [run_to_dict(run) for run in rows], int(total)
+
+
+async def get_run_detail(db: AsyncSession, run_id: int) -> dict[str, Any]:
+    run = await db.get(AutomationRun, run_id)
+    if run is None:
+        raise NotFoundException("运行记录不存在")
+    upload = openlist = None
+    if run.upload_execution_id:
+        upload = _execution_brief(await db.get(UploadExecution, run.upload_execution_id), "upload")
+    if run.openlist_execution_id:
+        openlist = _execution_brief(await db.get(OpenListExecution, run.openlist_execution_id), "openlist")
+    return run_to_dict(run, upload=upload, openlist=openlist)
+
+
+def read_run_logs(run_id: int, offset: int = 0, limit: int = 200) -> dict[str, Any]:
+    """读取一轮的日志文件（按行切片），返回 ``{total, lines}``。"""
+    path = Path(settings.automation_log_dir) / f"automation_run_{run_id}.log"
+    if not path.is_file():
+        return {"total": 0, "lines": []}
+    try:
+        raw_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:  # pragma: no cover
+        return {"total": 0, "lines": []}
+    total = len(raw_lines)
+    lines = []
+    for index, text in enumerate(raw_lines[offset : offset + limit], start=offset):
+        level = "info"
+        message = text
+        if text.startswith("[") and "] [" in text:
+            stage = text.find("] [")
+            level = text[stage + 3 : text.find("]", stage + 3)].strip().lower()
+            message = text[text.find("]", stage + 3) + 1 :].strip()
+        elif text.startswith("["):
+            message = text[text.find("]") + 1 :].strip()
+        lines.append({"index": index, "level": level, "message": message})
+    return {"total": total, "lines": lines}
+
+
+def active_tasks() -> list[dict[str, Any]]:
+    """当前进程内运行中的自动化任务（运行态快照）。"""
+    result: list[dict[str, Any]] = []
+    for task_id in sorted(registry.RUNNING):
+        if not registry.is_running(task_id):
+            continue
+        state = registry.get_runtime(task_id)
+        result.append(
+            {
+                "task_id": task_id,
+                "phase": state.get("phase"),
+                "run_id": state.get("run_id"),
+                "round_no": state.get("round_no"),
+                "next_round_at": state.get("next_round_at"),
+                "log_path": state.get("log_path"),
+                "started_time": state.get("started_time"),
+            }
+        )
+    return result
+
+
+async def reset_fingerprint(db: AsyncSession, task_id: int) -> dict[str, Any]:
+    """重置本地扫描指纹：下一轮无论文件是否变化都会重新触发。"""
+    task = await get_task(db, task_id)
+    task.scan_fingerprint = None
+    task.scan_time = None
+    await db.commit()
+    return await get_task_detail(db, task_id)
+
+
+async def clear_pending(db: AsyncSession, task_id: int, remote_names: Optional[list[str]] = None) -> dict[str, Any]:
+    """清空待校验文件：给定名单则只移除名单内文件，否则清空全部。"""
+    task = await get_task(db, task_id)
+    current: list[str] = []
+    if task.pending_files:
+        try:
+            parsed = json.loads(task.pending_files)
+            if isinstance(parsed, list):
+                current = [str(item) for item in parsed]
+        except (TypeError, ValueError):
+            current = []
+    if remote_names:
+        removing = set(remote_names)
+        remaining = [name for name in current if name not in removing]
+    else:
+        remaining = []
+    task.pending_files = json.dumps(remaining, ensure_ascii=False) if remaining else None
+    if not remaining:
+        task.pending_fingerprint = None
+    await db.commit()
+    return await get_task_detail(db, task_id)
+
+
+async def retry_failed(db: AsyncSession, run_id: int) -> dict[str, Any]:
+    """把一条失败运行的缺失文件写回任务 pending，供新一轮补偿（不自动启动）。"""
+    run = await db.get(AutomationRun, run_id)
+    if run is None:
+        raise NotFoundException("运行记录不存在")
+    task = await get_task(db, run.task_id)
+    missed: list[str] = []
+    if run.missed_files:
+        try:
+            parsed = json.loads(run.missed_files)
+            if isinstance(parsed, list):
+                missed = [str(item) for item in parsed]
+        except (TypeError, ValueError):
+            missed = []
+    if not missed and not task.pending_files:
+        raise BadRequestException("该运行没有可重试的失败文件")
+    existing: list[str] = []
+    if task.pending_files:
+        try:
+            parsed = json.loads(task.pending_files)
+            if isinstance(parsed, list):
+                existing = [str(item) for item in parsed]
+        except (TypeError, ValueError):
+            existing = []
+    merged = sorted(set(existing) | set(missed))
+    task.pending_files = json.dumps(merged, ensure_ascii=False) if merged else None
+    await db.commit()
+    return await get_task_detail(db, run.task_id)

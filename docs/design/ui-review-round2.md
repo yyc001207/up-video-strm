@@ -1,6 +1,6 @@
 # docs/design/ui-review-round2.md — 前端 UI 评审与优化方案（第二轮）
 
-> 状态：**评审完成，未实施**。本文档只提出问题与方案，不包含代码改动。
+> 状态：**P0–P2 已实施（v4.9.0，commit `bde1752`）**；第 7 节为实施后回归问题的修复计划（**未实施**）。
 > 上一轮评审见 [ui-redesign-plan.md](ui-redesign-plan.md)（已实施至 v2.1.0）；核心规范见 [AGENTS.md](../../AGENTS.md)；前端工程说明见 [docs/rules/frontend.md](../rules/frontend.md)。
 
 - 评审对象：`frontend/src` 全部视图与样式层（约 6600 行，14 个视图组件）+ 真实界面截图
@@ -60,7 +60,7 @@
 |---|------|----------|
 | 7 | 实时日志页顶部三行（连接选择 / 进度摘要 / 过滤工具条）间距节奏不均，进度条与右侧「—」耗时数值基线对齐松散 | `schedule-realtime-light.png`、`views/schedule/RealtimeLog.vue` |
 | 8 | 全局配置页 2:1 栅格下双卡空态失衡：左卡空态占位 ~250px 高，右卡大留白，页面重心偏左上 | `config-light.png`；`views/config/GlobalConfig.vue:365-452` |
-| 9 | 浏览器标签页标题过期：仍是「up-video-strm 任务调度」，实际已有三个平级模块 | `frontend/index.html:6` |
+| 9 | 浏览器标签页标题过期：仍是「up-video-strm 任务调度」，实际已有三个平级模块 | `frontend/index.html:6`（改由 7.4 的动态 `document.title` 方案替代） |
 | 10 | 截图基线缺失：评审用的截图脚本与基线图片均未入库，当前工作区已不存在 `frontend/.ui-review-shots.mjs` 与 `frontend/shots/`（曾覆盖 11 路由 × 明暗主题 + 折叠态）；`manual/images/` 16 张截图为第一轮之前的旧界面（第一轮 P2 遗留） | 需重建脚本并入库 |
 
 ---
@@ -246,3 +246,88 @@
 > 2. 不采用「表格右上角悬浮刷新」——会遮挡表头，并与工具栏、分页形成三个操作区。
 > 3. 不在右侧**末端**另设纯图标刷新——末端位置必须留给主操作，否则会削弱主操作的固定位置与点击命中率；刷新统一以「图标 + 文字」出现在右侧组首位。
 
+
+---
+
+## 7. 实施后回归问题与修复计划（v4.9.0，2026-11-05 晚补充）
+
+> 背景：v4.9.0（commit `bde1752`）已按本方案实施完毕。实施后回归发现 4 个问题，本节逐条以 Playwright 实测定位（脚本留存于 `.workbuddy/tmp/`），给出修复计划。**本节只出方案，未实施。** 行号均基于 v4.9.0 代码。
+
+### 7.1 执行管理竖排时遮挡「正在执行」卡片（P0 级，缺陷）
+
+**实测**（1440×900 起，逐步收窄）：
+
+| 视口 | schedule 执行管理 | upload 执行管理 |
+|------|-------------------|-----------------|
+| 1440 / 1366 | 一行三卡，`height: clamp(380px, 52vh, 560px)`（实测 468px），面板内部滚动——**这是既定设计，保留** | 一行三卡，高度随内容（149 / 342 / 331px），正常 |
+| ≤1280 竖排 | `.exec-workspace` 被压缩为 630.6px（内容实际需要 992px），面板 2（y=408–728）与面板 3（y=744–1064）溢出容器，**「正在执行」卡（y=718.6 起）压在面板之上，重叠 345px** | 「正在执行」卡被 flex 压缩到 **2px 高**（y=950.6–952.7），内容完全不可见 |
+
+**根因**：两个页面根节点（`.page page--fill exec-page` / `.page upload-execution`）都是**可滚动的 flex 列容器**，子项默认 `flex-shrink: 1`。当子项总高超过视口，浏览器不是让容器滚动，而是先按比例压缩子项：
+
+- schedule：`.exec-running` 已是 `flex: none`（:748），于是被压的是 `.exec-workspace`——但网格行高不会跟随收缩，面板溢出容器底边，与下一个兄弟（正在执行卡）互相压盖；
+- upload：`.upload-execution__cards` 与 `.running-card` 都没有豁免，running 卡被压到 2px。
+
+**方案**（两个文件各加一行）：
+
+1. `views/schedule/Execution.vue`：`.exec-workspace` 增加 `flex: none`（基础规则，两种模式均生效——行模式它有确定高度不受影响；竖排模式不再被压缩，滚动交给 `.exec-body`）。
+2. `views/upload/Execution.vue`：`.upload-execution__cards` 与 `.running-card` 各增加 `flex: none`。
+3. 可选治本：在 `styles/global.scss` 增加约定「滚动型 flex 列容器的直接子块不参与高度分配」：`.page > * { flex-shrink: 0; }`（若担心波及其他页面，可只改两个执行页）。
+
+**验收**：1440 / 1280 / 1180 / 1024 四档宽度下「正在执行」卡完整可见、与三卡片无任何像素重叠（实测脚本 `overlapRunning ≤ -16`）；内容超高时出现的是容器滚动条而非子块压缩。
+
+### 7.2 上传任务配置工具栏对齐与间距（核实：当前代码已合规）
+
+**实测**（Playwright，1440 / 1280 / 1100 / 1024 / 900 五档视口）：
+
+- `.toolbar` 均为 `display: flex; justify-content: space-between`，按钮组右缘 = 内容区右缘（1416，含 `.page` 24px 内边距），完全靠右；
+- 工具栏与列表卡间距恒为 **12px**（`gap: var(--up-strm-space-3)`）；
+- 五个列表页横向审计（schedule-tasks / upload-tasks / upload-rules / schedule-history / upload-history）：按钮组全部右缘对齐，无越界、无水平滚动条。
+
+**结论**：观察到的「没靠右、没间距」在当前 dev 代码中**无法复现**。最可能原因是观察环境为旧构建：`dist/` 产物早于实施提交（`bde1752`，22:10），桌面安装版与后端 `:8000` 端口提供的都是 dist 产物；vite dev（5173/5175）才是新代码。
+
+**方案**：
+
+1. **环境核对（先做）**：确认观察入口是 dev server 还是 8000 端口 / 桌面版；若是后者，先 `npm run build` 重新构建并重启后端（或重新打包）再核对。
+2. **防漂移加固（建议做）**：`.toolbar` 样式目前在 4 个页面各自定义一份（TaskManage :758 / TaskConfig :274 / RenameRules / TaskHistory，其中 TaskHistory 是 `justify-content: flex-end` 变体）。收敛为 `styles/global.scss` 的全局工具栏原语（`.toolbar / .toolbar__left / .toolbar__right` + 与后续内容的 12px 间距），四个页面删除各自定义——规则只写一处，杜绝再次漂移。
+3. 若完成 1 后仍可复现：记录视口宽度 + 截图，再按实测定位（勿凭印象改样式）。
+
+**验收**：四个列表页在任意视口宽度下按钮组右缘与内容区右缘对齐、与列表间距 12px，且样式只存在于 `global.scss` 一处。
+
+### 7.3 导航选中态「字体像换了」（P2 级，观感）
+
+**实测**：选中项与未选中项的 computed `font-family` **逐字符完全一致**，仅 `font-weight` 400 → 600（`App.vue` `.nav-page--active`）。字体栈没有变——观感差异来自 Windows 字体能力：
+
+- 全局字体栈 `'Helvetica Neue' → Helvetica → 'PingFang SC' → 'Hiragino Sans GB' → 'Microsoft YaHei' → Arial`，在 Windows 上前四个全部不存在，**中英文统一落到微软雅黑**；
+- 微软雅黑只有 400 / 700 两档字重，`600` 被映射到 Bold；
+- 14px 的雅黑 Bold 笔画显著加重，看起来像「换了字体」。**在当前字体栈下这是无解的——Windows 不存在「半粗」中文字重**（canvas 实测 400/500/600/700 的 CJK advance 宽度完全相同，无法用字重做出中间档）。
+
+**方案（二选一）**：
+
+- **方案 A（零依赖，可立即做）**：选中态强调改用「主色文字 + 12% 主色底（现状已有）+ 左侧 2–3px 主色指示条」，移除 `font-weight: 600`。理由：导航是位置指示而非内容强调，VS Code、GitHub 侧栏均不以字重表达选中；附带好处是文字零宽度变化、零渲染开销。
+- **方案 B（根治，若坚持要「轻加粗」）：自托管可变字体**——MiSans 或 Noto Sans SC Variable（免费商用 / OFL），woff2 子集（常用汉字 + Latin，约 2–3MB）随安装包分发，写入 `global.scss` 字体栈。此后 500/600 是真实字重，且全站十余处 `font-weight: 600`（卡片标题、表头、导航徽标等）同时从「雅黑 Bold 映射」升级为真实 Semibold，观感统一提级。改动面：字体文件 + `global.scss` + 打包配置，建议单独立项（`minor`）。
+
+**验收**：方案 A——选中项与未选中项同字重同宽度，仅颜色 / 底色 / 指示条变化；方案 B——DevTools 中 600 渲染为真实 Semibold，字体栈含自托管字体且离线可用。
+
+### 7.4 顶栏标题改为「一级 · 二级」（P1 级，信息架构）
+
+**实测**：`.app-topbar__title` 只显示 `route.meta.title`（如「任务配置」，`App.vue:125`），模块名只体现在侧栏，顶栏缺失层级上下文。
+
+**方案**（`App.vue` 单文件）：
+
+1. `pageTitle` 计算改为拼接：存在 `currentModule` 时 = `` `${currentModule.label} · ${route.meta.title}` ``；单页模块且页面与模块同名（全局配置）时只显示「全局配置」，避免「全局配置 · 全局配置」；`/settings` 无所属模块，显示「设置」。
+2. 分隔符统一「 ` · ` 」（空格 + 间隔号 + 空格），符合中文排版习惯。
+3. 顺带收尾 P2-9（浏览器标签页标题过期）：新增 `watchEffect(() => { document.title = pageTitle.value === 'up-video-strm' ? 'up-video-strm 控制台' : `${pageTitle.value} - up-video-strm` })`，标签页随页面联动，替代 P2-9 的静态改法（二者取其一，推荐动态方案）。
+4. `router/index.ts` 的 `meta.title` 保持单页名不变——拼接只在壳层做，不影响侧栏高亮与 `isActive` 判断。
+
+**验收**：任务调度四页标题分别为「任务调度 · 任务配置 / 执行管理 / 实时日志 / 任务历史」，上传管理同理；全局配置显示「全局配置」；设置显示「设置」；浏览器标签页标题同步变化。
+
+### 7.5 批次建议
+
+| 顺序 | 内容 | 建议级别 |
+|------|------|----------|
+| 1 | 7.1 布局遮挡（缺陷，影响可用性） | `fix:` · patch |
+| 2 | 7.4 标题拼接（App.vue 单文件小改，可与 1 同批） | 并入同批 patch |
+| 3 | 7.2 环境核对 + 工具栏原语收敛到 global.scss | 并入同批 patch |
+| 4 | 7.3 方案 A 立即可做；方案 B（可变字体）单独立项 | patch / 单独 minor |
+
+实施纪律沿用 [AGENTS.md](../../AGENTS.md)：每批独立 commit、逐项 `git add`、`npm run type-check` + 构建（涉及产物时 `npm run build`）通过后交付，版本按最高级别递增。

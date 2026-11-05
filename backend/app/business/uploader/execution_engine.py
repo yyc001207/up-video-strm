@@ -26,7 +26,7 @@ from app.core.beijing import beijing_now
 from app.business.openlist.task_status_manager import TaskStatusManager
 from app.business.uploader import rename_engine, scanner
 from app.business.uploader.execution_logger import ExecutionLogHandler, UploadLogPump
-from app.business.uploader.pan123_client import Pan123Client
+from app.business.uploader.pan123_client import Pan123Client, get_file_id
 from app.business.uploader.service import build_client, get_access_token
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import BadRequestException
@@ -82,11 +82,12 @@ def _suffix_name(name: str, used: set[str]) -> str:
 
 
 async def _wait_async_result(client: Pan123Client, token: str, preupload_id: str) -> int:
-    """轮询异步上传结果，返回 fileId（最多约 60 秒）。"""
+    """轮询异步上传结果，返回 fileID（最多约 60 秒）。"""
     for _ in range(60):
         result = await client.upload_async_result(token, preupload_id)
-        if result.get("completed") or result.get("fileId"):
-            return int(result.get("fileId") or 0)
+        file_id = get_file_id(result)
+        if result.get("completed") or file_id:
+            return file_id
         await asyncio.sleep(1)
     raise BadRequestException("123 云盘异步上传超时")
 
@@ -113,8 +114,8 @@ async def _upload_one(
             )
             preupload_id = str(data.get("preuploadID") or "")
             if data.get("reuse") or not preupload_id:
-                # 秒传完成：服务端直接返回 fileId
-                return int(data.get("fileId") or 0), 0
+                # 秒传完成：服务端直接返回 fileID
+                return get_file_id(data), 0
             slice_size = int(data.get("sliceSize") or 0)
             if slice_size <= 0:
                 raise BadRequestException("123 云盘预上传未返回分片大小")
@@ -135,7 +136,7 @@ async def _upload_one(
             if result.get("async"):
                 file_id = await _wait_async_result(client, token, preupload_id)
             else:
-                file_id = int(result.get("fileId") or 0)
+                file_id = get_file_id(result)
             return file_id, uploaded
         except Exception as exc:  # noqa: BLE001 - 重试后统一抛出
             last_exc = exc
@@ -248,7 +249,7 @@ async def _run_pipeline(
             parent_file_id = await client.resolve_dir_path(token, execution.remote_dir)
             remote_items = await client.list_all_files(token, parent_file_id=parent_file_id)
             remote_names = {
-                str(item.get("filename")): int(item.get("fileId") or 0)
+                str(item.get("filename")): get_file_id(item)
                 for item in remote_items
                 if int(item.get("type") or 0) == 0
             }

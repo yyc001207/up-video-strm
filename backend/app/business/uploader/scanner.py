@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
+from app.business.uploader.pan123_client import get_file_id
+
 DEFAULT_VIDEO_EXTENSIONS = ("mp4", "mkv", "avi", "wmv", "flv", "mov", "webm", "ts")
 """全局「视频格式」未配置时的兜底扩展名列表。"""
 
@@ -120,9 +122,9 @@ def scan_files(
 
 
 def find_remote_dir_id(items: list[dict], name: str) -> Optional[int]:
-    """在 123 云盘目录列表里按名称查找子目录 fileId（不区分大小写）。"""
+    """在 123 云盘目录列表里按名称查找子目录 fileID（不区分大小写）。"""
     lowered = name.lower()
     for item in items:
         if int(item.get("type") or 0) == 1 and str(item.get("filename") or "").lower() == lowered:
-            return int(item.get("fileId") or 0)
+            return get_file_id(item)
     return None

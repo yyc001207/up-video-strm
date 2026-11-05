@@ -579,10 +579,6 @@ defineExpose({ reload: load })
 
 <style scoped lang="scss">
 .global-config {
-  &__card {
-    height: 100%;
-  }
-
   &__muted {
     color: var(--el-text-color-secondary);
     font-size: var(--up-strm-font-size-sm, 13px);

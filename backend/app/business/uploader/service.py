@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.beijing import beijing_now
 from app.business.uploader import rename_engine
 from app.business.uploader.rename_engine import DEFAULT_TEMPLATE
-from app.business.uploader.pan123_client import Pan123Client
+from app.business.uploader.pan123_client import Pan123Client, get_file_id
 from app.business.uploader.schema import (
     UploadExecutionBatchCreate,
     UploadExecutionCreate,
@@ -373,7 +373,7 @@ async def list_remote_dirs(db: AsyncSession, parent_id: int = 0, path: str = "/"
         files = await client.list_all_files(token, parent_file_id=parent_id)
     items = [
         {
-            "file_id": int(item.get("fileId") or 0),
+            "file_id": get_file_id(item),
             "file_name": str(item.get("filename") or ""),
             "type": int(item.get("type") or 0),
             "is_dir": int(item.get("type") or 0) == 1,

@@ -25,6 +25,23 @@ MAX_LIST_PAGE_SIZE = 100
 # 文件列表 type：0=文件，1=文件夹（官方文档字段）
 REMOTE_TYPE_FILE = 0
 REMOTE_TYPE_DIR = 1
+# 官方文件对象里文件 ID 字段为 fileID（大写 D），历史/其他接口存在 fileId/file_id 写法
+_FILE_ID_KEYS = ("fileID", "fileId", "file_id")
+
+
+def get_file_id(item: Optional[dict]) -> int:
+    """从 123 云盘返回的文件对象中提取文件 ID；缺失或非法时返回 0。"""
+    if not item:
+        return 0
+    for key in _FILE_ID_KEYS:
+        value = item.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return 0
 
 
 def parse_expiry(raw: Any) -> Optional[datetime]:
@@ -196,7 +213,7 @@ class Pan123Client:
                     break
             if found is None:
                 raise BadRequestException(f"123 云盘目录不存在：/{'/'.join(walked)}，请先在网盘手工创建")
-            current_id = int(found["fileId"])
+            current_id = get_file_id(found)
         return current_id
 
     # ---------- 上传 ----------

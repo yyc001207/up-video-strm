@@ -47,6 +47,22 @@ const router = createRouter({
       meta: { title: '任务历史', description: '查看任务历次执行记录与日志' }
     },
     {
+      path: '/upload',
+      redirect: '/upload/tasks'
+    },
+    {
+      path: '/upload/tasks',
+      name: 'UploadTasks',
+      component: () => import('@/views/upload/TaskConfig.vue'),
+      meta: { title: '任务配置', description: '维护上传任务：本地目录、云端目录与集数映射' }
+    },
+    {
+      path: '/upload/rename',
+      name: 'UploadRenameRules',
+      component: () => import('@/views/upload/RenameRules.vue'),
+      meta: { title: '重命名规则', description: '维护上传文件命名模板（SxxExx.ext）' }
+    },
+    {
       // 桌面托盘外壳经 window.__upVideoStrmNavigate('/settings') 跳转，此路径必须保持不变。
       path: '/settings',
       name: 'Settings',

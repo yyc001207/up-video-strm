@@ -14,14 +14,15 @@
 frontend/
 ├── src/
 │   ├── main.ts / App.vue / router/index.ts  # 入口、壳层（侧栏 + 顶栏）、路由
-│   ├── api/                # axios 实例 + openlist / desktop 接口封装
+│   ├── api/                # axios 实例 + openlist / uploader / desktop 接口封装
 │   ├── stores/             # Pinia（openlist 业务 / theme 主题）
 │   ├── views/
 │   │   ├── schedule/       # 任务调度模块：四个路由页面 + components/DirTreePanel.vue
-│   │   ├── config/         # 全局配置模块：服务器配置 + 视频/字幕格式
+│   │   ├── upload/         # 上传管理模块：任务配置 / 重命名规则 + components/RemoteDirPanel.vue
+│   │   ├── config/         # 全局配置模块：服务器配置 + 视频/字幕格式 + 123 云盘凭据
 │   │   └── Settings/       # 桌面设置页
 │   ├── components/         # 通用组件（StatusDot 状态点 / LogViewer 日志终端 / ThemeToggle 主题切换）
-│   ├── types/ / utils/     # 类型（openlist / desktop）、工具（date / ws）
+│   ├── types/ / utils/     # 类型（openlist / uploader / desktop）、工具（date / ws）
 │   └── styles/             # variables（--up-strm-* 令牌）/ element-reset（EP 变量映射与表格统一）/ dark / global
 ├── index.html              # 标题「up-video-strm 任务调度」+ 首屏主题预加载
 ├── vite.config.ts          # 别名 @ → src；dev server :5173；/api 代理 → 127.0.0.1:8000（ws 透传）
@@ -40,10 +41,13 @@ frontend/
 | `/schedule/tasks` | `views/schedule/TaskManage.vue` | 任务 CRUD、快速添加、批量删除、默认运行参数 |
 | `/schedule/history` | `views/schedule/TaskHistory.vue` | 任务历史列表与详情、日志回放/下载 |
 | `/schedule/realtime` | `views/schedule/RealtimeLog.vue` | WebSocket 实时日志 |
+| `/upload` | — | 重定向到 `/upload/tasks` |
+| `/upload/tasks` | `views/upload/TaskConfig.vue` | 上传任务 CRUD：本地目录、云端目录、集数映射、命名规则 |
+| `/upload/rename` | `views/upload/RenameRules.vue` | 重命名规则 CRUD 与模板预览 |
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
-- 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前两个平级模块：「任务调度」（`/schedule/*`）与「全局配置」（`/config`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。
+- 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前三个平级模块：「全局配置」（`/config`）、「任务调度」（`/schedule/*`）与「上传管理」（`/upload/*`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。
 - 顶栏标题/描述取路由 `meta.title` / `meta.description`；右侧运行状态胶囊轮询 `fetchRunning`（10s 间隔）。
 - 原「五页签」语义改为独立路由页面：进入页面即按需加载，切换路由即刷新，不再依赖 tab 的 `reload`。
 - 执行管理 → 实时日志通过路由 query 传参：`execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`）。实时日志页先建立 WebSocket，`onOpen` 后才对 `launch=true` 的执行调用 `startExecution`（保证先连日志再启动）。
@@ -56,6 +60,8 @@ frontend/
 - `TaskHistory.vue`：列表（每任务最近执行 + 状态点）与页面级详情（分页 20、日志抽屉、下载日志）。
 - `RealtimeLog.vue`：三段式（进度摘要 / `LogViewer` 终端 / 级别与关键字过滤、清屏、下载日志）；状态帧结束即断开并提示前往任务历史。
 - 通用组件：`StatusDot.vue`（执行状态点 + 文案）、`LogViewer.vue`（可复用日志终端）、`ThemeToggle.vue`（浅色 / 深色 / 跟随系统）。
+- `TaskConfig.vue`（上传管理）：上传任务列表与抽屉编辑（任务名 / 本地目录 / 云端目录 / 输出季数 / 源起始集号 / 命名规则）；云端目录用 `RemoteDirPanel.vue` 浏览选择（只读浏览、不自动建目录，提示仅使用 `/test`）；集号换算提示为「季内集号 = 绝对集号 − 起始集号 + 1」。
+- `RenameRules.vue`（上传管理）：规则列表 + 模板编辑对话框（变量 `{season}` / `{episode}` / `{ext}`，`:02` 补零）+ 文件名预览（显示解析出的绝对集号或原因）；被任务引用的规则不可删除。
 
 ## 设计与令牌
 

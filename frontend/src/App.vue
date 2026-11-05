@@ -5,10 +5,12 @@ import {
   Calendar,
   Clock,
   Document,
+  EditPen,
   Expand,
   Fold,
   Monitor,
   Setting,
+  Upload,
   VideoPlay
 } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
@@ -75,6 +77,21 @@ const modules: NavModule[] = [
       {
         title: '记录',
         pages: [{ path: '/schedule/history', label: '任务历史', icon: Clock }]
+      }
+    ]
+  },
+  {
+    id: 'upload',
+    label: '上传管理',
+    icon: Upload,
+    basePath: '/upload',
+    groups: [
+      {
+        title: '配置',
+        pages: [
+          { path: '/upload/tasks', label: '任务配置', icon: Document },
+          { path: '/upload/rename', label: '重命名规则', icon: EditPen }
+        ]
       }
     ]
   }

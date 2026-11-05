@@ -26,6 +26,14 @@
 - 全局配置页新增「123 云盘」卡：凭据脱敏回显、Token 状态、测试连接与保存。
 - 文档：`manual/用户手册.md` §3、`docs/rules/frontend.md` 同步。
 
+### 上传管理（阶段二：任务与重命名规则）
+
+- 数据表 `upload_rename_rule`（命名模板）、`upload_task`（本地目录 / 云端目录 / 输出季数 / 源起始集号 / 规则引用），首次启动自动 seed 默认规则 `S{season:02}E{episode:02}.{ext}`。
+- 重命名与集数映射：从文件名解析绝对集号（`S01E13` / `第13集` / `EP13` / `[13]` 等），输出名 `S{季:02}E{季内集:02}.{ext}`，季内集号 = 绝对集号 − 源起始集号 + 1；规则预校验必须含 episode 与 ext 且渲染为 `SxxExx.ext`。
+- `/api/upload/rules`（CRUD + 预览）、`/api/upload/tasks`（CRUD）、`/api/upload/remote/dirs`（列云端目录）接口。
+- 前端新增「上传管理」平级模块：任务配置页（表格 + 抽屉编辑 + 云端目录浏览）与重命名规则页（规则 CRUD + 预览）。
+- 文档：`manual/用户手册.md` 新增 §9 上传管理（后续章节顺延）、`docs/rules/frontend.md` 同步。
+
 ## [4.2.0] - 2026-11-05
 
 **级别：MINOR（新增模块 + 交互调整）** · 代码 `1abe694`

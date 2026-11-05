@@ -148,6 +148,7 @@ async def init_db() -> None:
     """建表、轻量迁移并写入默认 OpenList 全局配置（幂等）。"""
     from app.core import models  # noqa: F401   # 注册全部模型到 Base
     from app.business.openlist.service import seed_default_openlist_config
+    from app.business.uploader.service import seed_default_rename_rule
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -157,4 +158,5 @@ async def init_db() -> None:
     await _drop_obsolete_columns()
     async with AsyncSessionLocal() as session:
         await seed_default_openlist_config(session)
+        await seed_default_rename_rule(session)
     await _bind_orphan_tasks_to_default_server()

@@ -237,7 +237,7 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 ## 11. 实施阶段
 
 1. **阶段一：凭据与 API 封装**——`upload_platform_config` 表、全局配置「123 云盘」卡、`pan123_client`（token / 列目录 / create_file / 分片 / 删除）+ mock 单测；在 `/test` 目录手工验证凭据与列目录。
-2. **阶段二：任务与规则**——`upload_task` / `upload_rename_rule` 表与接口、任务配置页、重命名规则页（含预览）、`rename_engine`（含 §6.2.1 集数映射）+ `scanner` 单测。
+2. **阶段二：任务与规则**——`upload_task` / `upload_rename_rule` 表与接口、任务配置页、重命名规则页（含预览）、`rename_engine.py`（含 §6.2.1 集数映射）+ 重命名/任务 CRUD 单测（`scanner` 单测归入阶段三）。
 3. **阶段三：执行流水线**——清单 / 重复检查 / 上传 / 删除兜底 / 取消；执行管理页（三卡片 + 执行参数 + 正在执行）；WS 实时日志；在 `/test` 做端到端验证（三种冲突策略各覆盖一次）。
 4. **阶段四：历史与收尾**——文件粒度历史、日志回放/下载、失败重跑；手册 / README / rules 文档同步；`bump_version.py minor`（4.2.0 → 4.3.0）+ CHANGELOG 条目；打包验证（`build.ps1 -SkipFrontend` 或完整构建）。
 

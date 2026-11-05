@@ -270,23 +270,7 @@ onMounted(() => void load())
   flex-direction: column;
   gap: var(--up-strm-space-3);
 
-  // 工具栏：左侧搜索/筛选（暂无），右侧「刷新 → 主操作」
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--up-strm-space-3, 12px);
-
-    &__left,
-    &__right {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--up-strm-space-2, 8px);
-    }
-  }
-
+  // 工具栏布局见 styles/global.scss 的 .toolbar 原语
   .cell-main {
     color: var(--el-text-color-primary);
     font-weight: 500;

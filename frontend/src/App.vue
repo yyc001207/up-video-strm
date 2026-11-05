@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Calendar,
@@ -122,8 +122,20 @@ const currentModule = computed(
   () => modules.find(module => route.path.startsWith(module.basePath)) ?? null
 )
 const flatPages = computed(() => currentModule.value?.groups.flatMap(group => group.pages) ?? [])
-const pageTitle = computed(() => (route.meta.title as string | undefined) ?? 'up-video-strm')
+/** 顶栏标题：「模块 · 页面」；单页模块同名只显示一次，无模块归属时退回页面标题。 */
+const pageTitle = computed(() => {
+  const moduleLabel = currentModule.value?.label
+  const title = route.meta.title as string | undefined
+  if (moduleLabel && title && title !== moduleLabel) return `${moduleLabel} · ${title}`
+  return title ?? moduleLabel ?? 'up-video-strm 控制台'
+})
 const pageDescription = computed(() => (route.meta.description as string | undefined) ?? '')
+
+// 页面标题同步到浏览器标签页（桌面端即窗口标题）。
+watchEffect(() => {
+  const title = pageTitle.value
+  document.title = title === 'up-video-strm 控制台' ? title : `${title} - up-video-strm`
+})
 
 /** 顶栏状态胶囊三态：连接失败（30s 内失败）优先于运行中，其余为空闲。 */
 type CapsuleState = 'error' | 'busy' | 'idle'
@@ -459,6 +471,7 @@ onBeforeUnmount(() => {
 }
 
 .nav-page {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--up-strm-space-2);
@@ -473,10 +486,22 @@ onBeforeUnmount(() => {
     color: var(--el-text-color-primary);
   }
 
+  // 选中态：主色文字 + 主色 12% 底 + 左侧 2px 主色指示条。
+  // 刻意不改 font-weight：微软雅黑会把 600 映射为 Bold，导致选中项文字变宽跳位。
   &--active {
     background: color-mix(in srgb, var(--el-color-primary) 12%, transparent);
     color: var(--el-color-primary);
-    font-weight: 600;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 9px;
+      bottom: 9px;
+      left: 0;
+      width: 2px;
+      border-radius: 1px;
+      background: var(--el-color-primary);
+    }
   }
 
   &--icon {

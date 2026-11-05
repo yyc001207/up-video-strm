@@ -47,6 +47,28 @@ a {
   padding: var(--up-strm-space-4) var(--up-strm-space-6);
 }
 
+// 列表页工具栏原语：左侧搜索/提示，右侧操作组；右侧始终贴右。
+// 各页面只保留自身专有规则（如 .toolbar__keyword、.toolbar__hint），不再重复布局。
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--up-strm-space-3, 12px);
+
+  &__left,
+  &__right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--up-strm-space-2, 8px);
+  }
+
+  &__right {
+    margin-left: auto;
+  }
+}
+
 // 可访问性：所有交互元素统一 2px 焦点环。
 :focus-visible {
   outline: 2px solid var(--el-color-primary);

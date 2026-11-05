@@ -276,19 +276,7 @@ defineExpose({ reload: load })
   }
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--up-strm-space-3, 12px);
-
-  &__right {
-    display: flex;
-    align-items: center;
-    gap: var(--up-strm-space-2, 8px);
-  }
-}
+// 工具栏布局见 styles/global.scss 的 .toolbar 原语
 
 .detail-header {
   display: flex;

@@ -340,6 +340,7 @@ onBeforeUnmount(() => {
 
   &__cards {
     display: grid;
+    flex: none;
     grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr) minmax(280px, 1fr);
     gap: var(--up-strm-space-4, 16px);
     align-items: start;
@@ -491,6 +492,7 @@ onBeforeUnmount(() => {
 }
 
 .running-card {
+  flex: none;
   margin: 0;
 
   :deep(.el-table) {

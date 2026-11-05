@@ -753,24 +753,9 @@ defineExpose({ reload: load })
   }
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--up-strm-space-3, 12px);
-
-  &__left,
-  &__right {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--up-strm-space-2, 8px);
-  }
-
-  &__keyword {
-    width: 220px;
-  }
+// 工具栏布局见 styles/global.scss 的 .toolbar 原语
+.toolbar__keyword {
+  width: 220px;
 }
 
 .cell-primary {

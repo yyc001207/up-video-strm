@@ -418,23 +418,10 @@ defineExpose({ reload: load })
   }
 }
 
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--up-strm-space-3, 12px);
-
-  &__hint {
-    font-size: var(--up-strm-font-size-sm, 13px);
-    color: var(--el-text-color-secondary);
-  }
-
-  &__right {
-    display: flex;
-    align-items: center;
-    gap: var(--up-strm-space-2, 8px);
-  }
+// 工具栏布局见 styles/global.scss 的 .toolbar 原语
+.toolbar__hint {
+  font-size: var(--up-strm-font-size-sm, 13px);
+  color: var(--el-text-color-secondary);
 }
 
 .detail-header {

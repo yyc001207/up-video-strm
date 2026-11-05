@@ -120,7 +120,6 @@ def run_window(
     state: dict[str, object] = {
         "quitting": False,
         "hint_shown": False,
-        "tray_hint_shown": False,
         "tray": None,
     }
 
@@ -269,9 +268,9 @@ def run_window(
             kernel32.CloseHandle(handle)
 
     def check_tray(icon) -> None:
-        """校验图标是否真的注册进系统托盘，并在 Win11 下尽量固定到任务栏。"""
+        """校验图标是否注册进系统托盘，并确保 Win11 下默认收进「^」折叠区。"""
         from app.core.paths import is_frozen
-        from app.core.tray_win import notify_icon_rect, promote_tray_icon
+        from app.core.tray_win import hide_tray_icon, notify_icon_rect
 
         time.sleep(0.8)
         rect = None
@@ -281,26 +280,12 @@ def run_window(
         except Exception as exc:  # noqa: BLE001
             logger.warning("查询托盘图标失败: %s", exc)
 
-        # 图标落在屏幕外 = 被 Win11 折叠进「^」，首次给一次气泡提示
-        if rect and not state["tray_hint_shown"]:
-            try:
-                import ctypes
-
-                if rect[1] >= ctypes.windll.user32.GetSystemMetrics(1):
-                    state["tray_hint_shown"] = True
-                    icon.notify(
-                        "图标在任务栏「^」折叠区：可在任务栏设置中打开，或拖到任务栏固定",
-                        title,
-                    )
-            except Exception:  # noqa: BLE001
-                pass
-
         if not is_frozen():
             return
         try:
-            logger.info("托盘图标固定到任务栏: %s", promote_tray_icon())
+            logger.info("托盘图标保持收进「^」折叠区: %s", hide_tray_icon())
         except Exception as exc:  # noqa: BLE001
-            logger.warning("固定托盘图标失败: %s", exc)
+            logger.warning("调整托盘图标可见性失败: %s", exc)
 
     tray_icon = None
     if enable_tray:

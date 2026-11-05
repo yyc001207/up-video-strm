@@ -235,6 +235,14 @@ def main() -> None:
                 return
         from app.core.desktop_prefs import load_prefs
 
+        # 在注册托盘图标之前先写入「默认收进 ^」，避免升级后首次启动仍出现在外侧
+        try:
+            from app.core.tray_win import hide_tray_icon
+
+            hide_tray_icon(retries=1, delay=0.0)
+        except Exception:  # noqa: BLE001 - 托盘可见性失败不影响启动
+            pass
+
         prefs: dict = load_prefs()
     else:
         root = Path(__file__).resolve().parent

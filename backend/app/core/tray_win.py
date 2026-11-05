@@ -1,9 +1,12 @@
-"""Windows 11 托盘图标可见性：把本程序的图标设为「在任务栏显示」。
+"""Windows 11 托盘图标可见性：让本程序的图标默认收进任务栏「^」折叠区。
 
 Win11 会把新注册的托盘图标默认折叠进任务栏「^」里，是否常驻显示由
 ``HKCU\\Control Panel\\NotifyIconSettings\\<hash>`` 下的 ``IsPromoted`` 决定。
 图标由 pystray 通过 Shell_NotifyIcon 注册后，Explorer 会为该可执行文件建立条目；
-这里按 ``ExecutablePath`` 找到条目并置 ``IsPromoted=1``。
+这里按 ``ExecutablePath`` 找到条目并写 ``IsPromoted``：
+
+- 启动时写 ``0``（收进「^」），避免每次升级/重启后又被系统或旧逻辑置顶；
+- 设置页「修复托盘图标」等显式操作可写 ``1`` 把图标固定到任务栏常驻区。
 
 写入后通常在下一次注册（即下次启动应用）时生效；Explorer 未刷新时可重启资源管理器。
 """
@@ -54,8 +57,10 @@ def is_promoted(exe_path: str | None = None) -> bool:
         return False
 
 
-def promote_tray_icon(exe_path: str | None = None, retries: int = 6, delay: float = 0.4) -> bool:
-    """把当前程序的托盘图标设为常驻显示；条目尚未生成时会短暂重试。"""
+def set_tray_icon_promoted(
+    promoted: bool, exe_path: str | None = None, retries: int = 6, delay: float = 0.4
+) -> bool:
+    """把当前程序托盘图标的 ``IsPromoted`` 写为指定值；条目尚未生成时会短暂重试。"""
     if sys.platform != "win32":
         return False
     import winreg
@@ -68,12 +73,22 @@ def promote_tray_icon(exe_path: str | None = None, retries: int = 6, delay: floa
                 with winreg.OpenKey(
                     winreg.HKEY_CURRENT_USER, f"{BASE_KEY}\\{name}", 0, winreg.KEY_SET_VALUE
                 ) as key:
-                    winreg.SetValueEx(key, "IsPromoted", 0, winreg.REG_DWORD, 1)
+                    winreg.SetValueEx(key, "IsPromoted", 0, winreg.REG_DWORD, 1 if promoted else 0)
                 return True
             except OSError:
                 return False
         time.sleep(delay)
     return False
+
+
+def hide_tray_icon(exe_path: str | None = None, retries: int = 6, delay: float = 0.4) -> bool:
+    """把托盘图标保留在 Win11 的「^」折叠区（默认行为）。"""
+    return set_tray_icon_promoted(False, exe_path, retries, delay)
+
+
+def promote_tray_icon(exe_path: str | None = None, retries: int = 6, delay: float = 0.4) -> bool:
+    """把当前程序的托盘图标设为常驻显示（仅供设置页「修复托盘图标」等显式操作）。"""
+    return set_tray_icon_promoted(True, exe_path, retries, delay)
 
 
 def notify_icon_rect(hwnd: int, uid: int = 0) -> tuple[int, int, int, int] | None:

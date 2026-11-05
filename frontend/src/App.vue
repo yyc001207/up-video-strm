@@ -24,7 +24,8 @@ interface NavPage {
 }
 
 interface NavGroup {
-  title: string
+  /** 分组标题；单页模块可省略，直接平铺页面项。 */
+  title?: string
   pages: NavPage[]
 }
 
@@ -43,6 +44,18 @@ interface NavModule {
  */
 const modules: NavModule[] = [
   {
+    id: 'config',
+    label: '全局配置',
+    icon: Setting,
+    basePath: '/config',
+    groups: [
+      {
+        // 单页模块：不显示分组标题，直接平铺页面项
+        pages: [{ path: '/config', label: '全局配置', icon: Setting }]
+      }
+    ]
+  },
+  {
     id: 'schedule',
     label: '任务调度',
     icon: Calendar,
@@ -50,10 +63,7 @@ const modules: NavModule[] = [
     groups: [
       {
         title: '配置',
-        pages: [
-          { path: '/schedule/config', label: '全局配置', icon: Setting },
-          { path: '/schedule/tasks', label: '任务配置', icon: Document }
-        ]
+        pages: [{ path: '/schedule/tasks', label: '任务配置', icon: Document }]
       },
       {
         title: '运行',
@@ -172,8 +182,8 @@ onBeforeUnmount(() => {
 
         <template v-if="currentModule">
           <template v-if="!collapsed">
-            <div v-for="group in currentModule.groups" :key="group.title" class="nav-group">
-              <div class="nav-group__title">{{ group.title }}</div>
+            <div v-for="group in currentModule.groups" :key="group.title ?? group.pages[0]?.path" class="nav-group">
+              <div v-if="group.title" class="nav-group__title">{{ group.title }}</div>
               <router-link
                 v-for="page in group.pages"
                 :key="page.path"

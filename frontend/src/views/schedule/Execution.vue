@@ -256,7 +256,7 @@ function runningRowClassName({ row }: { row: OpenListExecution }): string {
 }
 
 function goConfig(): void {
-  void router.push('/schedule/config')
+  void router.push('/config')
 }
 
 function goTasks(): void {

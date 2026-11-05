@@ -24,10 +24,15 @@ const router = createRouter({
       meta: { title: '实时日志', description: '跟踪执行进度与实时输出' }
     },
     {
+      // 旧路径兼容：全局配置已升级为与任务调度平级的模块
       path: '/schedule/config',
-      name: 'ScheduleConfig',
-      component: () => import('@/views/schedule/GlobalConfig.vue'),
-      meta: { title: '全局配置', description: '服务器连接与全局运行参数' }
+      redirect: '/config'
+    },
+    {
+      path: '/config',
+      name: 'GlobalConfig',
+      component: () => import('@/views/config/GlobalConfig.vue'),
+      meta: { title: '全局配置', description: '服务器连接与视频/字幕格式' }
     },
     {
       path: '/schedule/tasks',

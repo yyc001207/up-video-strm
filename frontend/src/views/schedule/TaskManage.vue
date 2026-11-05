@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, FolderAdd, Plus, Search } from '@element-plus/icons-vue'
+import { Delete, Edit, FolderAdd, FolderOpened, Plus, Search } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
 import { useOpenlistStore } from '@/stores/openlist'
@@ -30,6 +30,18 @@ const form = reactive({
 const emptyDescription = computed(() =>
   keyword.value.trim() ? '没有匹配的任务配置' : '暂无任务配置'
 )
+
+// 默认运行参数（全局生效；其余运行参数已从全局配置页迁入本页）
+const paramsDrawerVisible = ref(false)
+const savingParams = ref(false)
+const paramsForm = reactive({
+  max_concurrent: 1,
+  pause_count: 50,
+  pause_time: '0,3,5',
+  disable_ssl_verify: false,
+  output_dir_prefix: '',
+  output_root: ''
+})
 
 async function load() {
   loading.value = true
@@ -328,6 +340,57 @@ async function handleQuickAddParentDir() {
   }
 }
 
+function openParams() {
+  const current = store.config
+  if (!current) return
+  paramsForm.max_concurrent = current.max_concurrent || 1
+  paramsForm.pause_count = current.pause_count || 50
+  paramsForm.pause_time = current.pause_time || '0,3,5'
+  paramsForm.disable_ssl_verify = current.disable_ssl_verify ?? false
+  paramsForm.output_dir_prefix = current.output_dir_prefix ?? ''
+  paramsForm.output_root = current.output_root ?? ''
+  paramsDrawerVisible.value = true
+}
+
+/** 桌面版唤起系统文件夹选择框；浏览器版没有该能力，提示手动填写。 */
+async function pickOutputRoot() {
+  const bridge = (window as unknown as {
+    pywebview?: { api?: { pick_directory?: (startDir?: string) => Promise<string> } }
+  }).pywebview
+  if (!bridge?.api?.pick_directory) {
+    ElMessage.warning('当前不是桌面版，请手动填写路径')
+    return
+  }
+  try {
+    const picked = await bridge.api.pick_directory(paramsForm.output_root.trim() || '')
+    if (picked) paramsForm.output_root = picked
+  } catch {
+    ElMessage.error('打开文件夹选择框失败')
+  }
+}
+
+/** 保存默认运行参数（只提交本页字段，视频/字幕格式保持不变）。 */
+async function handleSaveParams() {
+  savingParams.value = true
+  try {
+    await openlistApi.updateConfig({
+      max_concurrent: paramsForm.max_concurrent,
+      pause_count: paramsForm.pause_count,
+      pause_time: paramsForm.pause_time.trim(),
+      disable_ssl_verify: paramsForm.disable_ssl_verify,
+      output_dir_prefix: paramsForm.output_dir_prefix.trim(),
+      output_root: paramsForm.output_root.trim()
+    })
+    ElMessage.success('默认运行参数已保存')
+    paramsDrawerVisible.value = false
+    await store.fetchConfig()
+  } catch {
+    /* 拦截器提示 */
+  } finally {
+    savingParams.value = false
+  }
+}
+
 onMounted(async () => {
   await load()
 })
@@ -337,6 +400,50 @@ defineExpose({ reload: load })
 
 <template>
   <div class="page task-manage">
+    <!-- 默认运行参数：全局生效，任务未单独设置时使用 -->
+    <el-card shadow="never" class="task-manage__params">
+      <template #header>
+        <div class="params-header">
+          <div class="params-header__left">
+            <span class="card-title">默认运行参数</span>
+            <span class="params-header__hint">全局生效，任务未单独设置时使用</span>
+          </div>
+          <el-button :icon="Edit" :disabled="!store.config" @click="openParams">编辑</el-button>
+        </div>
+      </template>
+      <dl v-if="store.config" class="params-grid">
+        <div class="params-grid__item">
+          <dt>最大并发</dt>
+          <dd>{{ store.config.max_concurrent || 1 }} 个任务</dd>
+        </div>
+        <div class="params-grid__item">
+          <dt>限流间隔</dt>
+          <dd>每 {{ store.config.pause_count || 50 }} 个文件暂停一次</dd>
+        </div>
+        <div class="params-grid__item">
+          <dt>限流暂停时间</dt>
+          <dd>{{ store.config.pause_time || '0,3,5' }} 秒</dd>
+        </div>
+        <div class="params-grid__item">
+          <dt>SSL 校验</dt>
+          <dd>
+            <el-tag :type="store.config.disable_ssl_verify ? 'warning' : 'success'" effect="light" size="small">
+              {{ store.config.disable_ssl_verify ? '不校验' : '校验证书' }}
+            </el-tag>
+          </dd>
+        </div>
+        <div class="params-grid__item">
+          <dt>输出目录前缀</dt>
+          <dd>{{ store.config.output_dir_prefix || '—' }}</dd>
+        </div>
+        <div class="params-grid__item">
+          <dt>输出根目录</dt>
+          <dd>{{ store.config.output_root || '默认（程序目录下 output）' }}</dd>
+        </div>
+      </dl>
+      <el-empty v-else description="暂无运行参数" :image-size="60" />
+    </el-card>
+
     <!-- 工具栏：左侧搜索/筛选，右侧动作（主次分明） -->
     <div class="toolbar">
       <div class="toolbar__left">
@@ -516,6 +623,44 @@ defineExpose({ reload: load })
         <el-button type="primary" :loading="quickParentSaving" @click="handleQuickAddParentDir">保存</el-button>
       </template>
     </el-dialog>
+    <!-- 编辑默认运行参数 -->
+    <el-drawer v-model="paramsDrawerVisible" title="编辑默认运行参数" size="520px" destroy-on-close>
+      <el-form label-width="130px">
+        <el-form-item label="同时执行任务个数">
+          <el-input-number v-model="paramsForm.max_concurrent" :min="1" :max="100" />
+          <div class="remark">限制同时运行的任务数量，超出排队等待</div>
+        </el-form-item>
+        <el-form-item label="限流间隔文件数">
+          <el-input-number v-model="paramsForm.pause_count" :min="1" :max="100000" />
+          <div class="remark">每隔 N 个文件限流暂停一次</div>
+        </el-form-item>
+        <el-form-item label="限流暂停时间">
+          <el-input v-model="paramsForm.pause_time" placeholder="0,3,5" maxlength="512" />
+          <div class="remark">秒，逗号分隔；随机暂停其中一项；填 0 表示不限流</div>
+        </el-form-item>
+        <el-form-item label="禁用 SSL 验证">
+          <el-switch v-model="paramsForm.disable_ssl_verify" />
+          <div class="remark">默认关闭（校验证书）；内网自签名 HTTPS 时开启可禁用验证</div>
+        </el-form-item>
+        <el-form-item label="输出目录前缀">
+          <el-input v-model="paramsForm.output_dir_prefix" placeholder="如：/volume1/media（默认空）" maxlength="128" />
+          <div class="remark">快速添加任务配置时拼接到输出目录前，默认空则不拼接</div>
+        </el-form-item>
+        <el-form-item label="输出根目录">
+          <div class="path-row">
+            <el-input v-model="paramsForm.output_root" placeholder="留空=程序目录下 output；如 D:\Media\strm" maxlength="512" />
+            <el-button :icon="FolderOpened" @click="pickOutputRoot">选择</el-button>
+          </div>
+          <div class="remark">任务输出目录以 / 开头时相对此目录生成；留空时相对程序目录下的 output 生成</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="drawer-footer">
+          <el-button @click="paramsDrawerVisible = false">取消</el-button>
+          <el-button type="primary" :loading="savingParams" @click="handleSaveParams">保存</el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -525,12 +670,76 @@ defineExpose({ reload: load })
   flex-direction: column;
   gap: var(--up-strm-space-4, 16px);
 
+  &__params {
+    flex-shrink: 0;
+  }
+
   &__card {
     flex-shrink: 0;
   }
 
   &__table {
     width: 100%;
+  }
+}
+
+.params-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--up-strm-space-3, 12px);
+
+  &__left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--up-strm-space-2, 8px);
+  }
+
+  &__hint {
+    font-size: var(--up-strm-font-size-xs, 12px);
+    color: var(--el-text-color-secondary);
+  }
+}
+
+.card-title {
+  font-size: var(--up-strm-font-size-lg, 16px);
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.params-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--up-strm-space-3, 12px) var(--up-strm-space-5, 24px);
+  margin: 0;
+
+  &__item {
+    dt {
+      font-size: var(--up-strm-font-size-xs, 12px);
+      color: var(--el-text-color-secondary);
+      line-height: 1.5;
+    }
+
+    dd {
+      margin: 2px 0 0;
+      font-size: var(--up-strm-font-size-sm, 13px);
+      color: var(--el-text-color-primary);
+      line-height: 1.5;
+      word-break: break-all;
+    }
+  }
+}
+
+.path-row {
+  display: flex;
+  align-items: center;
+  gap: var(--up-strm-space-2, 8px);
+  width: 100%;
+
+  :deep(.el-input) {
+    flex: 1;
   }
 }
 

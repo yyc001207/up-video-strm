@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, FolderOpened, Plus, Refresh } from '@element-plus/icons-vue'
+import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
 import { useOpenlistStore } from '@/stores/openlist'
@@ -40,10 +40,10 @@ const testingConnection = ref(false)
 const refreshingCache = ref(false)
 const serverForm = reactive({ server_url: '', token: '', parent_dirs: '', skip_validation: false })
 
-// 全局配置抽屉
-const configDialogVisible = ref(false)
-const savingConfig = ref(false)
-const configForm = reactive({ video_formats: '', subtitle_formats: '', max_concurrent: 1, pause_count: 50, pause_time: '0,3,5', disable_ssl_verify: false, output_dir_prefix: '', output_root: '' })
+// 视频/字幕格式编辑抽屉
+const formatDrawerVisible = ref(false)
+const savingFormats = ref(false)
+const formatForm = reactive({ video_formats: '', subtitle_formats: '' })
 
 async function load() {
   loading.value = true
@@ -197,57 +197,29 @@ async function handleDeleteServer(target: OpenListServer) {
   }
 }
 
-function openEditConfig() {
+function openEditFormats() {
   const current = config.value
   if (!current) return
-  configForm.video_formats = current.video_formats ?? ''
-  configForm.subtitle_formats = current.subtitle_formats ?? ''
-  configForm.max_concurrent = current.max_concurrent || 1
-  configForm.pause_count = current.pause_count || 50
-  configForm.pause_time = current.pause_time ?? '0,3,5'
-  configForm.disable_ssl_verify = current.disable_ssl_verify ?? false
-  configForm.output_dir_prefix = current.output_dir_prefix ?? ''
-  configForm.output_root = current.output_root ?? ''
-  configDialogVisible.value = true
+  formatForm.video_formats = current.video_formats ?? ''
+  formatForm.subtitle_formats = current.subtitle_formats ?? ''
+  formatDrawerVisible.value = true
 }
 
-/** 桌面版唤起系统文件夹选择框；浏览器版没有该能力，提示手动填写。 */
-async function pickOutputRoot() {
-  const bridge = (window as unknown as {
-    pywebview?: { api?: { pick_directory?: (startDir?: string) => Promise<string> } }
-  }).pywebview
-  if (!bridge?.api?.pick_directory) {
-    ElMessage.warning('当前不是桌面版，请手动填写路径')
-    return
-  }
-  try {
-    const picked = await bridge.api.pick_directory(configForm.output_root.trim() || '')
-    if (picked) configForm.output_root = picked
-  } catch {
-    ElMessage.error('打开文件夹选择框失败')
-  }
-}
-
-async function handleSaveConfig() {
-  savingConfig.value = true
+/** 只提交视频/字幕格式：后端其余字段为 None 时保持原值，不会覆盖运行参数。 */
+async function handleSaveFormats() {
+  savingFormats.value = true
   try {
     await openlistApi.updateConfig({
-      video_formats: configForm.video_formats.trim(),
-      subtitle_formats: configForm.subtitle_formats.trim(),
-      max_concurrent: configForm.max_concurrent,
-      pause_count: configForm.pause_count,
-      pause_time: configForm.pause_time.trim(),
-      disable_ssl_verify: configForm.disable_ssl_verify,
-      output_dir_prefix: configForm.output_dir_prefix.trim(),
-      output_root: configForm.output_root.trim()
+      video_formats: formatForm.video_formats.trim(),
+      subtitle_formats: formatForm.subtitle_formats.trim()
     })
-    ElMessage.success('全局配置已保存')
-    configDialogVisible.value = false
+    ElMessage.success('格式设置已保存')
+    formatDrawerVisible.value = false
     await load()
   } catch {
     /* 拦截器提示 */
   } finally {
-    savingConfig.value = false
+    savingFormats.value = false
   }
 }
 
@@ -336,21 +308,17 @@ defineExpose({ reload: load })
         </el-card>
       </el-col>
 
-      <!-- 右 4 栏：运行参数摘要卡（definition list，消除留白） -->
+      <!-- 右 4 栏：视频/字幕格式（其余运行参数已迁至任务配置页） -->
       <el-col :xs="24" :lg="8">
         <el-card shadow="never" class="global-config__card">
           <template #header>
             <div class="card-header">
-              <span class="card-title">运行参数</span>
-              <el-button :icon="Edit" :disabled="!config" @click="openEditConfig">编辑配置</el-button>
+              <span class="card-title">视频与字幕格式</span>
+              <el-button :icon="Edit" :disabled="!config" @click="openEditFormats">编辑</el-button>
             </div>
           </template>
 
           <dl v-if="config" class="meta-list">
-            <div class="meta-list__item">
-              <dt>最大并发</dt>
-              <dd>{{ config.max_concurrent || 1 }} 个任务</dd>
-            </div>
             <div class="meta-list__item">
               <dt>视频格式</dt>
               <dd>{{ config.video_formats || '—' }}</dd>
@@ -359,30 +327,8 @@ defineExpose({ reload: load })
               <dt>字幕格式</dt>
               <dd>{{ config.subtitle_formats || '—' }}</dd>
             </div>
-            <div class="meta-list__item">
-              <dt>暂停策略</dt>
-              <dd>
-                每 {{ config.pause_count || 50 }} 个文件暂停一次（{{ config.pause_time || '0,3,5' }} 秒）
-              </dd>
-            </div>
-            <div class="meta-list__item">
-              <dt>SSL 校验</dt>
-              <dd>
-                <el-tag :type="config.disable_ssl_verify ? 'warning' : 'success'" effect="light" size="small">
-                  {{ config.disable_ssl_verify ? '不校验' : '校验证书' }}
-                </el-tag>
-              </dd>
-            </div>
-            <div class="meta-list__item">
-              <dt>输出前缀</dt>
-              <dd>{{ config.output_dir_prefix || '—' }}</dd>
-            </div>
-            <div class="meta-list__item">
-              <dt>输出根目录</dt>
-              <dd>{{ config.output_root || '默认（程序目录下 output）' }}</dd>
-            </div>
           </dl>
-          <el-empty v-else description="暂无运行参数" :image-size="70" />
+          <el-empty v-else description="暂无格式设置" :image-size="70" />
         </el-card>
       </el-col>
     </el-row>
@@ -434,48 +380,21 @@ defineExpose({ reload: load })
       </template>
     </el-dialog>
 
-    <el-drawer v-model="configDialogVisible" title="编辑全局配置" size="520px" destroy-on-close>
-      <el-form label-width="130px">
-        <el-form-item label="同时执行任务个数">
-          <el-input-number v-model="configForm.max_concurrent" :min="1" :max="100" />
-          <div class="remark">限制同时运行的任务数量，超出排队等待</div>
-        </el-form-item>
+    <el-drawer v-model="formatDrawerVisible" title="编辑视频与字幕格式" size="460px" destroy-on-close>
+      <el-form label-width="96px">
         <el-form-item label="视频格式">
-          <el-input v-model="configForm.video_formats" placeholder="mp4,mkv,avi,wmv,flv,mov,webm,ts" maxlength="512" />
+          <el-input v-model="formatForm.video_formats" placeholder="mp4,mkv,avi,wmv,flv,mov,webm,ts" maxlength="512" />
           <div class="remark">英文逗号分隔</div>
         </el-form-item>
         <el-form-item label="字幕格式">
-          <el-input v-model="configForm.subtitle_formats" placeholder="srt,ass,ssa,sub,vtt" maxlength="512" />
+          <el-input v-model="formatForm.subtitle_formats" placeholder="srt,ass,ssa,sub,vtt" maxlength="512" />
           <div class="remark">英文逗号分隔</div>
-        </el-form-item>
-        <el-form-item label="限流间隔文件数">
-          <el-input-number v-model="configForm.pause_count" :min="1" :max="100000" />
-          <div class="remark">每隔 N 个文件限流暂停一次</div>
-        </el-form-item>
-        <el-form-item label="限流暂停时间">
-          <el-input v-model="configForm.pause_time" placeholder="0,3,5" maxlength="512" />
-          <div class="remark">秒，逗号分隔；随机暂停其中一项；填 0 表示不限流</div>
-        </el-form-item>
-        <el-form-item label="禁用 SSL 验证">
-          <el-switch v-model="configForm.disable_ssl_verify" />
-          <div class="remark">默认关闭（校验证书）；内网自签名 HTTPS 时开启可禁用验证</div>
-        </el-form-item>
-        <el-form-item label="输出根目录">
-          <div class="path-row">
-            <el-input v-model="configForm.output_root" placeholder="留空=程序目录下 output；如 D:\Media\strm" maxlength="512" />
-            <el-button :icon="FolderOpened" @click="pickOutputRoot">选择</el-button>
-          </div>
-          <div class="remark">任务输出目录以 / 开头时相对此目录生成；留空时相对程序目录下的 output 生成</div>
-        </el-form-item>
-        <el-form-item label="输出目录前缀">
-          <el-input v-model="configForm.output_dir_prefix" placeholder="如：/volume1/media（默认空）" maxlength="128" />
-          <div class="remark">快速添加任务配置时拼接到输出目录前，默认空则不拼接</div>
         </el-form-item>
       </el-form>
       <template #footer>
         <div class="drawer-footer">
-          <el-button @click="configDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="savingConfig" @click="handleSaveConfig">保存</el-button>
+          <el-button @click="formatDrawerVisible = false">取消</el-button>
+          <el-button type="primary" :loading="savingFormats" @click="handleSaveFormats">保存</el-button>
         </div>
       </template>
     </el-drawer>
@@ -602,17 +521,6 @@ defineExpose({ reload: load })
   color: var(--el-text-color-secondary);
   line-height: 1.5;
   margin-top: 2px;
-}
-
-.path-row {
-  display: flex;
-  align-items: center;
-  gap: var(--up-strm-space-2, 8px);
-  width: 100%;
-
-  :deep(.el-input) {
-    flex: 1;
-  }
 }
 
 /* 服务器弹窗底部：左侧连通性测试，右侧取消/保存 */

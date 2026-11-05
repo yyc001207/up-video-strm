@@ -320,10 +320,7 @@ async function init(): Promise<void> {
   }
   const res = await uploaderApi.listExecutions({ status: 'running', page: 1, pageSize: 50 })
   const running = res.data.list
-  if (running.length === 0) {
-    ElMessage.info('当前没有正在执行的上传，请到执行管理发起执行')
-    return
-  }
+  if (running.length === 0) return
   targets.value = running.map((item: UploadExecution) => ({
     executionId: item.id,
     taskId: item.task_id,

@@ -17,7 +17,8 @@ frontend/
 │   ├── api/                # axios 实例 + openlist / desktop 接口封装
 │   ├── stores/             # Pinia（openlist 业务 / theme 主题）
 │   ├── views/
-│   │   ├── schedule/       # 任务调度模块：五个路由页面 + components/DirTreePanel.vue
+│   │   ├── schedule/       # 任务调度模块：四个路由页面 + components/DirTreePanel.vue
+│   │   ├── config/         # 全局配置模块：服务器配置 + 视频/字幕格式
 │   │   └── Settings/       # 桌面设置页
 │   ├── components/         # 通用组件（StatusDot 状态点 / LogViewer 日志终端 / ThemeToggle 主题切换）
 │   ├── types/ / utils/     # 类型（openlist / desktop）、工具（date / ws）
@@ -34,14 +35,15 @@ frontend/
 |------|----------|------|
 | `/` | — | 重定向到 `/schedule/execution` |
 | `/schedule/execution` | `views/schedule/Execution.vue` | 执行管理：选任务、设执行模式并启动 |
-| `/schedule/config` | `views/schedule/GlobalConfig.vue` | 全局配置 + 单服务器卡片 |
-| `/schedule/tasks` | `views/schedule/TaskManage.vue` | 任务 CRUD、快速添加、批量删除 |
+| `/schedule/config` | — | 旧路径兼容，重定向到 `/config` |
+| `/config` | `views/config/GlobalConfig.vue` | 全局配置：服务器配置 + 视频/字幕格式 |
+| `/schedule/tasks` | `views/schedule/TaskManage.vue` | 任务 CRUD、快速添加、批量删除、默认运行参数 |
 | `/schedule/history` | `views/schedule/TaskHistory.vue` | 任务历史列表与详情、日志回放/下载 |
 | `/schedule/realtime` | `views/schedule/RealtimeLog.vue` | WebSocket 实时日志 |
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
-- 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面）；新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。
+- 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前两个平级模块：「任务调度」（`/schedule/*`）与「全局配置」（`/config`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。
 - 顶栏标题/描述取路由 `meta.title` / `meta.description`；右侧运行状态胶囊轮询 `fetchRunning`（10s 间隔）。
 - 原「五页签」语义改为独立路由页面：进入页面即按需加载，切换路由即刷新，不再依赖 tab 的 `reload`。
 - 执行管理 → 实时日志通过路由 query 传参：`execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`）。实时日志页先建立 WebSocket，`onOpen` 后才对 `launch=true` 的执行调用 `startExecution`（保证先连日志再启动）。
@@ -49,8 +51,8 @@ frontend/
 ## 页面与组件
 
 - `Execution.vue`：一行三卡片（选择任务 / 执行参数 / 已选任务），执行模式用 `el-segmented`（增量 / 全量 / 仅 strm）；「已选任务」卡片承载摘要与「清空选择 / 执行任务」操作；「正在执行」表支持查看日志与取消，5s 轮询刷新。
-- `GlobalConfig.vue`：单服务器卡片（无服务器时为空态 + 新增；标题右侧显示连通状态标签：在线 / 离线 / 未配置 / 检测中，进入页面及每 60s 轮询探测；卡片展示服务器地址 / Token 是否配置 / 父级目录标签，可编辑、刷新缓存、删除）+ 全局参数摘要卡与编辑抽屉（「编辑配置」为右侧抽屉）。
-- `TaskManage.vue`：工具栏分组（搜索 / 新建、快速添加、批量删除）；表格任务名与路径双行；快速添加使用 `DirTreePanel.vue`（目录树勾选 + 搜索下钻 + 缓存刷新）。
+- `GlobalConfig.vue`：全局配置模块单页——左侧单服务器卡片（无服务器时为空态 + 新增；标题右侧显示连通状态标签：在线 / 离线 / 未配置 / 检测中，进入页面及每 60s 轮询探测；卡片展示服务器地址 / Token 是否配置 / 父级目录标签，可编辑、刷新缓存、删除），右侧视频与字幕格式摘要卡 + 编辑抽屉。
+- `TaskManage.vue`：页顶部「默认运行参数」卡（最大并发、限流、SSL 校验、输出目录前缀与根目录）+ 编辑抽屉（配置全局生效，任务未单独设置时使用）；工具栏分组（搜索 / 新建、快速添加、批量删除）；表格任务名与路径双行；快速添加使用 `DirTreePanel.vue`（目录树勾选 + 搜索下钻 + 缓存刷新）。
 - `TaskHistory.vue`：列表（每任务最近执行 + 状态点）与页面级详情（分页 20、日志抽屉、下载日志）。
 - `RealtimeLog.vue`：三段式（进度摘要 / `LogViewer` 终端 / 级别与关键字过滤、清屏、下载日志）；状态帧结束即断开并提示前往任务历史。
 - 通用组件：`StatusDot.vue`（执行状态点 + 文案）、`LogViewer.vue`（可复用日志终端）、`ThemeToggle.vue`（浅色 / 深色 / 跟随系统）。

@@ -58,7 +58,8 @@ const paramsForm = reactive({
   pause_time: '0,3,5',
   disable_ssl_verify: false,
   output_dir_prefix: '',
-  output_root: ''
+  output_root: '',
+  openlist_remote_prefix: ''
 })
 
 async function load() {
@@ -369,6 +370,7 @@ function openParams() {
   paramsForm.disable_ssl_verify = current?.disable_ssl_verify ?? false
   paramsForm.output_dir_prefix = current?.output_dir_prefix ?? ''
   paramsForm.output_root = current?.output_root ?? ''
+  paramsForm.openlist_remote_prefix = current?.openlist_remote_prefix ?? ''
   paramsDrawerVisible.value = true
 }
 
@@ -399,7 +401,8 @@ async function handleSaveParams() {
       pause_time: paramsForm.pause_time.trim(),
       disable_ssl_verify: paramsForm.disable_ssl_verify,
       output_dir_prefix: paramsForm.output_dir_prefix.trim(),
-      output_root: paramsForm.output_root.trim()
+      output_root: paramsForm.output_root.trim(),
+      openlist_remote_prefix: paramsForm.openlist_remote_prefix.trim()
     })
     ElMessage.success('默认运行参数已保存')
     paramsDrawerVisible.value = false
@@ -459,6 +462,10 @@ defineExpose({ reload: load })
         <div class="params-grid__item">
           <dt>输出根目录</dt>
           <dd>{{ store.config.output_root || '默认（程序目录下 output）' }}</dd>
+        </div>
+        <div class="params-grid__item">
+          <dt>OpenList 远程目录前缀</dt>
+          <dd>{{ store.config.openlist_remote_prefix || '—' }}</dd>
         </div>
       </dl>
       <el-empty v-else description="暂无运行参数" :image-size="60">
@@ -691,6 +698,10 @@ defineExpose({ reload: load })
             <el-button :icon="FolderOpened" @click="pickOutputRoot">选择</el-button>
           </div>
           <div class="remark">任务输出目录以 / 开头时相对此目录生成；留空时相对程序目录下的 output 生成</div>
+        </el-form-item>
+        <el-form-item label="OpenList 远程目录前缀">
+          <el-input v-model="paramsForm.openlist_remote_prefix" placeholder="如：/volume1/media（默认空）" maxlength="256" />
+          <div class="remark">自动化任务比对云端文件时拼接在任务输出目录前；留空表示从根目录直接匹配</div>
         </el-form-item>
       </el-form>
       <template #footer>

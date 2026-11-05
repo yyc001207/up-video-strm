@@ -12,6 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.beijing import beijing_now
+from app.business import execution_registry
+from app.business.automation import refs
 from app.business.uploader import rename_engine
 from app.business.uploader.rename_engine import DEFAULT_TEMPLATE
 from app.business.uploader.pan123_client import Pan123Client, get_file_id
@@ -414,6 +416,8 @@ async def delete_upload_task(db: AsyncSession, task_id: int) -> dict:
     task = await db.get(UploadTask, task_id)
     if task is None:
         raise BadRequestException("上传任务不存在")
+    # 阶段⓿-6：被自动化任务绑定时拒绝删除
+    await refs.assert_upload_task_not_referenced(db, task_id)
     await db.delete(task)
     await db.commit()
     return {"id": task_id}
@@ -424,6 +428,9 @@ async def batch_delete_upload_tasks(db: AsyncSession, ids: list[int]) -> dict:
     tasks = (await db.scalars(select(UploadTask).where(UploadTask.id.in_(ids)))).all()
     if not tasks:
         raise BadRequestException("未找到要删除的上传任务")
+    # 阶段⓿-6：任一任务被自动化任务绑定时整体拒绝
+    for task_id in ids:
+        await refs.assert_upload_task_not_referenced(db, task_id)
     for task in tasks:
         await db.delete(task)
     await db.commit()
@@ -483,6 +490,11 @@ def execution_to_dict(execution: UploadExecution) -> dict:
         "bytes_uploaded": execution.bytes_uploaded,
         "duration_seconds": execution.duration_seconds,
         "log_path": execution.log_path,
+        "error_code": execution.error_code,
+        "error_message": execution.error_message,
+        "trigger_source": execution.trigger_source,
+        "trigger_ref": execution.trigger_ref,
+        "trigger_name": execution.trigger_name,
         "started_time": execution.started_time,
         "finished_time": execution.finished_time,
         "created_time": execution.created_time,
@@ -575,10 +587,21 @@ async def batch_create_executions(db: AsyncSession, data: UploadExecutionBatchCr
     return results
 
 
-async def start_execution(db: AsyncSession, execution_id: int, task_id: int) -> dict:
+async def start_execution(
+    db: AsyncSession,
+    execution_id: int,
+    task_id: int,
+    trigger_source: str = "manual",
+    trigger_ref: Optional[str] = None,
+    trigger_name: Optional[str] = None,
+) -> dict:
     """启动已创建的执行记录：置 started_time 后拉起后台流水线。
 
     只有 ``running`` 且尚未启动过的记录才能启动，防止重复点击重复启动。
+
+    阶段⓿：
+    - 入队前登记活跃执行（同任务已有活跃执行 → 400「任务正在执行」）；
+    - 支持 automation 触发来源写入执行记录。
     """
     execution = await _get_execution(db, execution_id)
     if execution.task_id != task_id:
@@ -588,14 +611,24 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int) -> 
     if execution.started_time is not None:
         raise BadRequestException("执行记录已启动")
 
-    execution.started_time = beijing_now()
-    await db.commit()
-    await db.refresh(execution)
+    if not execution_registry.try_register(execution_registry.UPLOAD, execution.id, task_id):
+        raise BadRequestException("任务正在执行，请等待当前执行结束")
 
-    # 延迟导入，避免 service ↔ execution_engine 循环引用
-    from app.business.uploader.execution_engine import run_upload
+    try:
+        execution.started_time = beijing_now()
+        execution.trigger_source = trigger_source or "manual"
+        execution.trigger_ref = trigger_ref
+        execution.trigger_name = trigger_name
+        await db.commit()
+        await db.refresh(execution)
 
-    asyncio.create_task(run_upload(execution_id=execution.id))
+        # 延迟导入，避免 service ↔ execution_engine 循环引用
+        from app.business.uploader.execution_engine import run_upload
+
+        asyncio.create_task(run_upload(execution_id=execution.id))
+    except Exception:
+        execution_registry.release(execution_registry.UPLOAD, execution_id)
+        raise
     return execution_to_dict(execution)
 
 
@@ -626,7 +659,12 @@ async def list_executions(
         stmt = stmt.where(UploadExecution.status == status)
     total = await db.scalar(select(func.count(UploadExecution.id)).where(stmt.whereclause)) or 0
     result = await db.execute(
-        stmt.order_by(UploadExecution.id.desc()).offset((page - 1) * page_size).limit(page_size)
+        stmt.order_by(
+            func.coalesce(UploadExecution.started_time, UploadExecution.created_time).desc(),
+            UploadExecution.id.desc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
     return [execution_to_dict(item) for item in result.scalars()], total
 

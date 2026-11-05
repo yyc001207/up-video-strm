@@ -7,7 +7,9 @@
 - 取消通过 ``TaskStatusManager`` 以 ``str(execution_id)`` 为键轮询半实时响应；
 - 文件级结果写入 ``upload_file_record``，执行级汇总写回 ``upload_execution``；
 - 日志只写文件（``settings.upload_log_dir``），同时经 WS 推送 log/progress/status 帧；
-- 真实网络调用只在用户触发执行时发生，单元测试以 mock 客户端覆盖。
+- 真实网络调用只在用户触发执行时发生，单元测试以 mock 客户端覆盖；
+- 阶段⓿：失败时写入 ``error_code``/``error_message``（B_SCAN_ERROR/B_CLOUD_ERROR/
+  B_NO_PROGRESS 等，供自动化模块失败分级），引擎结束时注销活跃执行注册表。
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from typing import Optional
 from sqlalchemy import select
 
 from app.core.beijing import beijing_now
+from app.business import execution_registry
 from app.business.openlist.task_status_manager import TaskStatusManager
 from app.business.uploader import rename_engine, scanner
 from app.business.uploader.execution_logger import ExecutionLogHandler, UploadLogPump
@@ -151,14 +154,14 @@ async def _run_pipeline(
     exe_logger: logging.Logger,
     progress: dict,
     cancel_key: str,
-) -> str:
-    """执行六阶段流水线，返回最终状态字符串。"""
+) -> tuple[str, Optional[str], Optional[str]]:
+    """执行六阶段流水线，返回 ``(最终状态, 错误码, 错误信息)``。"""
     async with AsyncSessionLocal() as db:
         execution = await db.get(UploadExecution, execution_id)
         if execution is None or execution.is_deleted:
             raise BadRequestException("执行记录不存在")
         if execution.status != "running":
-            return execution.status
+            return execution.status, None, None
         task = await db.get(UploadTask, execution.task_id)
         if task is None:
             raise BadRequestException("上传任务不存在")
@@ -237,12 +240,14 @@ async def _run_pipeline(
 
         if not plan_items:
             exe_logger.info("未找到可上传的视频文件")
-            return "fail" if progress["failed"] > 0 else "success"
+            if progress["failed"] > 0:
+                return "fail", "B_SCAN_ERROR", "扫描/重命名失败，没有可上传的视频文件"
+            return "success", None, None
 
         if execution.dry_run:
             exe_logger.info("试运行：仅生成上传清单，不执行上传")
             progress["skipped"] = len(plan_items)
-            return "success"
+            return "success", None, None
 
         # 阶段 5：重复检查（读取云端目标目录）
         client = await build_client(db)
@@ -266,7 +271,7 @@ async def _run_pipeline(
             progress["skipped"] = 0
             await db.commit()
             await client.aclose()
-            return "fail"
+            return "fail", "B_CLOUD_ERROR", f"目标目录读取失败：{exc}"
 
         # 冲突策略决策（顺序执行，保证后缀名不重复）
         policy = (execution.conflict_policy or "skip").lower()
@@ -376,10 +381,12 @@ async def _run_pipeline(
         )
 
         if cancelled or TaskStatusManager.is_cancelled(cancel_key):
-            return "cancelled"
+            return "cancelled", None, None
         if progress["failed"] > 0:
-            return "fail"
-        return "success"
+            if progress["total"] > 0 and progress["success"] + progress["skipped"] == 0:
+                return "fail", "B_NO_PROGRESS", "全部文件上传失败，本轮无任何进展"
+            return "fail", None, None
+        return "success", None, None
 
 
 async def _finish_execution(
@@ -388,6 +395,8 @@ async def _finish_execution(
     progress: dict,
     duration_seconds: int,
     log_path: str,
+    error_code: Optional[str] = None,
+    error_message: Optional[str] = None,
 ) -> None:
     try:
         async with AsyncSessionLocal() as db:
@@ -403,6 +412,8 @@ async def _finish_execution(
             execution.duration_seconds = duration_seconds
             execution.finished_time = beijing_now()
             execution.log_path = log_path
+            execution.error_code = error_code
+            execution.error_message = (error_message or "")[:500] or None
             await db.commit()
     except Exception as exc:
         logger.error(f"上传执行结果回写失败 execution={execution_id}: {exc}")
@@ -420,69 +431,79 @@ def _status_label(status: str, progress: dict) -> str:
 
 
 async def run_upload(*, execution_id: int) -> None:
-    """后台运行一次上传执行（由 ``start_execution`` 创建任务）。"""
+    """后台运行一次上传执行（由 ``start_execution`` 创建任务）。
+
+    阶段⓿：失败/取消尝试归类 ``error_code``；结束时注销活跃执行并释放信号量
+    （无论成功、失败还是被取消）。
+    """
     sem = _sem
     await sem.acquire()
     cancel_key = str(execution_id)
     TaskStatusManager.clear(cancel_key)
     started = time.monotonic()
-
-    log_path = ""
     try:
-        log_dir = Path(settings.upload_log_dir)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = str(log_dir / f"execution_{execution_id}.log")
-    except Exception:
         log_path = ""
+        try:
+            log_dir = Path(settings.upload_log_dir)
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = str(log_dir / f"execution_{execution_id}.log")
+        except Exception:
+            log_path = ""
 
-    queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
-    exe_logger = _build_per_execution_logger(execution_id, queue)
-    progress = {"total": 0, "success": 0, "skipped": 0, "failed": 0, "bytesUploaded": 0, "current": ""}
-    pump = UploadLogPump(execution_id, queue, log_path, progress)
-    pump_task = asyncio.create_task(pump.run())
+        queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
+        exe_logger = _build_per_execution_logger(execution_id, queue)
+        progress = {"total": 0, "success": 0, "skipped": 0, "failed": 0, "bytesUploaded": 0, "current": ""}
+        pump = UploadLogPump(execution_id, queue, log_path, progress)
+        pump_task = asyncio.create_task(pump.run())
 
-    status = "success"
-    try:
-        status = await _run_pipeline(
-            execution_id=execution_id, exe_logger=exe_logger, progress=progress, cancel_key=cancel_key
-        )
-        if TaskStatusManager.is_cancelled(cancel_key) and status == "running":
+        status = "success"
+        error_code: Optional[str] = None
+        error_message: Optional[str] = None
+        try:
+            status, error_code, error_message = await _run_pipeline(
+                execution_id=execution_id, exe_logger=exe_logger, progress=progress, cancel_key=cancel_key
+            )
+        except asyncio.CancelledError:
             status = "cancelled"
-    except asyncio.CancelledError:
-        status = "cancelled"
-        raise
-    except Exception as exc:  # noqa: BLE001 - 统一回写失败状态
-        status = "fail"
-        exe_logger.error("上传执行失败：%s", exc)
-        logger.exception(f"上传执行异常 execution={execution_id}")
+            raise
+        except Exception as exc:  # noqa: BLE001 - 统一回写失败状态
+            status = "fail"
+            error_code = "B_CLOUD_ERROR" if isinstance(exc, BadRequestException) else "INTERNAL_ERROR"
+            error_message = str(exc)
+            exe_logger.error("上传执行失败：%s", exc)
+            logger.exception(f"上传执行异常 execution={execution_id}")
 
-    duration = int(time.monotonic() - started)
-    processed = progress["success"] + progress["skipped"] + progress["failed"]
-    exe_logger.info(
-        "任务结束：状态=%s，成功 %d 个，跳过 %d 个，失败 %d 个，剩余待处理 %d 个，用时 %d 秒",
-        _status_label(status, progress),
-        progress["success"],
-        progress["skipped"],
-        progress["failed"],
-        max(0, progress["total"] - processed),
-        duration,
-    )
-    try:
-        await asyncio.wait_for(pump.stop(), timeout=5)
-    except Exception:
-        pass
-    try:
-        await asyncio.wait_for(pump_task, timeout=10)
-    except Exception:
-        pump_task.cancel()
+        duration = int(time.monotonic() - started)
+        processed = progress["success"] + progress["skipped"] + progress["failed"]
+        exe_logger.info(
+            "任务结束：状态=%s，成功 %d 个，跳过 %d 个，失败 %d 个，剩余待处理 %d 个，用时 %d 秒",
+            _status_label(status, progress),
+            progress["success"],
+            progress["skipped"],
+            progress["failed"],
+            max(0, progress["total"] - processed),
+            duration,
+        )
+        try:
+            await asyncio.wait_for(pump.stop(), timeout=5)
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(pump_task, timeout=10)
+        except Exception:
+            pump_task.cancel()
 
-    await _finish_execution(execution_id, status, progress, duration, log_path)
-    try:
-        await pump.write_status(status)
-    except Exception:
-        pass
-    try:
-        exe_logger.handlers.clear()
-    except Exception:
-        pass
-    sem.release()
+        await _finish_execution(
+            execution_id, status, progress, duration, log_path, error_code, error_message
+        )
+        try:
+            await pump.write_status(status)
+        except Exception:
+            pass
+        try:
+            exe_logger.handlers.clear()
+        except Exception:
+            pass
+    finally:
+        execution_registry.release(execution_registry.UPLOAD, execution_id)
+        sem.release()

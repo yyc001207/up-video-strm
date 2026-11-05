@@ -20,6 +20,11 @@ class OpenListExecution(Base):
     output_dir: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="输出目录快照（目录执行时冗余，任务执行时为 NULL）")
     server_id: Mapped[Optional[int]] = mapped_column(ForeignKey("open_list_server.id"), nullable=True, comment="关联服务器 ID（可空，兼容旧记录）")
     status: Mapped[str] = mapped_column(Enum("running", "success", "fail", "cancelled", name="open_list_execution_status"), nullable=False, default="running", comment="执行状态")
+    error_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="错误码（失败/终止原因，自动化模块用于失败分级）")
+    error_message: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="错误信息（失败原因，最多 500 字）")
+    trigger_source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual", comment="触发来源：manual 手动 / automation 自动化任务")
+    trigger_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="触发来源引用（如 automation_run:{id}）")
+    trigger_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, comment="触发来源名称快照（自动化任务名称）")
     video_success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="视频处理成功数")
     video_total_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="视频总数")
     subtitle_success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="字幕处理成功数")
@@ -41,5 +46,6 @@ class OpenListExecution(Base):
         Index("idx_task_id", "task_id"),
         Index("idx_status", "status"),
         Index("idx_started", "started_time"),
+        Index("idx_openlist_execution_trigger_source", "trigger_source"),
         {"comment": "OpenList 执行记录表"},
     )

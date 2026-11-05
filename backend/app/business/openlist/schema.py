@@ -21,6 +21,7 @@ class OpenListConfigUpdate(BaseModel):
     disable_ssl_verify: Optional[bool] = None
     output_dir_prefix: Optional[str] = Field(default=None, max_length=128)
     output_root: Optional[str] = Field(default=None, max_length=512)
+    openlist_remote_prefix: Optional[str] = Field(default=None, max_length=256)
 
 
 class OpenListConfigResponse(BaseModel):
@@ -35,6 +36,7 @@ class OpenListConfigResponse(BaseModel):
     disable_ssl_verify: bool = False
     output_dir_prefix: Optional[str] = None
     output_root: Optional[str] = None
+    openlist_remote_prefix: Optional[str] = None
     created_time: Optional[datetime] = None
     updated_time: Optional[datetime] = None
 
@@ -232,6 +234,11 @@ class OpenListExecutionResponse(BaseModel):
     strm_only: bool = False
     duration_seconds: Optional[int] = None
     log_path: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    trigger_source: str = "manual"
+    trigger_ref: Optional[str] = None
+    trigger_name: Optional[str] = None
     started_time: Optional[datetime] = None
     finished_time: Optional[datetime] = None
     created_time: Optional[datetime] = None

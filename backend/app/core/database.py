@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
+from app.core.beijing import beijing_now
 from app.core.settings import settings
 
 # 确保 SQLite 文件所在目录存在
@@ -130,6 +131,93 @@ async def _ensure_upload_columns() -> None:
                     await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 
+# 执行表新增列：错误字段（自动化模块失败分级）+ 触发来源（历史筛选/展示）
+_EXECUTION_EXTRA_COLUMNS: dict[str, dict[str, str]] = {
+    "open_list_execution": {
+        "error_code": "VARCHAR(32)",
+        "error_message": "VARCHAR(512)",
+        "trigger_source": "VARCHAR(16) NOT NULL DEFAULT 'manual'",
+        "trigger_ref": "VARCHAR(64)",
+        "trigger_name": "VARCHAR(128)",
+    },
+    "upload_execution": {
+        "error_code": "VARCHAR(32)",
+        "error_message": "VARCHAR(512)",
+        "trigger_source": "VARCHAR(16) NOT NULL DEFAULT 'manual'",
+        "trigger_ref": "VARCHAR(64)",
+        "trigger_name": "VARCHAR(128)",
+    },
+}
+
+# 执行表新增索引（旧库升级时补建）
+_EXECUTION_EXTRA_INDEXES: tuple[str, ...] = (
+    "CREATE INDEX IF NOT EXISTS idx_openlist_execution_trigger_source "
+    "ON open_list_execution (trigger_source)",
+    "CREATE INDEX IF NOT EXISTS idx_upload_execution_trigger_source "
+    "ON upload_execution (trigger_source)",
+)
+
+
+async def _ensure_execution_runtime_columns() -> None:
+    """执行表补齐错误字段与触发来源列（旧库升级）。"""
+    async with engine.begin() as conn:
+        for table, new_columns in _EXECUTION_EXTRA_COLUMNS.items():
+            result = await conn.execute(text(f"PRAGMA table_info({table})"))
+            existing = {row[1] for row in result}
+            for column, ddl in new_columns.items():
+                if column not in existing:
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+        for statement in _EXECUTION_EXTRA_INDEXES:
+            await conn.execute(text(statement))
+
+
+async def _ensure_config_remote_prefix_column() -> None:
+    """全局配置补齐 OpenList 远程目录前缀列（旧库升级）。"""
+    async with engine.begin() as conn:
+        result = await conn.execute(text("PRAGMA table_info(open_list_config)"))
+        existing = {row[1] for row in result}
+        if "openlist_remote_prefix" not in existing:
+            await conn.execute(
+                text("ALTER TABLE open_list_config ADD COLUMN openlist_remote_prefix VARCHAR(256) DEFAULT ''")
+            )
+
+
+# 进程重启时需要被标记为失败的执行表（含未来的 automation_run）
+_RUNNING_STATUS_TABLES: tuple[str, ...] = (
+    "open_list_execution",
+    "upload_execution",
+    "automation_run",
+)
+
+
+def stale_running_statements(tables: set[str], finished_time: str) -> list[str]:
+    """生成「进程重启中断」清理语句（纯函数，便于单元测试）。"""
+    statements: list[str] = []
+    for table in _RUNNING_STATUS_TABLES:
+        if table not in tables:
+            continue
+        statements.append(
+            f"UPDATE {table} SET status='fail', error_code='PROCESS_RESTART', "
+            f"error_message='进程重启中断', finished_time='{finished_time}' "
+            f"WHERE status='running'"
+        )
+    return statements
+
+
+async def _reset_stale_running_executions() -> None:
+    """启动清理：把上次进程遗留的 running 执行标记失败（error_code=PROCESS_RESTART）。"""
+    async with engine.begin() as conn:
+        rows = await conn.execute(text("select name from sqlite_master where type='table'"))
+        tables = {row[0] for row in rows}
+        statements = stale_running_statements(tables, beijing_now().strftime("%Y-%m-%d %H:%M:%S"))
+        changed = 0
+        for statement in statements:
+            result = await conn.execute(text(statement))
+            changed += int(result.rowcount or 0)
+        if statements:
+            logger.info("已清理重启遗留 running 执行：%s 条", changed)
+
+
 async def _bind_orphan_tasks_to_default_server() -> None:
     """迁移：旧任务（server_id 为空）绑定到第一个启用服务器（幂等）。"""
     from sqlalchemy import select
@@ -168,10 +256,13 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _ensure_config_columns()
+    await _ensure_config_remote_prefix_column()
     await _ensure_execution_columns()
     await _ensure_task_columns()
     await _ensure_upload_columns()
+    await _ensure_execution_runtime_columns()
     await _drop_obsolete_columns()
+    await _reset_stale_running_executions()
     async with AsyncSessionLocal() as session:
         await seed_default_openlist_config(session)
         await seed_default_rename_rule(session)

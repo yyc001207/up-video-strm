@@ -43,6 +43,11 @@ class UploadExecution(Base):
         default="running",
         comment="执行状态",
     )
+    error_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="错误码（失败原因分类，自动化模块用于失败分级）")
+    error_message: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="错误信息（失败原因，最多 500 字）")
+    trigger_source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual", comment="触发来源：manual 手动 / automation 自动化任务")
+    trigger_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="触发来源引用（如 automation_run:{id}）")
+    trigger_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, comment="触发来源名称快照（自动化任务名称）")
     file_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="待上传文件总数")
     file_success: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="上传成功数")
     file_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="跳过数")
@@ -66,5 +71,6 @@ class UploadExecution(Base):
         Index("idx_upload_execution_task_id", "task_id"),
         Index("idx_upload_execution_status", "status"),
         Index("idx_upload_execution_started", "started_time"),
+        Index("idx_upload_execution_trigger_source", "trigger_source"),
         {"comment": "上传执行记录表"},
     )

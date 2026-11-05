@@ -124,6 +124,8 @@ async def open_log_dir(data: OpenLogDirRequest):
         target = Path(settings.openlist_log_dir)
     elif kind == "upload":
         target = Path(settings.upload_log_dir)
+    elif kind == "automation":
+        target = Path(settings.automation_log_dir)
     else:
         raise BadRequestException(f"未知的日志类型：{data.kind}")
     try:

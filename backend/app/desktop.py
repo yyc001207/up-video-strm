@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Callable, Optional
 
 from app.core.paths import APP_DIR_NAME
 
@@ -29,6 +30,32 @@ WINDOW_MIN_SIZE = (1080, 700)
 TRAY_HINT = "程序已收进托盘，服务继续在后台运行。右键托盘图标可打开或退出。"
 
 logger = logging.getLogger("up-video-strm")
+
+# 全局桌面通知器（阶段⓿-11）：桌面态由托盘气泡实现，非桌面态静默。
+# 自动化任务（模块 C）仅用异常终止通知；模块内部无需感知 pystray 细节。
+_notifier: Optional[Callable[[str, str], None]] = None
+_notifier_lock = threading.Lock()
+
+
+def set_notifier(notifier: Optional[Callable[[str, str], None]]) -> None:
+    """注册全局通知器，签名为 ``(title, message) -> None``；传 None 清除。"""
+    global _notifier
+    with _notifier_lock:
+        _notifier = notifier
+
+
+def notify(title: str, message: str) -> bool:
+    """发送一条桌面通知；没有可用通知器或发送失败时返回 False（不抛错）。"""
+    with _notifier_lock:
+        notifier = _notifier
+    if notifier is None:
+        return False
+    try:
+        notifier(title, message)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("桌面通知发送失败: %s", exc)
+        return False
 
 
 def build_icon_image(size: int = 256):
@@ -328,6 +355,14 @@ def run_window(
             )
             state["tray"] = tray_icon
             logger.info("托盘图标已创建（pystray）")
+
+            def tray_notifier(notify_title: str, message: str) -> None:
+                icon = state["tray"]
+                if icon is None:
+                    raise RuntimeError("托盘不可用")
+                icon.notify(message, notify_title)
+
+            set_notifier(tray_notifier)
         except Exception as exc:  # noqa: BLE001  # 无托盘环境时退化为「关闭即退出」
             tray_icon = None
             logger.warning("托盘初始化失败，退化为关窗即退出: %s", exc, exc_info=True)

@@ -14,6 +14,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.beijing import BEIJING_TZ, beijing_now
+from app.business import execution_registry
+from app.business.automation import refs
 from app.business.openlist import dir_cache
 from app.business.openlist.execution_engine import run_generation, set_semaphore_size
 from app.business.openlist.openlist_api import OpenListAPI
@@ -91,6 +93,11 @@ def execution_to_dict(execution: OpenListExecution, task: Optional[OpenListTask]
         "strm_only": execution.strm_only,
         "duration_seconds": execution.duration_seconds,
         "log_path": execution.log_path,
+        "error_code": execution.error_code,
+        "error_message": execution.error_message,
+        "trigger_source": execution.trigger_source,
+        "trigger_ref": execution.trigger_ref,
+        "trigger_name": execution.trigger_name,
         "started_time": execution.started_time.isoformat(sep=" ") if execution.started_time else None,
         "finished_time": execution.finished_time.isoformat(sep=" ") if execution.finished_time else None,
         "created_time": execution.created_time.isoformat(sep=" ") if execution.created_time else None,
@@ -519,6 +526,8 @@ async def update_server(db: AsyncSession, server_id: int, data: OpenListServerUp
 
 
 async def delete_server(db: AsyncSession, server_id: int) -> None:
+    # 阶段⓿-6：服务器下的 A 任务被自动化任务绑定时拒绝删除
+    await refs.assert_openlist_server_not_referenced(db, server_id)
     server = await get_server(db, server_id)
     server.is_deleted = True
     result = await db.execute(
@@ -590,6 +599,7 @@ async def get_config(db: AsyncSession) -> dict:
         "disable_ssl_verify": config.disable_ssl_verify,
         "output_dir_prefix": config.output_dir_prefix or "",
         "output_root": config.output_root or "",
+        "openlist_remote_prefix": config.openlist_remote_prefix or "",
     }
 
 
@@ -621,6 +631,8 @@ async def update_config(db: AsyncSession, data: OpenListConfigUpdate) -> dict:
                 config.output_root = str(root.resolve())
             except OSError as exc:
                 raise BadRequestException(f"输出根目录不可用：{exc}") from exc
+    if data.openlist_remote_prefix is not None:
+        config.openlist_remote_prefix = data.openlist_remote_prefix.strip()[:256]
     await db.commit()
     await db.refresh(config)
     set_semaphore_size(config.max_concurrent or DEFAULT_MAX_CONCURRENT)
@@ -694,7 +706,10 @@ async def _last_executions(db: AsyncSession, task_ids: list[int]) -> dict[int, O
     result = await db.execute(
         select(OpenListExecution)
         .where(OpenListExecution.task_id.in_(task_ids), OpenListExecution.is_deleted == False)  # noqa: E712
-        .order_by(OpenListExecution.started_time.desc(), OpenListExecution.id.desc())
+        .order_by(
+            func.coalesce(OpenListExecution.started_time, OpenListExecution.created_time).desc(),
+            OpenListExecution.id.desc(),
+        )
     )
     last: dict[int, OpenListExecution] = {}
     for ex in result.scalars():
@@ -749,6 +764,8 @@ async def update_task(db: AsyncSession, task_id: int, data: OpenListTaskUpdate) 
 
 async def delete_task(db: AsyncSession, task_id: int) -> None:
     task = await get_task(db, task_id)
+    # 阶段⓿-6：被自动化任务绑定时拒绝删除
+    await refs.assert_openlist_task_not_referenced(db, task_id)
     task.is_deleted = True
     await db.commit()
 
@@ -764,6 +781,9 @@ async def batch_delete_tasks(db: AsyncSession, ids: list[int]) -> None:
     missing = [i for i in ids if i not in tasks]
     if missing:
         raise NotFoundException(f"任务不存在: {missing}")
+    # 阶段⓿-6：任一任务被自动化任务绑定时整体拒绝
+    for task_id in ids:
+        await refs.assert_openlist_task_not_referenced(db, task_id)
     for task in tasks.values():
         task.is_deleted = True
     await db.commit()
@@ -803,12 +823,11 @@ async def create_execution(db: AsyncSession, data: OpenListExecutionCreate) -> d
         is_incremental=data.is_incremental,
         is_force=data.is_force,
         strm_only=data.strm_only,
-        started_time=beijing_now(),
     )
     db.add(execution)
     await db.commit()
     await db.refresh(execution)
-    TaskStatusManager.clear(str(task.id))
+    TaskStatusManager.clear(str(execution.id))
     return execution_to_dict(execution)
 
 
@@ -831,7 +850,6 @@ async def batch_create_executions(db: AsyncSession, data: OpenListExecutionBatch
             is_incremental=item.is_incremental,
             is_force=item.is_force,
             strm_only=item.strm_only,
-            started_time=beijing_now(),
         )
         db.add(execution)
         created.append(execution)
@@ -839,7 +857,7 @@ async def batch_create_executions(db: AsyncSession, data: OpenListExecutionBatch
     await db.commit()
     for execution in created:
         await db.refresh(execution)
-        TaskStatusManager.clear(str(execution.task_id))
+        TaskStatusManager.clear(str(execution.id))
     return [execution_to_dict(e) for e in created]
 
 
@@ -862,7 +880,6 @@ async def batch_create_dir_executions(db: AsyncSession, data: OpenListDirExecuti
             is_incremental=data.is_incremental,
             is_force=data.is_force,
             strm_only=data.strm_only,
-            started_time=beijing_now(),
         )
         db.add(execution)
         created.append(execution)
@@ -873,13 +890,26 @@ async def batch_create_dir_executions(db: AsyncSession, data: OpenListDirExecuti
     return [execution_to_dict(e) for e in created]
 
 
-async def start_execution(db: AsyncSession, execution_id: int, task_id: int, server_id: Optional[int] = None) -> dict:
+async def start_execution(
+    db: AsyncSession,
+    execution_id: int,
+    task_id: int,
+    server_id: Optional[int] = None,
+    trigger_source: str = "manual",
+    trigger_ref: Optional[str] = None,
+    trigger_name: Optional[str] = None,
+) -> dict:
     """启动已创建的执行记录：校验记录存在且仍为 running，加载服务器配置后拉起后台任务。
 
     只有处于 running 且尚未被启动过的记录才能启动；重复调用直接报错，防止
     前端并发/重复点击导致同一执行被启动多次。
     目录执行（task_id=0）使用 process_path/output_dir 快照启动，不查任务表。
     单服务器模式下 server_id 可省略：优先用执行记录快照的服务器，其次取唯一启用服务器。
+
+    阶段⓿：
+    - 启动前登记活跃执行（任务级闸门，task_id>0 且同任务已有活跃执行 → 400「任务正在执行」）；
+    - 取消键统一为 ``str(execution_id)``；
+    - 支持 automation 触发来源（trigger_source/ref/name 写入执行记录）。
     """
     execution = await db.get(OpenListExecution, execution_id)
     if execution is None or execution.is_deleted:
@@ -889,49 +919,58 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int, ser
     if execution.status != "running":
         raise BadRequestException("执行记录不可启动，当前状态: " + execution.status)
 
-    resolved_server_id = server_id if server_id is not None else execution.server_id
-    if resolved_server_id is None:
-        resolved_server_id = (await get_active_server(db)).id
-    server = await get_active_server(db, resolved_server_id)
-    if execution.server_id != server.id:
-        execution.server_id = server.id
-    global_config = await get_config_for_run(db, server.id)
+    # 启动闸门：入队前登记（排队中的执行也算活跃；目录执行 task_id=0 不互斥）
+    if not execution_registry.try_register(execution_registry.OPENLIST, execution.id, task_id):
+        raise BadRequestException("任务正在执行，请等待当前执行结束")
 
-    if execution.process_path:
-        # 目录执行：快照路径 + 取消键为 execution_id
-        process_path = execution.process_path
-        output_dir = execution.output_dir or ""
-        pause_count: Optional[int] = None
-        pause_time: Optional[str] = None
-        cancel_key = str(execution.id)
-    else:
-        task = await get_task(db, task_id)
-        if task.server_id != server.id:
-            task.server_id = server.id
-        process_path = task.process_path
-        output_dir = task.output_dir
-        pause_count = task.pause_count
-        pause_time = task.pause_time
-        cancel_key = None
+    try:
+        resolved_server_id = server_id if server_id is not None else execution.server_id
+        if resolved_server_id is None:
+            resolved_server_id = (await get_active_server(db)).id
+        server = await get_active_server(db, resolved_server_id)
+        if execution.server_id != server.id:
+            execution.server_id = server.id
+        global_config = await get_config_for_run(db, server.id)
 
-    # 防重复启动：以 status 为唯一启动标记，先置为启动中再提交
-    execution.started_time = beijing_now()
-    await db.commit()
+        if execution.process_path:
+            # 目录执行：快照路径
+            process_path = execution.process_path
+            output_dir = execution.output_dir or ""
+            pause_count: Optional[int] = None
+            pause_time: Optional[str] = None
+        else:
+            task = await get_task(db, task_id)
+            if task.server_id != server.id:
+                task.server_id = server.id
+            process_path = task.process_path
+            output_dir = task.output_dir
+            pause_count = task.pause_count
+            pause_time = task.pause_time
 
-    asyncio.create_task(
-        run_generation(
-            execution_id=execution.id,
-            task_id=task_id,
-            output_dir=output_dir,
-            process_path=process_path,
-            is_force=execution.is_force,
-            global_config=global_config,
-            pause_count=pause_count,
-            pause_time=pause_time,
-            strm_only=execution.strm_only,
-            cancel_key=cancel_key,
+        # 防重复启动：写入开始时间 + 触发来源
+        execution.started_time = beijing_now()
+        execution.trigger_source = trigger_source or "manual"
+        execution.trigger_ref = trigger_ref
+        execution.trigger_name = trigger_name
+        await db.commit()
+
+        asyncio.create_task(
+            run_generation(
+                execution_id=execution.id,
+                task_id=task_id,
+                output_dir=output_dir,
+                process_path=process_path,
+                is_force=execution.is_force,
+                global_config=global_config,
+                pause_count=pause_count,
+                pause_time=pause_time,
+                strm_only=execution.strm_only,
+                cancel_key=str(execution.id),
+            )
         )
-    )
+    except Exception:
+        execution_registry.release(execution_registry.OPENLIST, execution_id)
+        raise
     return execution_to_dict(execution)
 
 
@@ -941,9 +980,8 @@ async def cancel_execution(db: AsyncSession, execution_id: int) -> dict:
         raise NotFoundException("执行记录不存在")
     if execution.status != "running":
         return {"cancelled": False, "status": execution.status}
-    # 目录执行（task_id=0）以 execution_id 为取消键，任务执行使用 task_id
-    cancel_key = str(execution.id) if execution.task_id == 0 else str(execution.task_id)
-    TaskStatusManager.cancel(cancel_key)
+    # 阶段⓿-2：取消键统一为 execution_id（任务执行与目录执行一致）
+    TaskStatusManager.cancel(str(execution.id))
     return {"cancelled": True, "status": "cancelled"}
 
 
@@ -963,7 +1001,10 @@ async def list_executions(
         stmt = stmt.where(OpenListExecution.status == status)
     total = await db.scalar(select(func.count(OpenListExecution.id)).where(stmt.whereclause)) or 0
     result = await db.execute(
-        stmt.order_by(OpenListExecution.started_time.desc(), OpenListExecution.id.desc())
+        stmt.order_by(
+            func.coalesce(OpenListExecution.started_time, OpenListExecution.created_time).desc(),
+            OpenListExecution.id.desc(),
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -1000,7 +1041,10 @@ async def history_summary(db: AsyncSession, server_id: Optional[int] = None) -> 
     last_dir_execution = await db.scalar(
         select(OpenListExecution)
         .where(OpenListExecution.task_id == 0, OpenListExecution.is_deleted == False)  # noqa: E712
-        .order_by(OpenListExecution.started_time.desc(), OpenListExecution.id.desc())
+        .order_by(
+            func.coalesce(OpenListExecution.started_time, OpenListExecution.created_time).desc(),
+            OpenListExecution.id.desc(),
+        )
         .limit(1)
     )
     if last_dir_execution is not None:

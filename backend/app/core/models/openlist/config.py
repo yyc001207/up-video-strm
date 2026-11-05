@@ -25,6 +25,7 @@ class OpenListConfig(Base):
     process_path_prefix: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None, comment="处理路径前缀（选择预设时自动拼接，默认空）")
     output_dir_prefix: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, default=None, comment="输出目录前缀（选择预设时自动拼接，默认空）")
     output_root: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, default=None, comment="STRM/字幕输出根目录（留空=CWD/output；桌面版可指向媒体库绝对路径）")
+    openlist_remote_prefix: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, default="", comment="OpenList 远程目录前缀（自动化任务校验目录推导用，默认空）")
     created_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=beijing_now, comment="创建时间")
     updated_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now, comment="更新时间")
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="逻辑删除")

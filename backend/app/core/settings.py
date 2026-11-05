@@ -46,6 +46,11 @@ class Settings(BaseSettings):
         str(_data_root / "upload_logs") if _data_root else "./upload_logs"
     )
 
+    # 自动化任务：执行日志文件目录（阶段 ⓿-7 预留，模块 C 实施后使用）
+    automation_log_dir: str = (
+        str(_data_root / "automation_logs") if _data_root else "./automation_logs"
+    )
+
     # CORS（本地开发前端默认 5173；本地部署可放宽为 * 或指定端口）
     allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

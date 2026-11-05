@@ -47,6 +47,7 @@ export interface OpenListConfig {
   disable_ssl_verify: boolean
   output_dir_prefix: string
   output_root: string
+  openlist_remote_prefix: string
 }
 
 export interface OpenListTask {

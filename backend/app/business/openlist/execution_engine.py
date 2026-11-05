@@ -2,6 +2,12 @@
 
 ``start_execution`` 校验通过后创建执行记录并 ``asyncio.create_task`` 启动
 ``run_generation``；后者在独立数据库会话中运行（请求会话在端点返回后即关闭）。
+
+阶段⓿ 改动：
+- 取消键统一为 ``str(execution_id)``（任务执行与目录执行一致，避免按 task_id
+  误杀同任务的其他执行）；
+- 失败/取消时写入 ``error_code``/``error_message``，供自动化模块失败分级；
+- 引擎结束时在 ``execution_registry`` 注销活跃执行（启动闸门，⓿-3）。
 """
 
 import asyncio
@@ -11,10 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-from app.core.beijing import beijing_now
+from app.business import execution_registry
 from app.business.openlist.execution_logger import ExecutionLogHandler, LogPump
 from app.business.openlist.strm_generator import STRMGenerator
 from app.business.openlist.task_status_manager import TaskStatusManager
+from app.core.beijing import beijing_now
 from app.core.database import AsyncSessionLocal
 from app.core.logger import logger
 from app.core.models import OpenListExecution
@@ -47,6 +54,8 @@ async def _finish_execution(
     progress: Dict[str, int],
     duration_seconds: int,
     log_path: str,
+    error_code: Optional[str] = None,
+    error_message: Optional[str] = None,
 ):
     try:
         async with AsyncSessionLocal() as db:
@@ -61,6 +70,8 @@ async def _finish_execution(
             execution.duration_seconds = duration_seconds
             execution.finished_time = beijing_now()
             execution.log_path = log_path
+            execution.error_code = error_code
+            execution.error_message = (error_message or "")[:500] or None
             await db.commit()
     except Exception as exc:
         logger.error(f"OpenList 执行结果回写失败 execution={execution_id}: {exc}")
@@ -83,70 +94,84 @@ async def run_generation(
     # 保证并发计数在整个任务生命周期内正确占用（含排队等待）。
     sem = _sem
     await sem.acquire()
-    # 取消键：目录执行传 execution_id（无任务记录），任务执行默认 task_id 字符串
-    task_key = cancel_key or str(task_id)
+    # 取消键（阶段⓿-2）：统一为 execution_id 字符串；任务执行与目录执行一致
+    task_key = cancel_key or str(execution_id)
     started = time.monotonic()
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
     try:
-        log_dir = Path(settings.openlist_log_dir)
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = str(log_dir / f"execution_{execution_id}.log")
-    except Exception:
-        log_path = ""
+        try:
+            log_dir = Path(settings.openlist_log_dir)
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = str(log_dir / f"execution_{execution_id}.log")
+        except Exception:
+            log_path = ""
 
-    queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
-    exe_logger = _build_per_execution_logger(execution_id, queue)
-    progress: Dict[str, int] = {
-        "totalVideos": 0,
-        "successVideos": 0,
-        "errorVideos": 0,
-        "totalSubtitles": 0,
-        "successSubtitles": 0,
-        "errorSubtitles": 0,
-    }
+        queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
+        exe_logger = _build_per_execution_logger(execution_id, queue)
+        progress: Dict[str, int] = {
+            "totalVideos": 0,
+            "successVideos": 0,
+            "errorVideos": 0,
+            "totalSubtitles": 0,
+            "successSubtitles": 0,
+            "errorSubtitles": 0,
+        }
 
-    # 限流参数：任务级优先，为 NULL/空则回退全局配置（global_config 提供 pauseCount/pauseTime）
-    task_config = {
-        "outputDir": output_dir,
-        "processPath": process_path,
-        "pauseCount": pause_count if pause_count is not None else global_config.get("pauseCount"),
-        "pauseTime": pause_time if pause_time else global_config.get("pauseTime"),
-    }
-    generator = STRMGenerator(global_config, task_config, task_id=task_key, logger_=exe_logger)
-    pump = LogPump(execution_id, queue, log_path, generator.stats)
-    pump_task = asyncio.create_task(pump.run())
+        # 限流参数：任务级优先，为 NULL/空则回退全局配置（global_config 提供 pauseCount/pauseTime）
+        task_config = {
+            "outputDir": output_dir,
+            "processPath": process_path,
+            "pauseCount": pause_count if pause_count is not None else global_config.get("pauseCount"),
+            "pauseTime": pause_time if pause_time else global_config.get("pauseTime"),
+        }
+        # generator 的取消键同样使用 task_key（=execution_id），与 cancel_execution 一致
+        generator = STRMGenerator(global_config, task_config, task_id=task_key, logger_=exe_logger)
+        pump = LogPump(execution_id, queue, log_path, generator.stats)
+        pump_task = asyncio.create_task(pump.run())
 
-    status = "success"
-    try:
-        await generator.execute(force=is_force, strm_only=strm_only, cleanup=True)
-        if TaskStatusManager.is_cancelled(task_key):
+        status = "success"
+        try:
+            await generator.execute(force=is_force, strm_only=strm_only, cleanup=True)
+            if TaskStatusManager.is_cancelled(task_key):
+                status = "cancelled"
+                error_code = "A_CANCELLED"
+                error_message = "执行已被取消"
+                exe_logger.warning("任务已被取消")
+        except asyncio.CancelledError:
             status = "cancelled"
-            exe_logger.warning("任务已被取消")
-    except asyncio.CancelledError:
-        status = "cancelled"
-        raise
-    except Exception as exc:
-        status = "fail"
-        exe_logger.error(f"任务执行失败: {exc}")
-        logger.exception(f"OpenList 执行异常 execution={execution_id}")
+            error_code = "A_CANCELLED"
+            error_message = "执行被中断"
+            raise
+        except Exception as exc:
+            status = "fail"
+            error_code = "A_FAILED"
+            error_message = str(exc)
+            exe_logger.error(f"任务执行失败: {exc}")
+            logger.exception(f"OpenList 执行异常 execution={execution_id}")
 
-    duration = int(time.monotonic() - started)
+        duration = int(time.monotonic() - started)
 
-    try:
-        await asyncio.wait_for(pump.stop(), timeout=5)
-    except Exception:
-        pass
-    try:
-        await asyncio.wait_for(pump_task, timeout=10)
-    except Exception:
-        pump_task.cancel()
+        try:
+            await asyncio.wait_for(pump.stop(), timeout=5)
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(pump_task, timeout=10)
+        except Exception:
+            pump_task.cancel()
 
-    await _finish_execution(execution_id, status, generator.stats, duration, log_path)
-    try:
-        await pump.write_status(status)
-    except Exception:
-        pass
-    try:
-        exe_logger.handlers.clear()
-    except Exception:
-        pass
-    sem.release()
+        await _finish_execution(
+            execution_id, status, generator.stats, duration, log_path, error_code, error_message
+        )
+        try:
+            await pump.write_status(status)
+        except Exception:
+            pass
+        try:
+            exe_logger.handlers.clear()
+        except Exception:
+            pass
+    finally:
+        execution_registry.release(execution_registry.OPENLIST, execution_id)
+        sem.release()

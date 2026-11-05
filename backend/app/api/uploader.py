@@ -1,10 +1,19 @@
-"""上传管理路由：``/api/upload/*``（123 云盘凭据、重命名规则、上传任务）。"""
+"""上传管理路由：``/api/upload/*``（123 云盘凭据、重命名规则、上传任务、执行与实时日志）。"""
 
-from fastapi import APIRouter, Depends
+from pathlib import Path
+from typing import Optional
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.uploader import service
 from app.business.uploader.schema import (
+    UploadExecutionBatchCreate,
+    UploadExecutionCancel,
+    UploadExecutionCreate,
+    UploadExecutionStart,
     UploadPlatformConfigUpdate,
     UploadRenamePreviewRequest,
     UploadRenameRuleCreate,
@@ -14,7 +23,9 @@ from app.business.uploader.schema import (
     UploadTestConnectionRequest,
 )
 from app.core.database import get_db
+from app.core.exceptions import NotFoundException
 from app.utils.responses import success_response
+from app.websocket.manager import ws_manager
 
 router = APIRouter()
 
@@ -101,3 +112,102 @@ async def list_remote_dirs(
     db: AsyncSession = Depends(get_db),
 ):
     return success_response(data=await service.list_remote_dirs(db, parent_id, path))
+
+
+# ---------------------------------------------------------------------------
+# 执行记录（创建 → 启动 → 取消 → 列表/详情/文件明细/日志）
+# ---------------------------------------------------------------------------
+
+
+@router.post("/executions", summary="创建上传执行记录（不启动）")
+async def create_execution(data: UploadExecutionCreate, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.create_execution(db, data))
+
+
+@router.post("/executions/batch", summary="批量创建上传执行记录")
+async def batch_create_executions(data: UploadExecutionBatchCreate, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.batch_create_executions(db, data))
+
+
+@router.post("/executions/start", summary="启动执行（连上 WS 后调用）")
+async def start_execution(data: UploadExecutionStart, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.start_execution(db, data.execution_id, data.task_id))
+
+
+@router.post("/executions/cancel", summary="取消执行")
+async def cancel_execution(data: UploadExecutionCancel, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.cancel_execution(db, data.execution_id))
+
+
+@router.get("/executions", summary="执行记录列表")
+async def list_executions(
+    task_id: Optional[int] = Query(default=None, description="按任务筛选"),
+    status: Optional[str] = Query(default=None, description="按状态筛选"),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    items, total = await service.list_executions(db, task_id, status, page, pageSize)
+    return success_response(data={"list": items}, total=total)
+
+
+@router.get("/executions/{execution_id}", summary="执行详情（含文件明细前 500 条）")
+async def get_execution_detail(execution_id: int, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.get_execution_detail(db, execution_id))
+
+
+@router.get("/executions/{execution_id}/records", summary="执行文件明细（分页）")
+async def list_file_records(
+    execution_id: int,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    items, total = await service.list_file_records(db, execution_id, page, pageSize)
+    return success_response(data={"list": items}, total=total)
+
+
+@router.get("/executions/{execution_id}/logs", summary="执行日志（分页）")
+async def list_execution_logs(
+    execution_id: int,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+):
+    items, total = await service.list_execution_logs(db, execution_id, page, pageSize)
+    return success_response(data={"list": items}, total=total)
+
+
+@router.get("/executions/{execution_id}/log-download", summary="下载执行日志文件")
+async def download_execution_log(execution_id: int, db: AsyncSession = Depends(get_db)):
+    from app.core.models.uploader import UploadExecution
+
+    execution = await db.get(UploadExecution, execution_id)
+    if execution is None or execution.is_deleted:
+        raise NotFoundException("执行记录不存在")
+    file = Path(execution.log_path) if execution.log_path else None
+    if file is None or not file.is_file():
+        filename = f"upload_execution_{execution_id}.log"
+        return PlainTextResponse(
+            "（无日志）",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+        )
+    return FileResponse(file, media_type="text/plain", filename=f"upload_execution_{execution_id}.log")
+
+
+# ---------------------------------------------------------------------------
+# 实时日志（WebSocket）
+# ---------------------------------------------------------------------------
+
+
+@router.websocket("/ws/{execution_id}")
+async def execution_ws(websocket: WebSocket, execution_id: int):
+    # 本地部署无鉴权：直接接受连接
+    await ws_manager.connect(execution_id, websocket)
+    recent = await service.get_recent_log_lines(execution_id, limit=200)
+    await ws_manager.send_recent(execution_id, websocket, recent)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(execution_id, websocket)

@@ -41,6 +41,11 @@ class Settings(BaseSettings):
         str(_data_root / "openlist_logs") if _data_root else "./openlist_logs"
     )
 
+    # 上传管理：执行日志文件目录（与 OpenList 日志分开存放）
+    upload_log_dir: str = (
+        str(_data_root / "upload_logs") if _data_root else "./upload_logs"
+    )
+
     # CORS（本地开发前端默认 5173；本地部署可放宽为 * 或指定端口）
     allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

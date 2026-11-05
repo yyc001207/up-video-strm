@@ -92,3 +92,109 @@ export interface UploadRemoteDirList {
   items: UploadRemoteDirItem[]
 }
 
+// ---------------------------------------------------------------------------
+// 执行与文件明细
+// ---------------------------------------------------------------------------
+
+/** 上传执行状态。 */
+export type UploadExecutionStatus = 'running' | 'success' | 'fail' | 'cancelled'
+
+/** 同名冲突策略：跳过 / 覆盖 / 追加后缀。 */
+export type UploadConflictPolicy = 'skip' | 'overwrite' | 'suffix'
+
+/** 上传执行记录（创建时固化任务参数，后续编辑任务不影响历史）。 */
+export interface UploadExecution {
+  id: number
+  task_id: number
+  task_name: string
+  local_dir: string
+  remote_dir: string
+  season: number
+  start_episode: number
+  rename_rule_id: number | null
+  template: string
+  conflict_policy: UploadConflictPolicy
+  concurrency: number
+  retry_times: number
+  dry_run: boolean
+  status: UploadExecutionStatus
+  file_total: number
+  file_success: number
+  file_skipped: number
+  file_failed: number
+  bytes_uploaded: number
+  duration_seconds: number | null
+  log_path: string | null
+  started_time: string | null
+  finished_time: string | null
+  created_time: string | null
+}
+
+/** 执行参数（批量创建时多任务共享）。 */
+export interface UploadExecutionParams {
+  conflict_policy: UploadConflictPolicy
+  concurrency: number
+  retry_times: number
+  dry_run: boolean
+}
+
+export interface UploadExecutionCreate extends UploadExecutionParams {
+  task_id: number
+}
+
+export interface UploadExecutionBatchCreate extends UploadExecutionParams {
+  task_ids: number[]
+}
+
+/** 单个文件的处理明细。 */
+export interface UploadFileRecord {
+  id: number
+  execution_id: number
+  local_path: string
+  remote_name: string
+  size: number
+  md5: string
+  status: 'pending' | 'uploading' | 'success' | 'skipped' | 'failed'
+  phase: string
+  reason: string | null
+  remote_file_id: number | null
+  replaced_file_id: number | null
+  created_time: string | null
+  updated_time: string | null
+}
+
+/** 实时日志帧（与后端 WS 推送保持一致）。 */
+export interface UploadWsLogFrame {
+  type: 'log'
+  level: string
+  message: string
+  ts?: string | null
+}
+
+export interface UploadWsProgressData {
+  total: number
+  success: number
+  skipped: number
+  failed: number
+  bytesUploaded: number
+  current?: string
+}
+
+export interface UploadWsProgressFrame {
+  type: 'progress'
+  data: UploadWsProgressData
+}
+
+export interface UploadWsStatusFrame {
+  type: 'status'
+  status: UploadExecutionStatus
+  total?: number
+  success?: number
+  skipped?: number
+  failed?: number
+  bytes_uploaded?: number
+}
+
+export type UploadWsFrame = UploadWsLogFrame | UploadWsProgressFrame | UploadWsStatusFrame
+
+

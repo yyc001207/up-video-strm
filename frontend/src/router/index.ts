@@ -63,6 +63,18 @@ const router = createRouter({
       meta: { title: '重命名规则', description: '维护上传文件命名模板（SxxExx.ext）' }
     },
     {
+      path: '/upload/execution',
+      name: 'UploadExecution',
+      component: () => import('@/views/upload/Execution.vue'),
+      meta: { title: '执行管理', description: '勾选任务与执行参数，批量启动上传' }
+    },
+    {
+      path: '/upload/realtime',
+      name: 'UploadRealtime',
+      component: () => import('@/views/upload/RealtimeLog.vue'),
+      meta: { title: '实时日志', description: '跟踪上传进度、文件明细与实时输出' }
+    },
+    {
       // 桌面托盘外壳经 window.__upVideoStrmNavigate('/settings') 跳转，此路径必须保持不变。
       path: '/settings',
       name: 'Settings',

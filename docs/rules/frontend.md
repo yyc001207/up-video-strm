@@ -18,7 +18,7 @@ frontend/
 │   ├── stores/             # Pinia（openlist 业务 / theme 主题）
 │   ├── views/
 │   │   ├── schedule/       # 任务调度模块：四个路由页面 + components/DirTreePanel.vue
-│   │   ├── upload/         # 上传管理模块：任务配置 / 重命名规则 + components/RemoteDirPanel.vue
+│   │   ├── upload/         # 上传管理模块：任务配置 / 重命名规则 / 执行管理 / 实时日志 + components/RemoteDirPanel.vue
 │   │   ├── config/         # 全局配置模块：服务器配置 + 视频/字幕格式 + 123 云盘凭据
 │   │   └── Settings/       # 桌面设置页
 │   ├── components/         # 通用组件（StatusDot 状态点 / LogViewer 日志终端 / ThemeToggle 主题切换）
@@ -44,13 +44,15 @@ frontend/
 | `/upload` | — | 重定向到 `/upload/tasks` |
 | `/upload/tasks` | `views/upload/TaskConfig.vue` | 上传任务 CRUD：本地目录、云端目录、集数映射、命名规则 |
 | `/upload/rename` | `views/upload/RenameRules.vue` | 重命名规则 CRUD 与模板预览 |
+| `/upload/execution` | `views/upload/Execution.vue` | 执行管理：三卡片（选任务 / 执行参数 / 已选任务）+ 正在执行列表 |
+| `/upload/realtime` | `views/upload/RealtimeLog.vue` | WebSocket 实时日志：6 阶段进度与逐文件输出，支持批量排队 |
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
 - 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前三个平级模块：「全局配置」（`/config`）、「任务调度」（`/schedule/*`）与「上传管理」（`/upload/*`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。
 - 顶栏标题/描述取路由 `meta.title` / `meta.description`；右侧运行状态胶囊轮询 `fetchRunning`（10s 间隔）。
 - 原「五页签」语义改为独立路由页面：进入页面即按需加载，切换路由即刷新，不再依赖 tab 的 `reload`。
-- 执行管理 → 实时日志通过路由 query 传参：`execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`）。实时日志页先建立 WebSocket，`onOpen` 后才对 `launch=true` 的执行调用 `startExecution`（保证先连日志再启动）。
+- 执行管理 → 实时日志通过路由 query 传参：任务调度为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`），上传管理为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName}`）。实时日志页先建立 WebSocket，`onOpen` 后再调用 `startExecution`（保证先连日志再启动）；上传管理多个执行按队列串行启动与切换。
 
 ## 页面与组件
 
@@ -62,6 +64,8 @@ frontend/
 - 通用组件：`StatusDot.vue`（执行状态点 + 文案）、`LogViewer.vue`（可复用日志终端）、`ThemeToggle.vue`（浅色 / 深色 / 跟随系统）。
 - `TaskConfig.vue`（上传管理）：上传任务列表与抽屉编辑（任务名 / 本地目录 / 云端目录 / 输出季数 / 源起始集号 / 命名规则）；云端目录用 `RemoteDirPanel.vue` 浏览选择（只读浏览、不自动建目录，提示仅使用 `/test`）；集号换算提示为「季内集号 = 绝对集号 − 起始集号 + 1」。
 - `RenameRules.vue`（上传管理）：规则列表 + 模板编辑对话框（变量 `{season}` / `{episode}` / `{ext}`，`:02` 补零）+ 文件名预览（显示解析出的绝对集号或原因）；被任务引用的规则不可删除。
+- `Execution.vue`（上传管理）：一行三卡片（选择任务 / 执行参数 / 已选任务）；执行参数为冲突策略（跳过 / 覆盖 / 追加后缀）、并发上传、失败重试、试运行；批量创建执行记录后跳转实时日志页，由 WS 连接成功后逐个启动；「正在执行」表 5s 轮询，可查看日志或取消。
+- `RealtimeLog.vue`（上传管理）：顶部连接状态与执行选择、6 阶段进度摘要（总数 / 成功 / 跳过 / 失败 / 已上传字节 / 用时 / 当前文件）、日志终端与级别 / 关键字过滤；状态帧结束后自动切到下一个排队执行，全部结束停留回放最近日志。
 
 ## 设计与令牌
 

@@ -4,7 +4,13 @@ from app.core.models.openlist.log import OpenListLog
 from app.core.models.openlist.server import OpenListServer
 from app.core.models.openlist.server_dir import OpenListServerDir
 from app.core.models.openlist.task import OpenListTask
-from app.core.models.uploader import UploadPlatformConfig, UploadRenameRule, UploadTask
+from app.core.models.uploader import (
+    UploadExecution,
+    UploadFileRecord,
+    UploadPlatformConfig,
+    UploadRenameRule,
+    UploadTask,
+)
 
 __all__ = [
     "OpenListConfig",
@@ -16,4 +22,6 @@ __all__ = [
     "UploadPlatformConfig",
     "UploadRenameRule",
     "UploadTask",
+    "UploadExecution",
+    "UploadFileRecord",
 ]

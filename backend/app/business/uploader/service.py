@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.uploader import rename_engine
 from app.business.uploader.rename_engine import DEFAULT_TEMPLATE
 from app.business.uploader.pan123_client import Pan123Client
 from app.business.uploader.schema import (
+    UploadExecutionBatchCreate,
+    UploadExecutionCreate,
     UploadPlatformConfigUpdate,
     UploadRenamePreviewRequest,
     UploadRenameRuleCreate,
@@ -21,9 +25,16 @@ from app.business.uploader.schema import (
     UploadTaskUpdate,
     UploadTestConnectionRequest,
 )
-from app.core.exceptions import BadRequestException
-from app.core.models.uploader import UploadPlatformConfig, UploadRenameRule, UploadTask
+from app.core.exceptions import BadRequestException, NotFoundException
+from app.core.models.uploader import (
+    UploadExecution,
+    UploadFileRecord,
+    UploadPlatformConfig,
+    UploadRenameRule,
+    UploadTask,
+)
 from app.core.secret_store import decrypt_secret, encrypt_secret, mask_secret
+from app.core.settings import settings
 
 # 提前 5 分钟判定过期，避免上传途中 token 失效
 TOKEN_REFRESH_MARGIN = timedelta(minutes=5)
@@ -371,3 +382,283 @@ async def list_remote_dirs(db: AsyncSession, parent_id: int = 0, path: str = "/"
     ]
     items.sort(key=lambda item: item["file_name"].lower())
     return {"parent_id": parent_id, "path": path, "items": items}
+
+
+# ---------------------------------------------------------------------------
+# 执行记录（单任务 / 批量创建 → 连 WS 后启动 → 取消 → 列表/详情）
+# ---------------------------------------------------------------------------
+
+
+def execution_to_dict(execution: UploadExecution) -> dict:
+    return {
+        "id": execution.id,
+        "task_id": execution.task_id,
+        "task_name": execution.task_name,
+        "local_dir": execution.local_dir,
+        "remote_dir": execution.remote_dir,
+        "season": execution.season,
+        "start_episode": execution.start_episode,
+        "rename_rule_id": execution.rename_rule_id,
+        "template": execution.template,
+        "conflict_policy": execution.conflict_policy,
+        "concurrency": execution.concurrency,
+        "retry_times": execution.retry_times,
+        "dry_run": execution.dry_run,
+        "status": execution.status,
+        "file_total": execution.file_total,
+        "file_success": execution.file_success,
+        "file_skipped": execution.file_skipped,
+        "file_failed": execution.file_failed,
+        "bytes_uploaded": execution.bytes_uploaded,
+        "duration_seconds": execution.duration_seconds,
+        "log_path": execution.log_path,
+        "started_time": execution.started_time,
+        "finished_time": execution.finished_time,
+        "created_time": execution.created_time,
+    }
+
+
+def _record_to_dict(record: UploadFileRecord) -> dict:
+    return {
+        "id": record.id,
+        "execution_id": record.execution_id,
+        "local_path": record.local_path,
+        "remote_name": record.remote_name,
+        "size": record.size,
+        "md5": record.md5,
+        "status": record.status,
+        "phase": record.phase,
+        "reason": record.reason,
+        "remote_file_id": record.remote_file_id,
+        "replaced_file_id": record.replaced_file_id,
+        "created_time": record.created_time,
+        "updated_time": record.updated_time,
+    }
+
+
+async def _get_execution(db: AsyncSession, execution_id: int) -> UploadExecution:
+    execution = await db.get(UploadExecution, execution_id)
+    if execution is None or execution.is_deleted:
+        raise NotFoundException("执行记录不存在")
+    return execution
+
+
+async def _resolve_task_template(db: AsyncSession, task: UploadTask) -> str:
+    """执行创建时固化命名模板：规则模板 > 默认模板。"""
+    if task.rename_rule_id is not None:
+        rule = await db.get(UploadRenameRule, task.rename_rule_id)
+        if rule is not None:
+            return rule.template
+    return DEFAULT_TEMPLATE
+
+
+async def _create_execution_row(db: AsyncSession, data: UploadExecutionCreate) -> UploadExecution:
+    task = await db.get(UploadTask, data.task_id)
+    if task is None:
+        raise BadRequestException("上传任务不存在")
+    execution = UploadExecution(
+        task_id=task.id,
+        task_name=task.name,
+        local_dir=task.local_dir,
+        remote_dir=task.remote_dir,
+        season=task.season,
+        start_episode=task.start_episode,
+        rename_rule_id=task.rename_rule_id,
+        template=await _resolve_task_template(db, task),
+        conflict_policy=data.conflict_policy,
+        concurrency=data.concurrency,
+        retry_times=data.retry_times,
+        dry_run=data.dry_run,
+        status="running",
+    )
+    db.add(execution)
+    await db.commit()
+    await db.refresh(execution)
+    return execution
+
+
+async def create_execution(db: AsyncSession, data: UploadExecutionCreate) -> dict:
+    """创建执行记录（仅落库，不启动）。"""
+    execution = await _create_execution_row(db, data)
+    return execution_to_dict(execution)
+
+
+async def batch_create_executions(db: AsyncSession, data: UploadExecutionBatchCreate) -> list[dict]:
+    """批量创建执行记录（多任务共享执行参数）。"""
+    results: list[dict] = []
+    task_ids = list(dict.fromkeys(data.task_ids))
+    for task_id in task_ids:
+        execution = await _create_execution_row(
+            db,
+            UploadExecutionCreate(
+                task_id=task_id,
+                conflict_policy=data.conflict_policy,
+                concurrency=data.concurrency,
+                retry_times=data.retry_times,
+                dry_run=data.dry_run,
+            ),
+        )
+        results.append(execution_to_dict(execution))
+    return results
+
+
+async def start_execution(db: AsyncSession, execution_id: int, task_id: int) -> dict:
+    """启动已创建的执行记录：置 started_time 后拉起后台流水线。
+
+    只有 ``running`` 且尚未启动过的记录才能启动，防止重复点击重复启动。
+    """
+    execution = await _get_execution(db, execution_id)
+    if execution.task_id != task_id:
+        raise BadRequestException("执行记录与任务不匹配")
+    if execution.status != "running":
+        raise BadRequestException("执行记录不可启动，当前状态: " + execution.status)
+    if execution.started_time is not None:
+        raise BadRequestException("执行记录已启动")
+
+    execution.started_time = datetime.now()
+    await db.commit()
+    await db.refresh(execution)
+
+    # 延迟导入，避免 service ↔ execution_engine 循环引用
+    from app.business.uploader.execution_engine import run_upload
+
+    asyncio.create_task(run_upload(execution_id=execution.id))
+    return execution_to_dict(execution)
+
+
+async def cancel_execution(db: AsyncSession, execution_id: int) -> dict:
+    execution = await _get_execution(db, execution_id)
+    if execution.status != "running":
+        return {"cancelled": False, "status": execution.status}
+    from app.business.openlist.task_status_manager import TaskStatusManager
+
+    TaskStatusManager.cancel(str(execution.id))
+    execution.status = "cancelled"
+    execution.finished_time = datetime.now()
+    await db.commit()
+    return {"cancelled": True, "status": "cancelled"}
+
+
+async def list_executions(
+    db: AsyncSession,
+    task_id: Optional[int] = None,
+    status: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[dict], int]:
+    stmt = select(UploadExecution).where(UploadExecution.is_deleted == False)  # noqa: E712
+    if task_id is not None:
+        stmt = stmt.where(UploadExecution.task_id == task_id)
+    if status:
+        stmt = stmt.where(UploadExecution.status == status)
+    total = await db.scalar(select(func.count(UploadExecution.id)).where(stmt.whereclause)) or 0
+    result = await db.execute(
+        stmt.order_by(UploadExecution.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    )
+    return [execution_to_dict(item) for item in result.scalars()], total
+
+
+async def get_execution_detail(db: AsyncSession, execution_id: int) -> dict:
+    execution = await _get_execution(db, execution_id)
+    result = await db.execute(
+        select(UploadFileRecord)
+        .where(UploadFileRecord.execution_id == execution_id)
+        .order_by(UploadFileRecord.id)
+        .limit(500)
+    )
+    return {
+        "execution": execution_to_dict(execution),
+        "records": [_record_to_dict(record) for record in result.scalars()],
+    }
+
+
+async def list_file_records(
+    db: AsyncSession, execution_id: int, page: int = 1, page_size: int = 20
+) -> tuple[list[dict], int]:
+    await _get_execution(db, execution_id)
+    total = (
+        await db.scalar(
+            select(func.count(UploadFileRecord.id)).where(UploadFileRecord.execution_id == execution_id)
+        )
+        or 0
+    )
+    result = await db.execute(
+        select(UploadFileRecord)
+        .where(UploadFileRecord.execution_id == execution_id)
+        .order_by(UploadFileRecord.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return [_record_to_dict(item) for item in result.scalars()], total
+
+
+# ---------------------------------------------------------------------------
+# 执行日志文件读取（与 OpenList 模块同构，文件为唯一权威源）
+# ---------------------------------------------------------------------------
+
+_LOG_LINE_RE = re.compile(r"^\[([^\]]*)\] \[([A-Z]+)\] (.*)$", re.DOTALL)
+
+
+def _log_path(execution_id: int) -> Path:
+    return Path(settings.upload_log_dir) / f"execution_{execution_id}.log"
+
+
+def _read_log_file(execution_id: int, offset: int = 0, limit: int = 200) -> Optional[list[dict]]:
+    path = _log_path(execution_id)
+    try:
+        if not path.is_file():
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except Exception:
+        return None
+    items = []
+    for line in lines[offset : offset + limit]:
+        match = _LOG_LINE_RE.match(line)
+        if not match:
+            continue
+        ts, level, message = match.group(1), match.group(2).lower(), match.group(3)
+        items.append({"log_level": level, "content": message, "created_time": ts or None})
+    return items
+
+
+def _log_file_total(execution_id: int) -> Optional[int]:
+    path = _log_path(execution_id)
+    try:
+        if not path.is_file():
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return sum(1 for _ in f)
+    except Exception:
+        return None
+
+
+async def list_execution_logs(
+    db: AsyncSession, execution_id: int, page: int = 1, page_size: int = 200
+) -> tuple[list[dict], int]:
+    offset = (page - 1) * page_size
+    file_logs = _read_log_file(execution_id, offset, page_size)
+    if file_logs is not None:
+        total = _log_file_total(execution_id) or 0
+        return [{"id": offset + i + 1, **item} for i, item in enumerate(file_logs)], total
+    return [], 0
+
+
+async def get_recent_log_lines(execution_id: int, limit: int = 200) -> list[dict]:
+    """WebSocket 重连时回放最近的日志帧（读日志文件末尾）。"""
+    path = _log_path(execution_id)
+    try:
+        if path.is_file():
+            with open(path, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            frames = []
+            for line in lines[-limit:]:
+                match = _LOG_LINE_RE.match(line)
+                if not match:
+                    continue
+                ts, level, message = match.group(1), match.group(2).lower(), match.group(3)
+                frames.append({"type": "log", "level": level, "message": message, "ts": ts or None})
+            return frames
+    except Exception:
+        pass
+    return []

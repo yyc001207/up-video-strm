@@ -92,6 +92,13 @@ const modules: NavModule[] = [
           { path: '/upload/tasks', label: '任务配置', icon: Document },
           { path: '/upload/rename', label: '重命名规则', icon: EditPen }
         ]
+      },
+      {
+        title: '运行',
+        pages: [
+          { path: '/upload/execution', label: '执行管理', icon: VideoPlay },
+          { path: '/upload/realtime', label: '实时日志', icon: Monitor }
+        ]
       }
     ]
   }

@@ -133,3 +133,92 @@ class UploadRemoteDirList(BaseModel):
     parent_id: int = 0
     path: str = "/"
     items: list[UploadRemoteDirItem] = []
+
+
+# ---------------------------------------------------------------------------
+# 执行 / 文件记录
+# ---------------------------------------------------------------------------
+
+
+class UploadExecutionCreate(BaseModel):
+    """创建单任务执行记录（仅落库，不启动）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: int = Field(ge=1)
+    conflict_policy: str = Field(default="skip", pattern="^(skip|overwrite|suffix)$")
+    concurrency: int = Field(default=2, ge=1, le=8)
+    retry_times: int = Field(default=3, ge=0, le=10)
+    dry_run: bool = False
+
+
+class UploadExecutionBatchCreate(BaseModel):
+    """批量创建执行记录（多任务，共享同一组执行参数）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_ids: list[int] = Field(min_length=1)
+    conflict_policy: str = Field(default="skip", pattern="^(skip|overwrite|suffix)$")
+    concurrency: int = Field(default=2, ge=1, le=8)
+    retry_times: int = Field(default=3, ge=0, le=10)
+    dry_run: bool = False
+
+
+class UploadExecutionStart(BaseModel):
+    """启动已创建的执行记录。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: int = Field(ge=1)
+    task_id: int = Field(ge=1)
+
+
+class UploadExecutionCancel(BaseModel):
+    """取消正在运行的上传执行。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    execution_id: int = Field(ge=1)
+
+
+class UploadFileRecordResponse(BaseModel):
+    id: int
+    execution_id: int
+    local_path: str
+    remote_name: str
+    size: int = 0
+    md5: str = ""
+    status: str = "pending"
+    phase: str = "scan"
+    reason: Optional[str] = None
+    remote_file_id: Optional[int] = None
+    replaced_file_id: Optional[int] = None
+    created_time: Optional[datetime] = None
+    updated_time: Optional[datetime] = None
+
+
+class UploadExecutionResponse(BaseModel):
+    id: int
+    task_id: int
+    task_name: str
+    local_dir: str
+    remote_dir: str
+    season: int
+    start_episode: int
+    rename_rule_id: Optional[int] = None
+    template: str
+    conflict_policy: str
+    concurrency: int
+    retry_times: int
+    dry_run: bool
+    status: str
+    file_total: int = 0
+    file_success: int = 0
+    file_skipped: int = 0
+    file_failed: int = 0
+    bytes_uploaded: int = 0
+    duration_seconds: Optional[int] = None
+    log_path: Optional[str] = None
+    started_time: Optional[datetime] = None
+    finished_time: Optional[datetime] = None
+    created_time: Optional[datetime] = None

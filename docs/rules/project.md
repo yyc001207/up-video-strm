@@ -60,6 +60,7 @@ npm run dev
 - 安装包按当前用户安装、免管理员：正式版 `%LOCALAPPDATA%\Programs\up-video-strm`、测试版 `%LOCALAPPDATA%\Programs\up-video-strm-test`。正式版 AppId 固定、属同一产品升级；测试版使用独立 AppId/名称/自启动项/单实例，可与正式版并存。
 - 测试版携带构建标记 `build_profile.json`，冻结运行时据此选择隔离的数据目录，无需额外配置。
 - 构建机要求、常用参数、产物说明见 [README.md 构建与打包](../../README.md#构建与打包)；版本号约定见 [AGENTS.md](../../AGENTS.md) 规则 7（唯一源 `backend/app/version.py`，`build.ps1` 打包前校验四处一致）。
+- 发布流水线：[.github/workflows/release.yml](../../.github/workflows/release.yml)，**仅在推送 `v*` 标签时触发**（分支 push / PR 不构建）。流程：校验 `v<版本>` 与 `backend/app/version.py` 一致 → 安装 Node/Python/Inno Setup → 前端构建 → `build.ps1` 打包 → 上传 artifact → 创建 GitHub Release 并附加安装包。发布前先 bump 版本并提交，再推送匹配的标签。
 
 ## 冻结运行差异
 

@@ -185,6 +185,21 @@ powershell -ExecutionPolicy Bypass -File packaging\build-test.ps1
 - 正式版安装包使用固定 AppId，属于同一产品的升级；升级时先卸载旧版本（数据目录保留）再安装新版本。测试版使用独立 AppId 与名称，可与正式版并存。
 - 若双击安装包提示「应用程序控制策略已阻止此文件」，说明系统启用了 Smart App Control / WDAC：开发期可用 `-Dev` 构建后直接运行 `dist\up-video-strm\up-video-strm.exe`；正式分发需要代码签名，或在系统设置中关闭 Smart App Control（关闭后需重装系统才能重新开启）。
 
+### 发布（GitHub Actions）
+
+推送 `v*` 标签时由 GitHub Actions 自动构建正式版安装包并发布到 GitHub Release；**分支 push 与 PR 不会触发**。
+
+```bash
+# 1) 先 bump 版本并提交（版本号必须与标签一致，流水线会校验）
+backend/.venv/Scripts/python.exe packaging/bump_version.py minor
+git add -A && git commit -m "chore: 发布 v<版本>"
+# 2) 打并推送匹配的标签（推送标签即发布）
+git tag v<版本>
+git push origin v<版本>
+```
+
+流水线（[.github/workflows/release.yml](.github/workflows/release.yml)）依次：校验标签与版本一致 → 安装 Node/Python/Inno Setup → `npm ci` 与 Python 打包依赖 → 构建安装包 → 上传 artifact → 创建 Release 并附加 `up-video-strm-<版本>-win-x64-setup.exe`。仓库需启用 Actions；标签与版本不一致时流水线直接失败。
+
 ## 测试
 
 后端测试使用标准库 `unittest`（无额外测试依赖）：

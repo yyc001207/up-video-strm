@@ -21,6 +21,14 @@
 
 - 暂无。
 
+## [4.5.0] - 2026-11-05
+
+**级别：MINOR（新增发布能力）** · 代码见本次提交
+
+- 新增 GitHub Actions 发布流水线 `.github/workflows/release.yml`：**仅在推送 `v*` 标签时触发**，自动构建 Windows 正式版安装包并发布到 GitHub Release（附加 `up-video-strm-<版本>-win-x64-setup.exe`，自动生成发布说明）。
+- 流水线先校验 `v<版本>` 与 `backend/app/version.py` 一致，不一致直接失败；分支 push / PR 不触发构建。
+- 文档：README 与 `docs/rules/project.md` 补充发布流程说明（先 bump 版本并提交，再打/推匹配标签）。
+
 ## [4.4.2] - 2026-11-05
 
 **级别：PATCH（缺陷修复）** · 代码见本次提交

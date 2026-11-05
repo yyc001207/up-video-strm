@@ -114,6 +114,7 @@ async def upload_result(db: AsyncSession, execution_id: int) -> Optional[dict]:
         "file_success": execution.file_success,
         "file_skipped": execution.file_skipped,
         "file_failed": execution.file_failed,
+        "log_path": execution.log_path,
     }
 
 
@@ -125,6 +126,7 @@ async def openlist_result(db: AsyncSession, execution_id: int) -> Optional[dict]
         "status": execution.status,
         "error_code": execution.error_code,
         "error_message": execution.error_message,
+        "log_path": execution.log_path,
     }
 
 

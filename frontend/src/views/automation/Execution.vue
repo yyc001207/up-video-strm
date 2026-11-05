@@ -35,6 +35,8 @@ const startForm = reactive<AutomationStartPayload>({
 })
 
 let timer: ReturnType<typeof setInterval> | null = null
+/** 仅在存在运行中任务时轮询运行态；否则不轮询。 */
+const ACTIVE_POLL_MS = 5000
 
 const PHASE_LABELS: Record<string, string> = {
   starting: '准备中',
@@ -69,17 +71,60 @@ function nextRoundText(task: AutomationTask): string {
   return state?.next_round_at ?? '—'
 }
 
+async function loadActive(): Promise<void> {
+  const res = await automationRunApi.active()
+  active.value = res.data ?? []
+  syncTimer()
+}
+
+async function pollActive(): Promise<void> {
+  try {
+    const res = await automationRunApi.active()
+    active.value = res.data ?? []
+  } finally {
+    syncTimer()
+  }
+}
+
+async function loadTasks(silent = false): Promise<void> {
+  if (!silent) loading.value = true
+  try {
+    const res = await automationApi.listTasks({ page: 1, page_size: 100 })
+    tasks.value = res.data ?? []
+  } finally {
+    loading.value = false
+  }
+}
+
 async function load(silent = false): Promise<void> {
   if (!silent) loading.value = true
   try {
-    const [taskRes, activeRes] = await Promise.all([
-      automationApi.listTasks({ page: 1, page_size: 100 }),
-      automationRunApi.active()
-    ])
-    tasks.value = taskRes.data ?? []
-    active.value = activeRes.data ?? []
+    await Promise.all([loadTasks(true), loadActive()])
   } finally {
     loading.value = false
+  }
+}
+
+function isRunning(task: AutomationTask): boolean {
+  return activeMap.value.has(task.id) || task.is_running
+}
+
+/** 仅当存在运行中的任务且页面可见时轮询；否则完全停止轮询。 */
+function syncTimer(): void {
+  const need = active.value.length > 0 && typeof document !== 'undefined' && !document.hidden
+  if (need && !timer) {
+    timer = setInterval(() => void pollActive(), ACTIVE_POLL_MS)
+  } else if (!need && timer) {
+    clearInterval(timer)
+    timer = null
+  }
+}
+
+function onVisibilityChange(): void {
+  if (!document.hidden && active.value.length > 0) {
+    void pollActive()
+  } else {
+    syncTimer()
   }
 }
 
@@ -90,7 +135,7 @@ function openStartDialog(ids: number[]): void {
   }
   const running = ids.filter(id => {
     const task = tasks.value.find(item => item.id === id)
-    return task?.is_running
+    return task ? isRunning(task) : false
   })
   if (running.length) {
     ElMessage.warning(`任务 ${running.join('、')} 正在运行，请先停止`)
@@ -169,11 +214,15 @@ function onSelectionChange(rows: AutomationTask[]): void {
 
 onMounted(async () => {
   await load()
-  timer = setInterval(() => void load(true), 3000)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
 })
 </script>
 
@@ -201,7 +250,7 @@ onBeforeUnmount(() => {
         empty-text="暂无自动化任务，请先在「任务配置」中创建"
         @selection-change="onSelectionChange"
       >
-        <el-table-column type="selection" width="44" :selectable="(row: AutomationTask) => !row.is_running" />
+        <el-table-column type="selection" width="44" :selectable="(row: AutomationTask) => !isRunning(row)" />
         <el-table-column label="任务名称" min-width="160">
           <template #default="{ row }">
             <div class="cell-main">{{ row.name }}</div>
@@ -211,10 +260,10 @@ onBeforeUnmount(() => {
         <el-table-column label="校验目录" min-width="150" prop="check_dir" show-overflow-tooltip />
         <el-table-column label="运行状态" width="150">
           <template #default="{ row }">
-            <el-tag :type="row.is_running ? 'success' : 'info'" size="small" effect="plain">
+            <el-tag :type="isRunning(row) ? 'success' : 'info'" size="small" effect="plain">
               {{ phaseText(row) }}
             </el-tag>
-            <div v-if="row.is_running" class="cell-sub">下一轮：{{ nextRoundText(row) }}</div>
+            <div v-if="isRunning(row)" class="cell-sub">下一轮：{{ nextRoundText(row) }}</div>
           </template>
         </el-table-column>
         <el-table-column label="待校验" width="80" align="center">
@@ -237,7 +286,7 @@ onBeforeUnmount(() => {
         <el-table-column label="操作" width="290" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="!row.is_running"
+              v-if="!isRunning(row)"
               link
               type="primary"
               :icon="VideoPlay"

@@ -86,6 +86,12 @@ export interface OpenListExecution {
   started_time: string | null
   finished_time: string | null
   created_time: string | null
+  error_code?: string | null
+  error_message?: string | null
+  /** 触发来源：manual 手动 / automation 自动化任务触发 */
+  trigger_source?: string | null
+  trigger_ref?: string | null
+  trigger_name?: string | null
 }
 
 /** 目录执行单元：云端处理路径 + 输出目录。 */

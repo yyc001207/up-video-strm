@@ -229,7 +229,11 @@ async function refreshRunning() {
 
 onMounted(() => {
   void refreshRunning()
-  pollTimer = setInterval(() => void refreshRunning(), RUNNING_POLL_MS)
+  pollTimer = setInterval(() => {
+    // 页面不可见时不轮询运行状态，避免后台标签页/最小化时持续请求
+    if (document.hidden) return
+    void refreshRunning()
+  }, RUNNING_POLL_MS)
 })
 
 onBeforeUnmount(() => {

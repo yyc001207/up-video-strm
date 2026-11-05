@@ -60,6 +60,12 @@ function countText(success: number, total: number): string {
   return total > 0 ? `${success}/${total}` : '—'
 }
 
+/** 触发方式：自动化任务触发时展示任务名，其余为手动。 */
+function triggerText(row: OpenListExecution): string {
+  if (row.trigger_source !== 'automation') return '手动'
+  return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
+}
+
 /** 该任务最近一次执行的时间戳：优先完成时间，其次开始/创建时间。 */
 function executionMillis(item: HistorySummaryItem): number | null {
   const exec = item.execution
@@ -313,6 +319,17 @@ defineExpose({ reload: load })
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
               <StatusDot :status="row.status" />
+            </template>
+          </el-table-column>
+          <el-table-column label="触发方式" width="150" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-tag
+                :type="row.trigger_source === 'automation' ? 'warning' : 'info'"
+                size="small"
+                effect="plain"
+              >
+                {{ triggerText(row) }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="视频" width="96" align="right">

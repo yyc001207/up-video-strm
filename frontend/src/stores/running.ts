@@ -1,4 +1,4 @@
-﻿/** 全局运行状态：聚合「任务调度」「上传管理」「自动化任务」三个模块的运行中执行数。 */
+/** 全局运行状态：聚合「任务调度」「上传管理」「自动化任务」三个模块的运行中执行数。 */
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -7,8 +7,8 @@ import { openlistApi } from '@/api/openlist'
 import { uploaderApi } from '@/api/uploader'
 import { automationRunApi } from '@/api/automation'
 
-/** 顶栏轮询间隔（壳层统一轮询，页面内继续保留各自的轮询）。 */
-export const RUNNING_POLL_MS = 10000
+/** 顶栏轮询间隔（壳层统一轮询；页面可见时才执行，避免后台无意义请求）。 */
+export const RUNNING_POLL_MS = 30000
 /** 最近一次失败后视为「连接失败」的窗口。 */
 export const OFFLINE_WINDOW_MS = 30000
 

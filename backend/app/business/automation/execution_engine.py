@@ -30,6 +30,7 @@ from app.business.automation import adapters, registry
 from app.business.automation.change_detector import compute_fingerprint
 from app.business.automation.execution_logger import AutomationLogger
 from app.business.automation.notifier import notify_abnormal
+from app.business.automation.relay import ExecutionLogRelay
 from app.business.openlist.openlist_api import OpenListAPI
 from app.business.openlist import service as openlist_service
 from app.business.uploader.scanner import normalize_extensions
@@ -179,7 +180,6 @@ async def start_task(task_id: int, *, force_round: bool = True, overrides: Optio
     registry.register(task_id, instance)
     registry.set_runtime(
         task_id,
-        task_id=task_id,
         phase="starting",
         run_id=None,
         round_no=0,
@@ -633,7 +633,37 @@ async def _start_with_busy_wait(snapshot: Snapshot, log: AutomationLogger, *, st
 
 
 async def _wait_execution(snapshot: Snapshot, log: AutomationLogger, *, execution_id: int, kind: str, label: str) -> dict:
-    """轮询 A/B 执行直到终态；阶段超时先取消，宽限 30s 后仍活跃则记 STAGE_TIMEOUT。"""
+    """轮询 A/B 执行直到终态；期间把 A/B 日志镜像进当前轮次日志。"""
+    prefix = f"{'B' if kind == 'upload' else 'A'}#{execution_id}"
+    relay = ExecutionLogRelay(log, prefix)
+    relay_task = asyncio.create_task(relay.run())
+    try:
+        return await _wait_execution_inner(
+            snapshot,
+            log,
+            relay,
+            execution_id=execution_id,
+            kind=kind,
+            label=label,
+        )
+    finally:
+        relay.stop()
+        try:
+            await asyncio.wait_for(relay_task, timeout=5)
+        except (asyncio.TimeoutError, asyncio.CancelledError):  # pragma: no cover - 兜底
+            relay_task.cancel()
+
+
+async def _wait_execution_inner(
+    snapshot: Snapshot,
+    log: AutomationLogger,
+    relay: ExecutionLogRelay,
+    *,
+    execution_id: int,
+    kind: str,
+    label: str,
+) -> dict:
+    """``_wait_execution`` 的实现体；阶段超时先取消，宽限 30s 后仍活跃则记 STAGE_TIMEOUT。"""
     started = time.monotonic()
     deadline = started + snapshot.stage_timeout
     while True:
@@ -652,6 +682,7 @@ async def _wait_execution(snapshot: Snapshot, log: AutomationLogger, *, executio
             )
         if result is None:
             return {"status": "fail", "execution_id": execution_id, "error_code": "INTERNAL_ERROR", "message": "执行记录不存在"}
+        relay.set_path(result.get("log_path"))
         if result["status"] in adapters.TERMINAL_STATUSES:
             result["execution_id"] = execution_id
             if result["status"] == "fail":

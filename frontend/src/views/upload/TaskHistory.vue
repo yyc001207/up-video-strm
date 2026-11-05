@@ -98,6 +98,12 @@ function conflictText(policy: string): string {
   return CONFLICT_LABELS[policy as UploadConflictPolicy] ?? policy
 }
 
+/** 触发方式：自动化任务触发时展示任务名，其余为手动。 */
+function triggerText(row: UploadExecution): string {
+  if (row.trigger_source !== 'automation') return '手动'
+  return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
+}
+
 /** 取最近一次执行的时间（结束 → 开始 → 创建），按北京时间比较。 */
 function executionTimestamp(item: UploadHistorySummaryItem): number | null {
   const exec = item.last_execution
@@ -393,6 +399,17 @@ defineExpose({ reload: load })
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
                 <StatusDot :status="row.status" />
+              </template>
+            </el-table-column>
+            <el-table-column label="触发方式" width="150" show-overflow-tooltip>
+              <template #default="{ row }">
+                <el-tag
+                  :type="row.trigger_source === 'automation' ? 'warning' : 'info'"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ triggerText(row) }}
+                </el-tag>
               </template>
             </el-table-column>
             <el-table-column label="冲突策略" width="100">

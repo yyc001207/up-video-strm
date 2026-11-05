@@ -116,6 +116,12 @@ function progressText(row: UploadExecution): string {
   return row.file_total > 0 ? `${row.file_success}/${row.file_total}` : '—'
 }
 
+/** 触发方式：自动化任务触发时展示任务名，其余为手动。 */
+function triggerText(row: UploadExecution): string {
+  if (row.trigger_source !== 'automation') return '手动'
+  return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
+}
+
 function taskMeta(task: UploadTask): string {
   const season = `S${String(task.season).padStart(2, '0')}`
   return `${task.remote_dir || '（未设置云端目录）'} · ${season} 起第 ${task.start_episode} 集`
@@ -466,6 +472,17 @@ onBeforeUnmount(() => {
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
               <StatusDot :status="(row.status as UploadExecutionStatus)" />
+            </template>
+          </el-table-column>
+          <el-table-column label="触发方式" width="150" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-tag
+                :type="row.trigger_source === 'automation' ? 'warning' : 'info'"
+                size="small"
+                effect="plain"
+              >
+                {{ triggerText(row) }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="进度" width="110" align="right">

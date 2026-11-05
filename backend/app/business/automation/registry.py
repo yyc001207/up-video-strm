@@ -63,9 +63,9 @@ def lock_for(kind: str, target_id: int) -> asyncio.Lock:
 
 
 def set_runtime(task_id: int, **fields) -> dict:
-    """更新运行态快照并返回最新值（字段增量合并）。"""
+    """更新运行态快照并返回最新值（字段增量合并；``task_id`` 恒由本函数写入）。"""
     state = RUNTIME.setdefault(task_id, {})
-    state.update(fields)
+    state.update({"task_id": task_id, **fields})
     return state
 
 

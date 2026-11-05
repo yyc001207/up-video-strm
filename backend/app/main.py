@@ -77,6 +77,8 @@ async def up_video_strm_exception_handler(request: Request, exc: UpVideoStrmExce
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    # 记录完整堆栈，便于排查「接口报 500 但后台任务已启动」这类静默错误
+    logger.exception("未处理异常：%s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=200,
         content={"code": 500, "msg": "服务器内部错误", "data": None},

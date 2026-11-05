@@ -45,14 +45,14 @@ backend/
 | [service.py](../../backend/app/business/uploader/service.py) | 123 云盘凭据（DPAPI 加密存储、Token 缓存与续期）、重命名规则、上传任务、执行记录/历史/日志读取、配置 seed |
 | [pan123_client.py](../../backend/app/business/uploader/pan123_client.py) | 123 云盘开放平台客户端（token、文件列表/查重、目录解析、秒传/分片上传、异步结果、删除；`get_file_id` 兼容 `fileID`/`fileId`） |
 | [scanner.py](../../backend/app/business/uploader/scanner.py) | 本地目录扫描与视频过滤（扩展名来自全局「视频格式」）、MD5 计算 |
-| [rename_engine.py](../../backend/app/business/uploader/rename_engine.py) | 集数解析（`第03集`/`S01E03`/`EP03`/`[03]`/`03 - 标题`）+ 模板渲染（`{season}`/`{episode}`/`{ext}`） |
+| [rename_engine.py](../../backend/app/business/uploader/rename_engine.py) | 集数解析（`第03集`/`S01E03`/`EP03`/`[03]`/`03 - 标题`，排除分辨率与哈希数字）+ 可选自定义集数正则（`episode_pattern`，第 1 个分组为集号）+ 模板渲染（`{season}`/`{episode}`/`{ext}`） |
 | [execution_engine.py](../../backend/app/business/uploader/execution_engine.py) | 六阶段执行流水线（扫描 → 过滤 → 重命名 → 清单 → 查重 → 上传）、并发上传与重试、取消、结果回写 |
 | [execution_logger.py](../../backend/app/business/uploader/execution_logger.py) | 日志通道：按执行写 `upload_logs/execution_{id}.log` + WebSocket 广播 log/progress/status 帧（不落库） |
 | [schema.py](../../backend/app/business/uploader/schema.py) | Pydantic 请求/响应模型 |
 
 ## 数据层
 
-- 无 Alembic；启动时 [database.py](../../backend/app/core/database.py) 用 `create_all` 建表 + `PRAGMA`/`ALTER TABLE` 轻量列级迁移，并写入默认全局配置。
+- 无 Alembic；启动时 [database.py](../../backend/app/core/database.py) 用 `create_all` 建表 + `PRAGMA`/`ALTER TABLE` 轻量列级迁移，并写入默认全局配置。上传模块的 `episode_pattern` 列由 `_ensure_upload_columns()` 为旧库自动 `ADD COLUMN`（`upload_rename_rule`、`upload_execution`）。
 - 废弃列清理：`obsolete_column_statements()` 会针对旧库中已不再映射的物理列（`open_list_execution.strip_series`/`server_name`、`open_list_config.log_to_db`、`open_list_server.name`）生成 `ALTER TABLE ... DROP COLUMN`，`init_db()` 在 SQLite ≥ 3.35 时执行，避免旧库 `NOT NULL` 列导致新代码 INSERT 失败（4.1.1 修复）。
 - 数据表：`open_list_config`、`open_list_server`、`open_list_server_dir`、`open_list_task`、`open_list_execution`、`open_list_log`；上传管理另有 `upload_platform_config`、`upload_rename_rule`、`upload_task`、`upload_execution`、`upload_file_record`。
 - 输出根目录：`open_list_config.output_root`（可空）。任务输出目录以 `/` 开头时由 [strm_generator.resolve_output_base()](../../backend/app/business/openlist/strm_generator.py) 相对其解析；为空回退 `CWD/output`（源码运行即 `backend/output`；冻结运行已 `chdir` 到数据目录，落在 `%LOCALAPPDATA%\up-video-strm\output`）。

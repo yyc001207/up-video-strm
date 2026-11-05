@@ -43,7 +43,7 @@ frontend/
 | `/schedule/realtime` | `views/schedule/RealtimeLog.vue` | WebSocket 实时日志 |
 | `/upload` | — | 重定向到 `/upload/tasks` |
 | `/upload/tasks` | `views/upload/TaskConfig.vue` | 上传任务 CRUD：本地目录、云端目录、集数映射、命名规则 |
-| `/upload/rename` | `views/upload/RenameRules.vue` | 重命名规则 CRUD 与模板预览 |
+| `/upload/rename` | `views/upload/RenameRules.vue` | 重命名规则 CRUD、可选自定义集数正则与模板预览 |
 | `/upload/execution` | `views/upload/Execution.vue` | 执行管理：三卡片（选任务 / 执行参数 / 已选任务）+ 正在执行列表 |
 | `/upload/realtime` | `views/upload/RealtimeLog.vue` | WebSocket 实时日志：6 阶段进度与逐文件输出，支持批量排队 |
 | `/upload/history` | `views/upload/TaskHistory.vue` | 上传历史：按任务汇总 → 执行记录 → 文件明细、日志回放/下载、重跑 |

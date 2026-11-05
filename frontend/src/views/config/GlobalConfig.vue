@@ -306,8 +306,8 @@ async function handleTestPan123() {
       client_id: pan123Form.client_id.trim() || undefined,
       client_secret: pan123Form.client_secret.trim() || undefined
     })
+    // 测试只验证凭据，不保存配置；不要重新拉取配置，避免覆盖弹框中已填写的 Client ID / Secret
     ElMessage.success(res.data.message || '连接成功')
-    await loadPan123()
   } catch {
     /* 拦截器提示 */
   } finally {

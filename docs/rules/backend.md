@@ -19,7 +19,7 @@ backend/
 │   │   └── models/openlist/# ORM 模型
 │   ├── utils/              # 响应封装、helpers
 │   └── websocket/          # 实时日志连接管理（manager.py）
-├── tests/                  # pytest 冒烟测试（本地，不纳入版本管理）
+├── tests/                  # unittest 冒烟测试（本地，不纳入版本管理）
 ├── requirements.txt / requirements-dev.txt / pytest.ini / .env.example
 ├── run.py                  # 启动入口（源码/冻结通用：端口探测、单实例、原生窗口）
 └── data/ openlist_logs/ output/  # 源码运行时生成（数据库/日志/输出）

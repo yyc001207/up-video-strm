@@ -33,9 +33,9 @@
 
 ### 一、桌面安装版
 
-- 由 [packaging/build.ps1](../../packaging/build.ps1) 产出安装包，安装后运行 `up-video-strm.exe`。
+- 由 [packaging/build.ps1](../../packaging/build.ps1) 产出正式版安装包，安装后运行 `up-video-strm.exe`；[packaging/build-test.ps1](../../packaging/build-test.ps1) 产测试版（`up-video-strm-test.exe`，与正式版并存）。
 - 主线程打开原生窗口、后台线程运行 uvicorn；关闭窗口默认收进托盘。
-- 数据目录固定为 `%LOCALAPPDATA%\up-video-strm`，可用 `UP_VIDEO_STRM_HOME` 覆盖；详见「冻结运行差异」。
+- 正式版数据目录 `%LOCALAPPDATA%\up-video-strm`、测试版 `%LOCALAPPDATA%\up-video-strm-test`，均可用 `UP_VIDEO_STRM_HOME` 覆盖；详见「冻结运行差异」。
 
 ### 二、源码运行
 
@@ -55,8 +55,10 @@ npm run dev
 
 ## 打包发布
 
-- 一键脚本 [packaging/build.ps1](../../packaging/build.ps1)：前端构建 → 同步产物到 `backend/frontend/dist` → PyInstaller onedir（[up-video-strm.spec](../../packaging/up-video-strm.spec)）→ Inno Setup（[installer.iss](../../packaging/installer.iss)）→ 清理中间目录。
-- 唯一交付物：`dist/up-video-strm-<版本>-win-x64-setup.exe`；中间目录 `dist/up-video-strm/` 编译后自动清理（`-KeepStage` 保留）。安装包按当前用户安装、免管理员，安装目录 `%LOCALAPPDATA%\Programs\up-video-strm`；AppId 固定，属同一产品升级（升级时先卸载旧版本，数据目录保留）。
+- 一键脚本：正式版 [packaging/build.ps1](../../packaging/build.ps1)（`-Profile prod`，默认）；测试版 [packaging/build-test.ps1](../../packaging/build-test.ps1)（内部以 `-Profile test` 复用同一脚本）。流程：前端构建 → 同步产物到 `backend/frontend/dist` → PyInstaller onedir（[up-video-strm.spec](../../packaging/up-video-strm.spec)）→ Inno Setup（[installer.iss](../../packaging/installer.iss)）→ 清理中间目录。
+- 交付物：正式版 `dist/up-video-strm-<版本>-win-x64-setup.exe`，测试版 `dist/up-video-strm-test-<版本>-win-x64-setup.exe`；中间目录 `dist/up-video-strm[-test]/` 编译后自动清理（`-KeepStage` 保留）。
+- 安装包按当前用户安装、免管理员：正式版 `%LOCALAPPDATA%\Programs\up-video-strm`、测试版 `%LOCALAPPDATA%\Programs\up-video-strm-test`。正式版 AppId 固定、属同一产品升级；测试版使用独立 AppId/名称/自启动项/单实例，可与正式版并存。
+- 测试版携带构建标记 `build_profile.json`，冻结运行时据此选择隔离的数据目录，无需额外配置。
 - 构建机要求、常用参数、产物说明见 [README.md 构建与打包](../../README.md#构建与打包)；版本号约定见 [AGENTS.md](../../AGENTS.md) 规则 7（唯一源 `backend/app/version.py`，`build.ps1` 打包前校验四处一致）。
 
 ## 冻结运行差异
@@ -65,11 +67,11 @@ npm run dev
 
 | 方面 | 冻结态行为 |
 |------|-----------|
-| 数据目录 | [data_root()](../../backend/app/core/paths.py) 固定为 `%LOCALAPPDATA%\up-video-strm`（`UP_VIDEO_STRM_HOME` 可覆盖）；启动后 `os.chdir(数据目录)`，`./data`、`./openlist_logs`、`./output` 等相对路径均落在数据目录下 |
-| 资源定位 | `resource_dir()` 返回 `_MEIPASS`（onedir 为 `_internal`）定位打包的前端产物；exe 同级 `frontend/dist` 也可作为托管目录 |
+| 数据目录 | 正式版固定为 `%LOCALAPPDATA%\up-video-strm`，测试版为 `%LOCALAPPDATA%\up-video-strm-test`（由资源目录内 `build_profile.json` 区分；`UP_VIDEO_STRM_HOME` 均可覆盖）；启动后 `os.chdir(数据目录)`，`./data`、`./openlist_logs`、`./output` 等相对路径均落在数据目录下 |
+| 资源定位 | `resource_dir()` 返回 `_MEIPASS`（onedir 为 `_internal`）定位打包的前端产物；exe 同级 `frontend/dist` 也可作为托管目录；`build_profile.json`（`prod`/`test`）记录构建类型 |
 | 端口回退 | 首选 `8000`（`UP_VIDEO_STRM_PORT` 可改），被占用时顺延探测最多 20 个端口，全失败则报错退出 |
 | 进程模型 | 不派生子进程：后台线程运行 uvicorn，主线程运行原生窗口；exe 为 GUI 进程（无控制台），stdio 重定向到 `logs/app.log`（超 5 MB 轮转） |
-| 单实例 | Windows 命名互斥体 `Local\up-video-strm-single-instance` 保证唯一实例，再次启动通过命名事件唤起已有窗口 |
+| 单实例 | Windows 命名互斥体 `Local\up-video-strm-single-instance`（测试版 `Local\up-video-strm-test-single-instance`）保证唯一实例，再次启动通过命名事件唤起已有窗口 |
 | 配置读取 | `.env` 依次读取数据目录与 exe 同级（后者优先）；启动器环境变量（`UP_VIDEO_STRM_HOST` 等）只从进程环境读取，不读 `.env` |
 | 前端托管 | [backend/app/main.py](../../backend/app/main.py) 依次尝试 exe 同级与资源目录下的 `frontend/dist`，存在即挂载静态资源并做 SPA 回退 |
 

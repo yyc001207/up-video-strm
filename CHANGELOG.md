@@ -9,7 +9,7 @@
 | 位 | 何时递增 | 本项目实例 |
 |----|----------|------------|
 | `MAJOR` | 不兼容变更：接口移除/改名、配置或数据库结构破坏性调整、部署方式变更 | 3.0.0 单服务器化；4.0.0 移除接口字段与配置项 |
-| `MINOR` | 新增功能：新页面、新接口、新交互、新配置项 | 2.1.0 前端 UI 重构；3.1.0 连通性测试 |
+| `MINOR` | 新增功能：新页面、新接口、新交互、新配置项 | 2.1.0 前端 UI 重构；3.1.0 连通性测试；4.1.0 测试版打包 |
 | `PATCH` | 缺陷修复、样式/文案微调、性能优化、依赖安全更新 | 2.0.1 重命名与 Docker 清理 |
 
 - 一次交付只递增一次；多个改动合并按最高级别递增。
@@ -20,6 +20,15 @@
 ## 未发布（Unreleased）
 
 - 暂无。
+
+## [4.1.0] - 2026-11-05
+
+**级别：MINOR（新增能力）** · 代码 `b22fbc2`
+
+- 新增测试版打包：`packaging/build-test.ps1`（内部以 `-Profile test` 复用 `build.ps1`）产出 `up-video-strm-test.exe` 与 `dist/up-video-strm-test-<版本>-win-x64-setup.exe`；应用名、安装目录、数据目录（`%LOCALAPPDATA%\up-video-strm-test`）、快捷方式、自启动项、单实例互斥体均与正式版隔离，可同时安装运行。
+- `build.ps1` 新增 `-Profile prod|test`（默认 `prod`，行为不变）；`installer.iss` 通过 `MyTestBuild` 切换 AppId/安装目录/产物名；`paths.py` 新增 `APP_DIR_NAME` 与 `build_profile()`，测试版应用携带 `build_profile.json` 构建标记，`run.py`/`desktop.py`/`desktop_prefs.py`/`main.py` 的应用名统一取自 `APP_DIR_NAME`。
+- 测试：新增 `backend/tests/test_build_profile.py`（6 例：源码/冻结、prod/test 标记、数据目录隔离、应用名），`test_smoke.py` 同步打包命名断言。
+- 文档：README「构建与打包」新增测试版说明与 `-Profile` 参数；`docs/rules/project.md` 同步打包发布与冻结运行差异。
 
 ## [4.0.0] - 2026-11-05
 

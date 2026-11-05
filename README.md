@@ -126,7 +126,7 @@ up-video-strm/
 
 ## 构建与打包
 
-Windows 安装包由 [packaging/build.ps1](packaging/build.ps1) 一键构建。
+Windows 安装包由 [packaging/build.ps1](packaging/build.ps1) 一键构建；测试版由 [packaging/build-test.ps1](packaging/build-test.ps1) 构建（内部以 `-Profile test` 复用同一脚本）。
 
 构建机要求：Windows x64 + Node.js >= 18 + Python **3.12**（项目锁定 `pydantic==2.6.0`，其 `pydantic-core` 无 3.13 预编译轮子），并安装 Inno Setup 6（缺失时脚本会停在中间目录并给出提示）。
 
@@ -150,32 +150,46 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 
 | 参数 | 作用 |
 |------|------|
+| `-Profile prod\|test` | 构建正式版 / 测试版，默认 `prod`；测试版隔离数据与安装，可并存 |
 | `-SkipFrontend` | 复用已有前端产物，跳过 `npm run build` |
 | `-SkipInstaller` | 只构建 onedir 中间目录，不生成安装包（调试用） |
-| `-KeepStage` | 保留 `dist/up-video-strm/` 中间目录 |
-| `-Dev` | 只构建 onedir 并保留，直接运行 `dist\up-video-strm\up-video-strm.exe`（本机调试用） |
+| `-KeepStage` | 保留 `dist/<应用名>/` 中间目录（正式版 `up-video-strm`，测试版 `up-video-strm-test`） |
+| `-Dev` | 只构建 onedir 并保留，直接运行 `dist\up-video-strm\up-video-strm.exe`（正式版）或 `dist\up-video-strm-test\up-video-strm-test.exe`（测试版） |
 | `-Python <path>` | 指定打包用 Python；默认取 `backend\.venv\Scripts\python.exe`，其次 PATH 上的 `python` |
 
 产物：
 
 | 路径 | 说明 |
 |------|------|
-| `dist/up-video-strm-<版本>-win-x64-setup.exe` | 唯一交付物：按当前用户安装、免管理员、含开始菜单/桌面快捷方式与可选开机自启（数据目录卸载保留） |
-| `dist/up-video-strm/` | PyInstaller onedir 中间目录（供 Inno Setup 收集文件，编译完成后自动删除；`-KeepStage` 可保留） |
+| `dist/up-video-strm-<版本>-win-x64-setup.exe` | 正式版交付物：按当前用户安装、免管理员、含开始菜单/桌面快捷方式与可选开机自启（数据目录卸载保留） |
+| `dist/up-video-strm-test-<版本>-win-x64-setup.exe` | 测试版交付物：独立名称/安装目录/数据目录/自启动项/单实例，可与正式版同时安装运行 |
+| `dist/up-video-strm/` | 正式版 PyInstaller onedir 中间目录（供 Inno Setup 收集文件，编译完成后自动删除；`-KeepStage` 可保留） |
+| `dist/up-video-strm-test/` | 测试版 PyInstaller onedir 中间目录（同上，自动删除；`-KeepStage` 可保留） |
+
+### 测试版（数据与正式版隔离）
+
+测试版用于验证新功能而不影响正式使用：exe 名（`up-video-strm-test.exe`）、安装目录（`%LOCALAPPDATA%\Programs\up-video-strm-test`）、数据目录（`%LOCALAPPDATA%\up-video-strm-test`）、快捷方式、自启动项、单实例互斥体均与正式版区分，可同时安装、同时运行。版本号与正式版相同，产物名带 `-test`。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\build-test.ps1
+```
+
+构建时会把 `build_profile.json` 标记烘焙进应用资源目录，冻结运行时据此选择隔离数据目录，无需额外配置；源码运行不受影响。
 
 版本号与打包约定：
 
 - 唯一版本源是 `backend/app/version.py` 的 `__version__`；请通过 `packaging/bump_version.py` 修改（同步 `frontend/package.json`、`frontend/package-lock.json` 与 `packaging/version_info.txt`）。
 - 打包前 `build.ps1` 会校验上述几处版本号一致，不一致直接失败。
-- 安装包使用固定 AppId，属于同一产品的升级；升级时先卸载旧版本（数据目录保留）再安装新版本。
+- 正式版安装包使用固定 AppId，属于同一产品的升级；升级时先卸载旧版本（数据目录保留）再安装新版本。测试版使用独立 AppId 与名称，可与正式版并存。
 - 若双击安装包提示「应用程序控制策略已阻止此文件」，说明系统启用了 Smart App Control / WDAC：开发期可用 `-Dev` 构建后直接运行 `dist\up-video-strm\up-video-strm.exe`；正式分发需要代码签名，或在系统设置中关闭 Smart App Control（关闭后需重装系统才能重新开启）。
 
 ## 测试
 
+后端测试使用标准库 `unittest`（无额外测试依赖）：
+
 ```bash
 cd backend
-pip install -r requirements-dev.txt
-python -m pytest -v               # 运行本地测试
+python -m unittest discover -s tests -v
 ```
 
 测试文件位于 `backend/tests/`，不纳入版本管理；提交前必须全部通过。

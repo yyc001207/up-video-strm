@@ -93,6 +93,7 @@ npm run preview                   # 本地预览构建产物
 | [docs/rules/frontend.md](docs/rules/frontend.md) | 前端技术栈、目录结构、页面组件、接口与状态 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本演进记录：各版本的级别、变更要点与版本判定依据 |
 | [docs/design/upload-module-plan.md](docs/design/upload-module-plan.md) | 上传管理模块设计计划：信息架构、数据模型、执行流水线、123 云盘对接与测试约束 |
+| [docs/design/automation-module-plan.md](docs/design/automation-module-plan.md) | 自动化任务模块设计计划：三模块平级、B→OpenList 校验→A 链路、等待机制与触发来源 |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 

@@ -63,7 +63,7 @@ A 成功 → 本轮成功 → 记录 run → 进入下一轮
   - OpenList 等待：轮询间隔（默认 15s）、超时（默认 600s）；
   - OpenList 校验目录：默认取所选 A 任务的「处理路径」，可手工覆盖（应对 123 云盘路径与 OpenList 挂载路径不一致）；
   - 循环间隔：上一轮结束后等待 N 秒再开始下一轮（默认 60s，0 表示立即）。
-- 保存校验：B/A 任务必须存在且未被删除；A 任务所属服务器必须启用；同一「B 任务 + A 任务」组合不允许重复创建。
+- 保存校验：B/A 任务必须存在且未被删除；A 任务所属服务器必须启用；**同一个上传任务、同一个调度任务各自只能被一个自动化任务绑定**（编辑时排除自身，冲突返回 400 并指出占用它的自动化任务名）。
 
 ### 3.2 执行管理（`/automation/execution`）
 
@@ -96,8 +96,8 @@ A 成功 → 本轮成功 → 记录 run → 进入下一轮
 |----|------|------|
 | id | int PK | |
 | name | varchar(128) | 任务名称 |
-| upload_task_id | int FK upload_task | 绑定的模块 B 任务 |
-| openlist_task_id | int FK open_list_task | 绑定的模块 A 任务 |
+| upload_task_id | int FK upload_task, **UNIQUE** | 绑定的模块 B 任务（一个上传任务只能被一个自动化任务绑定） |
+| openlist_task_id | int FK open_list_task, **UNIQUE** | 绑定的模块 A 任务（一个调度任务只能被一个自动化任务绑定） |
 | upload_conflict_policy | varchar(16) | 默认 skip |
 | upload_concurrency | int | 默认 2 |
 | upload_retry_times | int | 默认 3 |
@@ -111,6 +111,12 @@ A 成功 → 本轮成功 → 记录 run → 进入下一轮
 | interval_seconds | int | 轮次间隔，默认 60，0=立即 |
 | is_enabled | bool | 默认 true（保留字段，v1 不主动禁用） |
 | created_time / updated_time | datetime | 北京时间 |
+
+绑定唯一性：
+
+- `upload_task_id` 与 `openlist_task_id` 建**唯一索引**（数据库层兜底），保存时先做应用层校验并给出友好提示（「上传任务「X」已被自动化任务「Y」绑定」）。
+- 编辑任务时唯一性检查排除自身 id。
+- 删除模块 A/B 任务前仍按原逻辑校验业务引用；自动化绑定视为引用，需先删除/解绑自动化任务（或由自动化任务删除级联清理，v1 采用「删除自动化任务不影响 A/B 任务」的只读引用语义，不改 A/B 删除逻辑）。
 
 **`automation_run`**（一轮链路运行记录 = 模块 C 的「执行历史」）
 
@@ -152,7 +158,7 @@ A 成功 → 本轮成功 → 记录 run → 进入下一轮
 | 文件 | 职责 |
 |------|------|
 | `schema.py` | 任务/运行/启动参数 Pydantic 模型 |
-| `service.py` | 任务 CRUD、run 查询、启动/停止入口（校验绑定、防重复启动） |
+| `service.py` | 任务 CRUD（含绑定唯一性校验：同一 B/A 任务只能被一个自动化任务绑定）、run 查询、启动/停止入口（校验绑定、防重复启动） |
 | `execution_engine.py` | 链路状态机：创建并启动 B 执行 → 轮询 → 收集新文件 → OpenList 校验 → 启动 A 执行 → 轮询 → 记录 run → 下一轮 |
 | `execution_logger.py` | 每任务 Logger + 日志队列泵（复用上传模块 LogPump 模式），写文件 + WS 广播 |
 | `registry.py` | `{task_id: asyncio.Task}` 运行实例表 + `TaskStatusManager` 取消键（`automation:{task_id}`） |
@@ -263,7 +269,7 @@ frontend/src/views/automation/
 | 2 | 失败处理 | B 失败/取消、OpenList 校验超时、A 失败**任一发生即立即终止整个自动化任务**；历史 run 记录原因，需用户处理后手动重新启动 |
 | 3 | 重启恢复 | 程序重启后**不自动恢复**运行中的自动化任务；启动时把未结束 run 标记为失败（「进程重启中断」），等待用户手动启动 |
 | 4 | 批量启动 | 执行管理页**支持多选批量启动**自动化任务 |
-| 5 | 绑定关系 | 允许配置多个自动化任务指向同一个 A/B 任务；运行时若目标任务已有运行中执行则等待其结束（超时算异常），避免并发冲突 |
+| 5 | 绑定关系 | **同一 A/B 任务只允许绑定一个自动化任务**：`upload_task_id`、`openlist_task_id` 建唯一索引，保存时应用层校验（编辑排除自身，冲突返回 400 并提示被谁绑定）；删除自动化任务不影响 A/B 任务 |
 | 6 | 模块顺序 | 自动化任务排在侧栏「上传管理」之后（如「全局配置 / 任务调度 / 上传管理 / 自动化任务」）；如需调整顺序告知即可 |
 
 ## 12. 实施阶段（评审通过后）

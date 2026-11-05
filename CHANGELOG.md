@@ -21,6 +21,19 @@
 
 - 暂无。
 
+## [4.12.0] - 2026-11-06
+
+**级别：MINOR（新增配置项与执行记录字段，为自动化任务模块做准备）** · 代码见本次提交
+
+- 任务调度「默认运行参数」新增 **OpenList 远程目录前缀**（`open_list_config.openlist_remote_prefix`），供后续自动化任务按前缀定位云端目录；页面卡片与编辑抽屉同步展示、可编辑。
+- 任务调度与上传管理的执行记录新增 `error_code` / `error_message`（失败原因分级）与 `trigger_source` / `trigger_ref` / `trigger_name`（触发来源，手动/自动化），历史与实时日志接口一并返回；列表排序改为按 `coalesce(started_time, created_time)` 倒序，未开始执行的记录也能稳定排序。
+- 新增跨模块**活跃执行注册表**：同模块同一任务已有活跃执行时，再次启动返回 400「任务正在执行，请等待当前执行结束」；目录执行（`task_id=0`）互不排斥；引擎结束（含异常/取消）统一注销。
+- 新增**进程重启清理**：启动时把遗留 `running` 的执行置为 `fail`，写入 `error_code=PROCESS_RESTART`、`error_message=进程重启中断`，不自动恢复执行。
+- 新增**引用保护**：A/B 任务或服务器被自动化任务绑定时，删除操作返回 400 并提示先解除绑定（`automation_task` 表尚未创建时直接放行）。
+- 新增 `AUTOMATION_LOG_DIR` 配置项（默认 `./automation_logs`），`/api/desktop/open-log-dir` 支持 `kind=automation`；桌面态新增可注入的全局通知器（`desktop.set_notifier` / `desktop.notify`），供自动化任务异常终止时发托盘通知。
+- WebSocket 连接管理的执行键放宽为 `int | str`（内部统一按字符串归一化），为自动化任务实时日志预留。
+- 清理：移除残留的 `app/business/autoflow/__pycache__`，`.gitignore` 增加 `backend/upload_logs/`、`backend/automation_logs/`。
+
 ## [4.11.0] - 2026-11-06
 
 **级别：MINOR（交互行为调整）** · 代码见本次提交

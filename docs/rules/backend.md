@@ -22,7 +22,7 @@ backend/
 ├── tests/                  # unittest 冒烟测试（本地，不纳入版本管理）
 ├── requirements.txt / requirements-dev.txt / pytest.ini / .env.example
 ├── run.py                  # 启动入口（源码/冻结通用：端口探测、单实例、原生窗口）
-└── data/ openlist_logs/ upload_logs/ output/  # 源码运行时生成（数据库/日志/输出）
+└── data/ openlist_logs/ upload_logs/ automation_logs/ output/  # 源码运行时生成（数据库/日志/输出）
 ```
 
 ## 业务层模块职责（`app/business/openlist/`）
@@ -64,7 +64,11 @@ backend/
 1. 前端先 `POST /api/openlist/executions`（或 `/batch`、`/dirs`）落库拿 `execution_id` → 连 WebSocket 日志 → 再 `POST /executions/start` 启动，保证日志不丢帧。
 2. `start_execution` 校验后 `asyncio.create_task(run_generation)`，受全局 `max_concurrent` 信号量限流。
 3. 生成器产出 `.strm`（内容 `{base}/d/{path}`）与字幕，结束后回写执行记录并推送状态帧。
-4. 日志以文件为权威源：任务调度 `openlist_logs/execution_{id}.log`、上传管理 `upload_logs/execution_{id}.log`，均经 WebSocket 实时推送；执行结束会输出汇总行（`上传完成：成功/跳过/失败/剩余待处理`、`任务结束：状态/处理数量/用时`）。
+4. 日志以文件为权威源：任务调度 `openlist_logs/execution_{id}.log`、上传管理 `upload_logs/execution_{id}.log`、自动化任务 `automation_logs/`（模块 C），均经 WebSocket 实时推送；执行结束会输出汇总行（`上传完成：成功/跳过/失败/剩余待处理`、`任务结束：状态/处理数量/用时`）。
+5. 执行记录扩展字段（阶段⓿）：`open_list_execution` 与 `upload_execution` 均有 `error_code` / `error_message`（失败原因分级）与 `trigger_source`（`manual` / `automation`）/ `trigger_ref` / `trigger_name`（触发来源）；列表查询支持按 `execution_id` / 时间过滤。
+6. 启动闸门（阶段⓿）：[execution_registry.py](../../backend/app/business/execution_registry.py) 在 `start_execution` 入队前按 `(模块, execution_id) -> task_id` 登记，引擎 `finally` 注销；同模块同 `task_id` 已有活跃执行时返回 400「任务正在执行，请等待当前执行结束」，`task_id=0`（目录执行）不互斥。
+7. 进程重启清理（阶段⓿）：[database.py](../../backend/app/core/database.py) 的 `init_db` 在建表/列迁移后把遗留 `running` 执行置为 `fail` 并写 `error_code='PROCESS_RESTART'`、`error_message='进程重启中断'`；不自动恢复执行。
+8. 引用保护（阶段⓿）：[automation/refs.py](../../backend/app/business/automation/refs.py) 在 A/B 任务或服务器删除前检查是否被自动化任务绑定，命中返回 400「任务正被自动化任务「X」绑定，请先解除绑定后再删除」。
 
 ## 环境变量（backend/.env，应用配置）
 
@@ -73,6 +77,7 @@ backend/
 | `SQLITE_PATH` | `./data/up_video_strm.db` | SQLite 数据库路径（冻结运行相对数据目录） |
 | `OPENLIST_LOG_DIR` | `./openlist_logs` | 任务调度执行日志目录 |
 | `UPLOAD_LOG_DIR` | `./upload_logs` | 上传管理执行日志目录 |
+| `AUTOMATION_LOG_DIR` | `./automation_logs` | 自动化任务执行日志目录（模块 C 使用） |
 | `ALLOWED_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173"]` | CORS 允许来源 |
 
 > 读取顺序：源码运行读 `backend/.env`；冻结运行先读数据目录 `.env`，再读 exe 同级 `.env`（后者优先）。
@@ -81,7 +86,7 @@ backend/
 
 冻结态路径解析（`data_root()` / `resource_dir()`）、端口回退、单实例互斥、stdio 重定向等通用行为见 [project.md](project.md)；`run.py` 实现要点：冻结态 `os.chdir(data_root)` → stdio 重定向到 `logs/app.log`（超 5 MB 转 `app.log.1`）→ 后台线程 `uvicorn.Server`（`timeout_graceful_shutdown=2`）+ 主线程 [app/desktop.py](../../backend/app/desktop.py) 原生窗口；exe 为 GUI 进程（`console=False`），不派生子进程。
 
-- 桌面偏好与自启：[app/core/desktop_prefs.py](../../backend/app/core/desktop_prefs.py) 把 `start_minimized` / `close_to_tray` 存数据目录 `desktop.json`（不落库，避免桌面偏好影响其他运行方式）；开机自启读写 `HKCU\...\CurrentVersion\Run` 的 `up-video-strm` 值（仅冻结态；启动时若检测到旧版值 `video-strm` 已启用，自动改写成新值并删除旧值）。[api/desktop.py](../../backend/app/api/desktop.py) 暴露 `/api/desktop/info|autostart|preferences|open-data-dir|open-log-dir` 等接口（`open-log-dir` 按 `kind=openlist|upload` 用资源管理器打开对应日志目录），非桌面态只读、写操作返回 400。
+- 桌面偏好与自启：[app/core/desktop_prefs.py](../../backend/app/core/desktop_prefs.py) 把 `start_minimized` / `close_to_tray` 存数据目录 `desktop.json`（不落库，避免桌面偏好影响其他运行方式）；开机自启读写 `HKCU\...\CurrentVersion\Run` 的 `up-video-strm` 值（仅冻结态；启动时若检测到旧版值 `video-strm` 已启用，自动改写成新值并删除旧值）。[api/desktop.py](../../backend/app/api/desktop.py) 暴露 `/api/desktop/info|autostart|preferences|open-data-dir|open-log-dir` 等接口（`open-log-dir` 按 `kind=openlist|upload|automation` 用资源管理器打开对应日志目录），非桌面态只读、写操作返回 400。
 - 窗口关闭默认走托盘：[desktop.py](../../backend/app/desktop.py) 监听 `closing` 事件返回 False 取消关闭，并延迟隐藏窗口（事件内直接 hide 会被 WinForms 取消关闭流程重新显示）；关窗时现读 `desktop.json` 的 `close_to_tray`，设置页/托盘改完立即生效。pystray 菜单「打开主界面 / 设置… / 快捷设置（开机自启、启动最小化、关窗收进托盘）/ 打开数据目录 / 退出」，「设置…」通过 `window.__upVideoStrmNavigate('/settings')`（前端 [main.ts](../../frontend/src/main.ts) 注册）切页而非整页重载；退出时 `icon.stop()` → `window.destroy()` → 服务关停。
 - 窗口相关辅助：[app/core/tray_win.py](../../backend/app/core/tray_win.py) 负责 Windows 托盘图标探测与可见性（Win11 的 `HKCU\Control Panel\NotifyIconSettings\<hash>` 的 `IsPromoted`）：启动时 `check_tray` 调 `hide_tray_icon()` 写 `0`，让图标**默认收进「^」**；设置页「修复托盘图标」接口（`POST /api/desktop/fix-tray`）仍调 `promote_tray_icon()` 写 `1` 供用户临时固定到常驻区。
 

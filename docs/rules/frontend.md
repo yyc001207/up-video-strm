@@ -64,7 +64,7 @@ frontend/
 
 - `Execution.vue`：一行三卡片（选择任务 / 执行参数 / 已选任务），执行模式用 `el-segmented`（增量 / 全量 / 仅 strm）；「选择任务」卡支持关键字过滤，底部右侧为「全选 / 取消全选」（只作用于当前筛选结果中的可选任务，左侧显示「可选 N · 已选 N」）；「已选任务」卡承载摘要与「清空选择 / 执行任务」操作；「正在执行」表支持查看日志与取消，5s 轮询刷新。
 - `GlobalConfig.vue`：全局配置模块单页——左侧单服务器卡片（无服务器时为空态 + 新增；标题右侧显示连通状态标签：在线 / 离线 / 未配置 / 检测中，进入页面及每 60s 轮询探测；卡片展示服务器地址 / Token 是否配置 / 父级目录标签，可编辑、刷新缓存、删除），右侧视频与字幕格式摘要卡 + 编辑抽屉；底部 123 云盘「摘要卡 + 编辑弹框」：卡头为状态标签与测试连接 / 编辑 / 删除按钮（删除需二次确认，调用 `DELETE /api/upload/config` 清空凭据与缓存 Token），卡体展示 Client ID、脱敏后的 Client Secret、Token 状态与过期时间（`formatDateTime`），未配置时为空态「立即配置」，编辑入口打开 `el-dialog` 修改 Client ID / Secret。三张卡片头部的操作按钮统一为 `plain`（镂空）风格，删除一律 `type="danger" plain`。
-- `TaskManage.vue`：页顶部「默认运行参数」卡（最大并发、限流、SSL 校验、输出目录前缀与根目录）+ 编辑抽屉（配置全局生效，任务未单独设置时使用）；工具栏分组（搜索 / 新建、快速添加、批量删除）；表格任务名与路径双行；快速添加使用 `DirTreePanel.vue`（目录树勾选 + 搜索下钻 + 缓存刷新）。
+- `TaskManage.vue`：页顶部「默认运行参数」卡（最大并发、限流、SSL 校验、输出目录前缀与根目录、OpenList 远程目录前缀）+ 编辑抽屉（配置全局生效，任务未单独设置时使用）；工具栏分组（搜索 / 新建、快速添加、批量删除）；表格任务名与路径双行；快速添加使用 `DirTreePanel.vue`（目录树勾选 + 搜索下钻 + 缓存刷新）。
 - `TaskHistory.vue`：列表（每任务最近执行 + 状态点，工具栏三项筛选：关键字 / 时间范围 / 状态，客户端分页 20 / 10 / 50）与页面级详情（服务端分页 20、日志抽屉、「日志文件夹」在资源管理器中打开日志目录）；顶部 `.page-hint` 说明筛选与分页规则。
 - `RealtimeLog.vue`：两模块共用同一套页面骨架（`views/schedule/RealtimeLog.vue` 与 `views/upload/RealtimeLog.vue`，类名与样式一致）：顶部说明段（`.realtime-page__desc`）→ 工具条（`.realtime-toolbar`：执行选择 260px、连接状态、启动中、执行状态点 /「无运行中任务」；右侧「重连 / 清空 / 打开日志文件夹」）→ 进度卡（`.progress-card`：6 个统计项 + 1 个宽项「当前文件 / 当前任务」）→ 日志工具条（`.log-toolbar`：级别筛选、关键字、行数；右侧「返回执行管理」）→ 日志区（`LogViewer`）；状态帧结束即断开并提示前往任务历史。
 - 通用组件：`StatusDot.vue`（执行状态点 + 文案）、`LogViewer.vue`（可复用日志终端）、`ThemeToggle.vue`（浅色 / 深色 / 跟随系统）。
@@ -83,7 +83,7 @@ frontend/
 
 ## 接口与状态
 
-- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`；错误提示按文案 3s 去重；请求 config 传 `{ silent: true }` 时不弹提示，供轮询使用）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
+- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`；错误提示按文案 3s 去重；请求 config 传 `{ silent: true }` 时不弹提示，供轮询使用）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload' | 'automation')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
 - 后端 API 基址由 `VITE_API_BASE_URL` 控制（默认 `/api`）。
 - Pinia store：[stores/openlist.ts](../../frontend/src/stores/openlist.ts)（业务，含 `runningCount` 与 `fetchRunning(silent)`）、[stores/running.ts](../../frontend/src/stores/running.ts)（壳层运行状态聚合：两模块运行中数量、离线判定与顶栏胶囊 / 导航徽标）、[stores/theme.ts](../../frontend/src/stores/theme.ts)（浅色/深色/跟随系统，localStorage 记忆，键名 `up-video-strm-theme`，首屏无闪烁）。
 - WebSocket 工具：[utils/ws.ts](../../frontend/src/utils/ws.ts)，连接 `ws://.../api/openlist/ws/{execution_id}`。

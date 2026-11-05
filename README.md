@@ -90,6 +90,7 @@ npm run preview                   # 本地预览构建产物
 | [docs/rules/backend.md](docs/rules/backend.md) | 后端目录结构、业务模块、数据层、关键流程、环境变量、冻结运行 |
 | [docs/rules/frontend.md](docs/rules/frontend.md) | 前端技术栈、目录结构、页面组件、接口与状态 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本演进记录：各版本的级别、变更要点与版本判定依据 |
+| [docs/design/upload-module-plan.md](docs/design/upload-module-plan.md) | 上传管理模块设计计划：信息架构、数据模型、执行流水线、123 云盘对接与测试约束 |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 
@@ -115,7 +116,7 @@ up-video-strm/
 ├── frontend/                   # Vue 3 + Vite + Element Plus 前端
 │   └── src/                    # views / components / stores / api / types / utils / styles
 ├── packaging/                  # Windows 打包：up-video-strm.spec / build.ps1 / installer.iss / bump_version.py
-├── docs/                       # 工程规则与规范（rules/，后续计划、需求等文档）
+├── docs/                       # 工程规则（rules/）与设计 / 计划文档（design/）
 ├── manual/                     # 用户手册与界面截图
 ├── CHANGELOG.md                # 版本记录
 ├── AGENTS.md

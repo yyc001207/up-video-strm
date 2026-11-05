@@ -6,7 +6,7 @@
 - 评审对象：`frontend/src` 全部视图与样式层（约 6600 行，14 个视图组件）+ 真实界面截图
 - 评审日期：2026-11-05
 - 基线版本：**4.8.0**（commit `7983f0e`）
-- 评审方法：Playwright 1440×900 截图（明色 5 页现存于 `frontend/shots/`）逐页目检 + 问题逐条回源码定位核实；所有结论均已在代码中找到对应行，未凭截图猜测
+- 评审方法：Playwright 1440×900 截图逐页目检 + 问题逐条回源码定位核实；所有结论均已在代码中找到对应行，未凭截图猜测。截图属评审时的临时产物，脚本与图片均未入库，当前工作区已清理（见 P2-10）
 - 前置背景：相比第一轮（单模块五页签），当前已是「全局配置 / 任务调度 / 上传管理」三平级模块、11 个路由页面，本轮问题集中在**异常态处理**与**多模块全局状态聚合**，而非布局骨架
 
 ---
@@ -60,7 +60,7 @@
 | 7 | 实时日志页顶部三行（连接选择 / 进度摘要 / 过滤工具条）间距节奏不均，进度条与右侧「—」耗时数值基线对齐松散 | `schedule-realtime-light.png`、`views/schedule/RealtimeLog.vue` |
 | 8 | 全局配置页 2:1 栅格下双卡空态失衡：左卡空态占位 ~250px 高，右卡大留白，页面重心偏左上 | `config-light.png`；`views/config/GlobalConfig.vue:365-452` |
 | 9 | 浏览器标签页标题过期：仍是「up-video-strm 任务调度」，实际已有三个平级模块 | `frontend/index.html:6` |
-| 10 | 截图基线残缺：`frontend/.ui-review-shots.mjs` 设计覆盖 11 路由 × 明暗主题 + 折叠态，但 `frontend/shots/` 仅存 5 张明色旧图；`manual/images/` 16 张截图为第一轮之前的旧界面（第一轮 P2 遗留） | `frontend/shots/`、`manual/images/` |
+| 10 | 截图基线缺失：评审用的截图脚本与基线图片均未入库，当前工作区已不存在 `frontend/.ui-review-shots.mjs` 与 `frontend/shots/`（曾覆盖 11 路由 × 明暗主题 + 折叠态）；`manual/images/` 16 张截图为第一轮之前的旧界面（第一轮 P2 遗留） | 需重建脚本并入库 |
 
 ---
 
@@ -126,7 +126,7 @@
 | 7 | 实时日志页顶部三行统一间距节奏（统一 `--up-strm-space-3`），进度条行改为单行 flex 基线对齐，右侧耗时数值固定最小宽 |
 | 8 | 全局配置页空态时压缩 `el-empty` 占位（`:image-size="60"` + 缩短说明），两卡 `align-items: start` 按内容自适应高度，消除右卡大留白 |
 | 9 | `index.html` 标题改为「up-video-strm 控制台」 |
-| 10 | 用现成的 `.ui-review-shots.mjs` 补全 11 路由 × 明暗 + 折叠态共 23 张基线截图；`manual/images/` 16 张旧图重拍（可与第一轮 P2 遗留合并为一次文档交付） |
+| 10 | 重建截图脚本（11 路由 × 明暗 + 折叠态共 23 张）并纳入仓库，作为后续评审的可重复基线；`manual/images/` 16 张旧图重拍（可与第一轮 P2 遗留合并为一次文档交付） |
 
 ---
 
@@ -135,7 +135,7 @@
 | 批次 | 内容 | 建议发布级别 | 预估改动面 |
 |------|------|--------------|------------|
 | 第一批 | P0-1 错误治理 + P0-2 状态聚合（两项都集中在 `api/index.ts` / `App.vue` / store，建议同一批次一次 `minor` 交付） | `minor` | 4 个文件 + 新增 1 个 store |
-| 第二批 | P0-3 三卡片宽度（两个 Execution 同步）+ P1-4 空态引导 | `patch` | 4 个文件 |
+| 第二批 | P0-3 三卡片宽度（两个 Execution 同步）+ P1-4 空态引导 + 第 6 节刷新控件位置统一（与空态同批，避免同一文件反复改） | `patch` | 7 个文件 |
 | 第三批 | P1-5/6 可访问性回补 + P2 全部打磨项 | `patch` | 6 个文件 + 文档截图 |
 
 实施纪律沿用 [AGENTS.md](../../AGENTS.md)：每批独立 commit、逐项 `git add`、测试全绿后交付、按上表递增版本并更新 [CHANGELOG.md](../../CHANGELOG.md)。
@@ -153,5 +153,65 @@
 | `frontend/src/views/schedule/TaskManage.vue`、`views/upload/TaskConfig.vue` | 空态引导分层 |
 | `frontend/src/views/{schedule,upload}/RealtimeLog.vue`、`views/config/GlobalConfig.vue` | P2 打磨 |
 | `frontend/index.html` | 标题 |
-| `frontend/.ui-review-shots.mjs` + `frontend/shots/`、`manual/images/` | 截图基线补全 |
+| 截图脚本（重建）与 `frontend/shots/`、`manual/images/` | 截图基线补全 |
+| `frontend/src/views/schedule/TaskHistory.vue`、`views/schedule/TaskManage.vue`、`views/upload/RenameRules.vue` | 刷新控件位置统一（见第 6 节） |
 | `docs/rules/frontend.md`、`manual/用户手册.md` | 实施后同步 |
+
+---
+
+## 6. 追加议题：刷新类控件的位置规范（2026-11-05 补充）
+
+> 起因：评审后追加确认「刷新按钮位置是否需要调整」。结论是**需要**——不是某个按钮放错了，而是同一语义在 10 处入口出现了 4 类位置与 5 种形态，其中 1 个页面还漏了刷新。本节为独立议题，级别 **P2（一致性，不影响功能）**，建议并入第二批交付（与任务配置页空态改动同批，避免同一文件反复改）。
+
+### 6.1 现状盘点（逐处核实）
+
+| 页面 / 组件 | 控件 | 位置 | 形态 |
+|-------------|------|------|------|
+| `schedule/TaskHistory.vue:116-121` | 刷新 | 工具栏**右侧**（该侧唯一按钮） | 默认按钮 |
+| `schedule/TaskManage.vue:448-476` | **无刷新** | — | — |
+| `upload/TaskConfig.vue:165-172` | 刷新 | 工具栏**左侧首位** | 默认按钮 |
+| `upload/RenameRules.vue:126-128` | 刷新 | 工具栏左侧首位（后接提示文案） | 默认按钮 |
+| `schedule/Execution.vue:471-473` | 刷新「正在执行」 | 卡片标题右侧 | `link` 文字按钮 |
+| `upload/Execution.vue:297` | 刷新「正在执行」 | 卡片标题右侧 | `link` 文字按钮 |
+| `Settings/index.vue:104` | 刷新 | 卡片标题右侧 | `link type="primary"` |
+| `config/GlobalConfig.vue:379-381` | 刷新缓存 | 服务器卡头部操作组 | `plain` 按钮 |
+| `schedule/components/DirTreePanel.vue:206` | 刷新缓存 | 面板工具区 | 默认按钮 |
+| `upload/components/RemoteDirPanel.vue:99-101` | 刷新 | 面板头部 | `small` 按钮 |
+| `views/schedule/RealtimeLog.vue`、`views/upload/RealtimeLog.vue` | 仅「重新连接 / 重连」 | 连接状态区旁 | `link` / 默认按钮 |
+
+### 6.2 问题定性
+
+1. **页面级刷新位置二义性**：任务历史把刷新放在工具栏右侧——右侧是主操作位（新建、批量操作）的固定位置，刷新作为次要动作占用主位，视觉上会与新用户「这页没有主操作」的预期冲突；而上传模块的两个列表页都在左侧，同系统两种约定。
+2. **覆盖面不齐**：`TaskManage` 完全没有刷新，而它的数据（任务列表）会因外部操作（目录缓存、其他端修改）变化；上传任务配置页有刷新，同一层级的两个模块行为不一致。
+3. **同语义五种形态**：默认按钮 / `link` / `link primary` / `plain` / `small`，图标+文字与纯文字混用；用户需要在不同页面重新识别「哪个是刷新」。
+4. **提示文案与按钮挤在一起**：`RenameRules` 的模板变量提示与刷新同排，容易被读成「刷新说明」而非页面级帮助信息。
+
+### 6.3 摆放规范（建议写入 `docs/rules/frontend.md`）
+
+- **R1 页面级列表刷新**：固定在工具栏**左侧首位**，与搜索框同组；使用默认按钮（图标 + 文字），`loading` 绑定列表 loading。工具栏右侧只放主操作与批量操作。
+- **R2 卡片 / 局部刷新**：位于卡片标题右侧，使用 `link` 文字按钮，不抢卡片主按钮位置。
+- **R3 资源级动作**（刷新缓存、重新连接）：归属该资源的头部操作组，与同组按钮保持同一形态（`plain` 或 `small`），不与页面级刷新混排。
+- **R4 实时推送页不设刷新**：实时日志靠 WebSocket 推送，只保留「重新连接」，且紧邻连接状态标签；避免出现「刷新」与「重连」两个语义重叠的入口。
+- **R5 刷新行为**：成功不弹 toast（列表静默更新）；失败统一交给全局错误治理（P0-1）；刷新期间按钮 `loading` 并禁止重复点击。
+
+### 6.4 具体调整
+
+| 文件 | 调整 |
+|------|------|
+| `views/schedule/TaskHistory.vue` | 刷新从 `toolbar__right` 移到 `toolbar__left` 首位，与上传模块对齐；右侧留空或后续放筛选 |
+| `views/schedule/TaskManage.vue` | 工具栏左侧首位补「刷新」（`:loading="loading"`，在搜索框之前），补齐与上传任务配置页的能力差 |
+| `views/upload/RenameRules.vue` | 刷新独占左侧首位；模板变量提示从按钮同排移出（作为搜索框下方 helper 或标题旁说明），避免与按钮争夺扫读焦点 |
+| `views/schedule/Execution.vue`、`views/upload/Execution.vue` | 位置不动（已符合 R2），仅按 P0-1 修 `silent` 透传，使刷新失败不再弹窗 |
+| `views/Settings/index.vue` | 位置不动（R2），形态从 `link primary` 收敛为 `link`（主色留给真正的主动作） |
+| `components/DirTreePanel.vue`、`upload/components/RemoteDirPanel.vue` | 均为面板工具条内的「刷新缓存」，尺寸统一为 `small`，避免同一交互在抽屉里一大一小 |
+| `config/GlobalConfig.vue` | 保持 `plain`（与同组「编辑 / 删除 / 测试连接」一致，符合 R3） |
+
+### 6.5 验收标准
+
+- 三个列表页（任务配置 / 上传任务配置 / 重命名规则）工具栏结构一致：左侧「刷新 → 搜索」，右侧「批量操作 → 主操作」。
+- 任务历史与上传历史的刷新入口位置、形态一致；同一页面不出现两个刷新入口。
+- 键盘 Tab 顺序为「刷新 → 搜索 → 主操作」，不因位置调整产生跨区跳跃。
+- 刷新按钮 100% 有 loading 态，且刷新失败时无独立 toast（走全局离线状态条）。
+
+> 说明：不采用「顶栏全局刷新」方案——顶栏已有运行状态胶囊与 10s 自动轮询，再加全局刷新会与自动刷新语义冲突；也不采用「表格右上角悬浮刷新」——会遮挡表头且与分页/工具栏形成第三个操作区。
+

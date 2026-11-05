@@ -1,11 +1,8 @@
 """上传管理路由：``/api/upload/*``（123 云盘凭据、重命名规则、上传任务、执行与实时日志）。"""
 
-from pathlib import Path
 from typing import Optional
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.uploader import service
@@ -23,7 +20,6 @@ from app.business.uploader.schema import (
     UploadTestConnectionRequest,
 )
 from app.core.database import get_db
-from app.core.exceptions import NotFoundException
 from app.utils.responses import success_response
 from app.websocket.manager import ws_manager
 
@@ -181,23 +177,6 @@ async def list_execution_logs(
 ):
     items, total = await service.list_execution_logs(db, execution_id, page, pageSize)
     return success_response(data={"list": items}, total=total)
-
-
-@router.get("/executions/{execution_id}/log-download", summary="下载执行日志文件")
-async def download_execution_log(execution_id: int, db: AsyncSession = Depends(get_db)):
-    from app.core.models.uploader import UploadExecution
-
-    execution = await db.get(UploadExecution, execution_id)
-    if execution is None or execution.is_deleted:
-        raise NotFoundException("执行记录不存在")
-    file = Path(execution.log_path) if execution.log_path else None
-    if file is None or not file.is_file():
-        filename = f"upload_execution_{execution_id}.log"
-        return PlainTextResponse(
-            "（无日志）",
-            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
-        )
-    return FileResponse(file, media_type="text/plain", filename=f"upload_execution_{execution_id}.log")
 
 
 @router.get("/history", summary="历史汇总（按任务：最近执行 + 执行次数）")

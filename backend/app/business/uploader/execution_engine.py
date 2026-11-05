@@ -213,6 +213,7 @@ async def _run_pipeline(
                     )
                 )
                 continue
+            exe_logger.info("重命名：%s -> %s", scanned.name, plan.output_name)
             record = UploadFileRecord(
                 execution_id=execution.id,
                 local_path=str(scanned.path),
@@ -311,6 +312,7 @@ async def _run_pipeline(
         exe_logger.info("冲突检查完成：待上传 %d 个，跳过 %d 个", len(actions), progress["skipped"])
 
         # 阶段 6：上传（受执行参数 concurrency 限制）
+        exe_logger.info("开始上传：共 %d 个文件（并发 %d）", len(actions), int(execution.concurrency or 1))
         record_by_id = {record.id: record for _s, _p, record in plan_items}
         per_file_sem = asyncio.Semaphore(max(1, int(execution.concurrency or 1)))
 
@@ -362,6 +364,16 @@ async def _run_pipeline(
         await db.commit()
         await client.aclose()
 
+        processed = progress["success"] + progress["skipped"] + progress["failed"]
+        remaining = max(0, progress["total"] - processed)
+        exe_logger.info(
+            "上传完成：成功 %d 个，跳过 %d 个，失败 %d 个，剩余待处理 %d 个",
+            progress["success"],
+            progress["skipped"],
+            progress["failed"],
+            remaining,
+        )
+
         if cancelled or TaskStatusManager.is_cancelled(cancel_key):
             return "cancelled"
         if progress["failed"] > 0:
@@ -393,6 +405,17 @@ async def _finish_execution(
             await db.commit()
     except Exception as exc:
         logger.error(f"上传执行结果回写失败 execution={execution_id}: {exc}")
+
+
+def _status_label(status: str, progress: dict) -> str:
+    """把执行状态转成日志中的中文描述（有成功也有失败时为「部分完成」）。"""
+    if status == "success":
+        return "成功"
+    if status == "cancelled":
+        return "已取消"
+    if progress.get("success", 0) > 0:
+        return "部分完成"
+    return "失败"
 
 
 async def run_upload(*, execution_id: int) -> None:
@@ -433,6 +456,16 @@ async def run_upload(*, execution_id: int) -> None:
         logger.exception(f"上传执行异常 execution={execution_id}")
 
     duration = int(time.monotonic() - started)
+    processed = progress["success"] + progress["skipped"] + progress["failed"]
+    exe_logger.info(
+        "任务结束：状态=%s，成功 %d 个，跳过 %d 个，失败 %d 个，剩余待处理 %d 个，用时 %d 秒",
+        _status_label(status, progress),
+        progress["success"],
+        progress["skipped"],
+        progress["failed"],
+        max(0, progress["total"] - processed),
+        duration,
+    )
     try:
         await asyncio.wait_for(pump.stop(), timeout=5)
     except Exception:

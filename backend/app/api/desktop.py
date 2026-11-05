@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from app.core import desktop_prefs
 from app.core.exceptions import BadRequestException
 from app.core.paths import data_root, is_frozen
+from app.core.settings import settings
 from app.core.tray_win import promote_tray_icon
 from app.utils.responses import success_response
 from app.version import __version__
@@ -31,6 +32,12 @@ class AutostartRequest(BaseModel):
 class PreferencesRequest(BaseModel):
     start_minimized: Optional[bool] = None
     close_to_tray: Optional[bool] = None
+
+
+class OpenLogDirRequest(BaseModel):
+    """日志目录类型：openlist（任务调度）或 upload（上传管理）。"""
+
+    kind: str = "openlist"
 
 
 def _info() -> dict:
@@ -106,3 +113,22 @@ async def open_data_dir():
     except OSError as exc:
         raise BadRequestException(f"打开目录失败：{exc}") from exc
     return success_response(data={"path": str(home)})
+
+
+@router.post("/open-log-dir", summary="在资源管理器中打开日志保存目录")
+async def open_log_dir(data: OpenLogDirRequest):
+    if os.name != "nt":
+        raise BadRequestException("仅 Windows 本地环境支持打开日志文件夹")
+    kind = (data.kind or "openlist").strip().lower()
+    if kind == "openlist":
+        target = Path(settings.openlist_log_dir)
+    elif kind == "upload":
+        target = Path(settings.upload_log_dir)
+    else:
+        raise BadRequestException(f"未知的日志类型：{data.kind}")
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(target))  # noqa: S606  # 本地打开资源管理器
+    except OSError as exc:
+        raise BadRequestException(f"打开日志目录失败：{exc}") from exc
+    return success_response(data={"path": str(target)})

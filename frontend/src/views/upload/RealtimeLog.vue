@@ -8,8 +8,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Delete, Download, Refresh, Search } from '@element-plus/icons-vue'
+import { Delete, FolderOpened, Refresh, Search } from '@element-plus/icons-vue'
 
+import { desktopApi } from '@/api/desktop'
 import LogViewer from '@/components/LogViewer.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { uploaderApi } from '@/api/uploader'
@@ -59,7 +60,7 @@ const nextSeq = ref(1)
 const autoScroll = ref(true)
 const levelFilter = ref<FilterLevel>('all')
 const keyword = ref('')
-const downloading = ref(false)
+const opening = ref(false)
 const progress = ref<UploadWsProgressData>({
   total: 0,
   success: 0,
@@ -79,6 +80,9 @@ let clockTimer: ReturnType<typeof setInterval> | null = null
 const selectedTarget = computed(
   () => targets.value.find(item => item.executionId === selectedExecutionId.value) ?? null
 )
+
+/** 是否有可查看的执行记录（无执行时不展示「运行中」状态）。 */
+const hasTargets = computed(() => targets.value.length > 0)
 
 const connectionMeta = computed(() => CONNECTION_META[connectionState.value])
 
@@ -128,6 +132,7 @@ const canReconnect = computed(
 )
 
 const emptyText = computed(() => {
+  if (!hasTargets.value) return '当前没有执行中的上传，请到执行管理发起执行'
   if (selectedExecutionId.value === null) return '请选择左侧执行记录'
   if (connectionState.value === 'connecting') return '正在连接实时日志…'
   if (currentStatus.value !== 'running') return '执行已结束，日志已回放完毕'
@@ -194,12 +199,15 @@ async function maybeStart(target: RealtimeTarget): Promise<void> {
   const execution = detail.data.execution
   if (execution.started_time) {
     startedAt.value = startedAt.value ?? beijingMillis(execution.started_time)
-    return
   }
+  // 连接时执行已结束（例如刷新页面回放日志）：直接显示最终状态，避免页面停留在「运行中」。
   if (execution.status !== 'running') {
     finalStatus.value = execution.status
+    finishedAt.value = finishedAt.value ?? Date.now()
+    disconnectSocket()
     return
   }
+  if (execution.started_time) return
   launching.value = true
   try {
     await uploaderApi.startExecution(target.executionId, target.taskId)
@@ -290,13 +298,16 @@ function handleClear(): void {
   nextSeq.value = 1
 }
 
-async function handleDownload(): Promise<void> {
-  if (!selectedExecutionId.value) return
-  downloading.value = true
+async function handleOpenLogDir(): Promise<void> {
+  if (opening.value) return
+  opening.value = true
   try {
-    await uploaderApi.downloadLog(selectedExecutionId.value)
+    await desktopApi.openLogDir('upload')
+    ElMessage.success('已打开日志文件夹')
+  } catch {
+    /* 拦截器已提示（非桌面环境时会提示不支持） */
   } finally {
-    downloading.value = false
+    opening.value = false
   }
 }
 
@@ -356,12 +367,13 @@ onBeforeUnmount(() => {
           {{ connectionMeta.label }}
         </el-tag>
         <el-tag v-if="launching" type="warning" size="small" disable-transitions>启动中</el-tag>
-        <StatusDot :status="currentStatus" />
+        <StatusDot v-if="hasTargets" :status="currentStatus" />
+        <el-tag v-else type="info" size="small" disable-transitions>无运行中任务</el-tag>
       </div>
       <div class="realtime-toolbar__right">
         <el-button v-if="canReconnect" :icon="Refresh" @click="handleReconnect">重连</el-button>
         <el-button :icon="Delete" @click="handleClear">清空</el-button>
-        <el-button :icon="Download" :loading="downloading" @click="handleDownload">下载日志</el-button>
+        <el-button :icon="FolderOpened" :loading="opening" @click="handleOpenLogDir">打开日志文件夹</el-button>
       </div>
     </div>
 

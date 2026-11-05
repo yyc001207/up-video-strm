@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { ArrowLeft, Download, Refresh, View } from '@element-plus/icons-vue'
+import { ArrowLeft, FolderOpened, Refresh, View } from '@element-plus/icons-vue'
 
+import { desktopApi } from '@/api/desktop'
 import { openlistApi } from '@/api/openlist'
 import StatusDot from '@/components/StatusDot.vue'
 import { useOpenlistStore } from '@/stores/openlist'
@@ -96,8 +97,8 @@ async function openLogs(row: OpenListExecution) {
   }
 }
 
-function handleDownloadLog(row: OpenListExecution) {
-  openlistApi.downloadLog(row.id).catch(() => {
+function openLogDir() {
+  desktopApi.openLogDir('openlist').catch(() => {
     /* 拦截器提示 */
   })
 }
@@ -215,7 +216,7 @@ defineExpose({ reload: load })
           <el-table-column label="操作" width="150" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" :icon="View" @click="openLogs(row)">日志</el-button>
-              <el-button link type="primary" :icon="Download" @click="handleDownloadLog(row)">下载</el-button>
+              <el-button link type="primary" :icon="FolderOpened" @click="openLogDir()">日志文件夹</el-button>
             </template>
           </el-table-column>
         </el-table>

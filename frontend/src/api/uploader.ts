@@ -1,8 +1,5 @@
 /** 上传管理接口封装：123 云盘凭据、重命名规则、上传任务、执行与实时日志。 */
 
-import axios from 'axios'
-import { ElMessage } from 'element-plus'
-
 import request from './index'
 import type { Res } from '@/types/openlist'
 import type {
@@ -98,32 +95,5 @@ export const uploaderApi = {
     }),
   /** 以原执行的固化参数重新创建一条执行记录（不启动）。 */
   retryExecution: (executionId: number) =>
-    request.post<unknown, Res<UploadExecution>>(`/upload/executions/${executionId}/retry`),
-
-  /** 下载执行日志文件（blob，本地部署无鉴权）。 */
-  async downloadLog(executionId: number): Promise<void> {
-    const response = await axios.get(`/upload/executions/${executionId}/log-download`, {
-      baseURL: import.meta.env.VITE_API_BASE_URL,
-      responseType: 'blob',
-      timeout: 60000
-    })
-    const blob = response.data as Blob
-    const disposition = response.headers['content-disposition'] || ''
-    let filename = `upload_execution_${executionId}.log`
-    const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/)
-    if (filenameMatch?.[1]) {
-      try {
-        filename = decodeURIComponent(filenameMatch[1])
-      } catch {
-        /* 忽略解码失败，使用默认文件名 */
-      }
-    }
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success('日志下载成功')
-  }
+    request.post<unknown, Res<UploadExecution>>(`/upload/executions/${executionId}/retry`)
 }

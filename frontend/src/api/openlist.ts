@@ -1,8 +1,5 @@
 /** OpenList 任务调度接口封装。 */
 
-import axios from 'axios'
-import { ElMessage } from 'element-plus'
-
 import request from './index'
 import type {
   BatchDirExecutionParams,
@@ -163,31 +160,5 @@ export const openlistApi = {
   /** 执行日志（分页）。 */
   listExecutionLogs(executionId: number, page: number, pageSize: number): Promise<Res<{ list: OpenListLog[] }>> {
     return request.get(`/openlist/history/${executionId}/logs`, { params: { page, pageSize } })
-  },
-  /** 下载执行日志文件（blob，本地部署无鉴权）。 */
-  async downloadLog(executionId: number): Promise<void> {
-    const response = await axios.get(`/openlist/executions/${executionId}/log-download`, {
-      baseURL: import.meta.env.VITE_API_BASE_URL,
-      responseType: 'blob',
-      timeout: 60000
-    })
-    const blob = response.data as Blob
-    const disposition = response.headers['content-disposition'] || ''
-    let filename = `execution_${executionId}.log`
-    const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)/)
-    if (filenameMatch?.[1]) {
-      try {
-        filename = decodeURIComponent(filenameMatch[1])
-      } catch {
-        /* 忽略解码失败，使用默认文件名 */
-      }
-    }
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    link.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success('日志下载成功')
   }
 }

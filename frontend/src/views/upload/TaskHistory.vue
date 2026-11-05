@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Download, Refresh, RefreshRight, View } from '@element-plus/icons-vue'
+import { ArrowLeft, FolderOpened, Refresh, RefreshRight, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+import { desktopApi } from '@/api/desktop'
 import { uploaderApi } from '@/api/uploader'
 import StatusDot from '@/components/StatusDot.vue'
 import type {
@@ -154,8 +155,8 @@ async function openLogs(row: UploadExecution) {
   }
 }
 
-function handleDownloadLog(row: UploadExecution) {
-  uploaderApi.downloadLog(row.id).catch(() => {
+function openLogDir() {
+  desktopApi.openLogDir('upload').catch(() => {
     /* 拦截器提示 */
   })
 }
@@ -301,7 +302,7 @@ defineExpose({ reload: load })
             <template #default="{ row }">
               <el-button link type="primary" :icon="View" @click="openRecords(row)">明细</el-button>
               <el-button link type="primary" :icon="View" @click="openLogs(row)">日志</el-button>
-              <el-button link type="primary" :icon="Download" @click="handleDownloadLog(row)">下载</el-button>
+              <el-button link type="primary" :icon="FolderOpened" @click="openLogDir()">日志文件夹</el-button>
               <el-button link type="primary" :icon="RefreshRight" @click="handleRetry(row)">重跑</el-button>
             </template>
           </el-table-column>

@@ -13,8 +13,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Delete, Download, Refresh, Search } from '@element-plus/icons-vue'
+import { Delete, FolderOpened, Refresh, Search } from '@element-plus/icons-vue'
 
+import { desktopApi } from '@/api/desktop'
 import StatusDot from '@/components/StatusDot.vue'
 import LogViewer from '@/components/LogViewer.vue'
 import { connectWs, disconnectWs, type WsState } from '@/utils/ws'
@@ -98,7 +99,7 @@ const nextSeq = ref(1)
 const autoScroll = ref(true)
 const levelFilter = ref<FilterLevel>('all')
 const keyword = ref('')
-const downloading = ref(false)
+const opening = ref(false)
 
 const progress = ref<ProgressSnapshot>({
   totalVideos: 0,
@@ -542,16 +543,16 @@ function handleClear(): void {
   nextSeq.value = 1
 }
 
-async function handleDownload(): Promise<void> {
-  const executionId = selectedExecutionId.value
-  if (executionId === null || downloading.value) return
-  downloading.value = true
+async function handleOpenLogDir(): Promise<void> {
+  if (opening.value) return
+  opening.value = true
   try {
-    await openlistApi.downloadLog(executionId)
+    await desktopApi.openLogDir('openlist')
+    ElMessage.success('已打开日志文件夹')
   } catch {
-    ElMessage.error('日志下载失败，请稍后重试')
+    /* 拦截器已提示（非桌面环境时会提示不支持） */
   } finally {
-    downloading.value = false
+    opening.value = false
   }
 }
 
@@ -689,12 +690,11 @@ onBeforeUnmount(() => {
         <el-button
           size="small"
           type="primary"
-          :icon="Download"
-          :loading="downloading"
-          :disabled="selectedExecutionId === null"
-          @click="handleDownload"
+          :icon="FolderOpened"
+          :loading="opening"
+          @click="handleOpenLogDir"
         >
-          下载日志
+          打开日志文件夹
         </el-button>
       </div>
     </div>

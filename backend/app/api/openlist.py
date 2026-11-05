@@ -6,13 +6,9 @@
 实时日志下载端点返回纯文本，流式响应无 {code,msg,data} 包裹，供前端 blob 下载。
 """
 
-from pathlib import Path
 from typing import Optional
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.openlist import service
@@ -32,8 +28,7 @@ from app.business.openlist.schema import (
     OpenListTaskUpdate,
 )
 from app.core.database import get_db
-from app.core.exceptions import BadRequestException, NotFoundException
-from app.core.models import OpenListExecution, OpenListLog
+from app.core.exceptions import BadRequestException
 from app.utils.responses import success_response
 from app.websocket.manager import ws_manager
 
@@ -294,37 +289,6 @@ async def get_execution_detail(
     db: AsyncSession = Depends(get_db),
 ):
     return success_response(data=await service.get_execution_detail(db, execution_id))
-
-
-@router.get("/executions/{execution_id}/log-download", summary="下载执行日志文件")
-async def download_execution_log(
-    execution_id: int,
-    db: AsyncSession = Depends(get_db),
-):
-    execution = await db.get(OpenListExecution, execution_id)
-    if execution is None or execution.is_deleted:
-        raise NotFoundException("执行记录不存在")
-    file = Path(execution.log_path) if execution.log_path else None
-    if file is None or not file.is_file():
-        # 无日志文件时退化为从数据库行生成文本
-        rows = await db.execute(
-            select(OpenListLog).where(OpenListLog.execution_id == execution_id).order_by(OpenListLog.id)
-        )
-        lines = [
-            f"[{log.created_time.strftime('%Y-%m-%d %H:%M:%S') if log.created_time else ''}] [{log.log_level.upper()}] {log.content}"
-            for log in rows.scalars()
-        ]
-        content = "\n".join(lines) or "（无日志）"
-        filename = f"execution_{execution_id}.log"
-        return PlainTextResponse(
-            content,
-            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
-        )
-    return FileResponse(
-        file,
-        media_type="text/plain",
-        filename=f"execution_{execution_id}.log",
-    )
 
 
 # ---------- 任务历史 ----------

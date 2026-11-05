@@ -65,6 +65,7 @@ backend/
 | [adapters.py](../../backend/app/business/automation/adapters.py) | A/B 调用适配层：按模式创建并启动执行、查询终态、读取上传成功的远端文件名、取消 |
 | [execution_logger.py](../../backend/app/business/automation/execution_logger.py) | 每轮日志文件 `automation_logs/automation_run_{run_id}.log` + WebSocket 广播（log / progress / status） |
 | [notifier.py](../../backend/app/business/automation/notifier.py) | 异常终止托盘通知 + 网页 `alert` 帧；主动停止不通知 |
+| [relay.py](../../backend/app/business/automation/relay.py) | A/B 执行日志镜像：尾随 A/B 执行日志文件，按行还原级别后转写进当前轮次自动化日志（前缀 `[A#id]` / `[B#id]`），使自动化实时日志与历史日志可看到完整链路 |
 | [refs.py](../../backend/app/business/automation/refs.py) | A/B 任务、服务器删除前的自动化绑定引用检查 |
 | [retention.py](../../backend/app/business/automation/retention.py) | 历史与日志清理：运行记录保留 90 天且每任务最多 1000 条、日志保留 90 天且每任务最多 200 个 |
 
@@ -87,7 +88,7 @@ backend/
 6. 启动闸门（阶段⓿）：[execution_registry.py](../../backend/app/business/execution_registry.py) 在 `start_execution` 入队前按 `(模块, execution_id) -> task_id` 登记，引擎 `finally` 注销；同模块同 `task_id` 已有活跃执行时返回 400「任务正在执行，请等待当前执行结束」，`task_id=0`（目录执行）不互斥。
 7. 进程重启清理（阶段⓿）：[database.py](../../backend/app/core/database.py) 的 `init_db` 在建表/列迁移后把遗留 `running` 执行置为 `fail` 并写 `error_code='PROCESS_RESTART'`、`error_message='进程重启中断'`；不自动恢复执行。
 8. 引用保护（阶段⓿）：[automation/refs.py](../../backend/app/business/automation/refs.py) 在 A/B 任务或服务器删除前检查是否被自动化任务绑定，命中返回 400「任务正被自动化任务「X」绑定，请先解除绑定后再删除」。
-9. 自动化任务链路：由 `POST /api/automation/tasks/{id}/start` 启动后台循环，每轮先按本地目录指纹判断是否有新增/变化（无变化不建运行记录）；有待校验文件时跳过上传直接校验，否则等待 A/B 空闲后创建并启动上传（冲突策略固定跳过）。上传成功后按 `remote_name` 轮询 `check_dir` 可见性，全部可见后触发 STRM 任务；成功后清空待校验并提交指纹，失败保留待校验供下一轮补偿。轮次间隔 60s，连续 3 次轮次失败终止，进程重启不自动恢复（残留 `running` 置 `fail` + `PROCESS_RESTART`）。
+9. 自动化任务链路：由 `POST /api/automation/tasks/{id}/start` 启动后台循环，每轮先按本地目录指纹判断是否有新增/变化（无变化不建运行记录）；有待校验文件时跳过上传直接校验，否则等待 A/B 空闲后创建并启动上传（冲突策略固定跳过）。上传成功后按 `remote_name` 轮询 `check_dir` 可见性，全部可见后触发 STRM 任务；成功后清空待校验并提交指纹，失败保留待校验供下一轮补偿。轮次间隔 60s，连续 3 次轮次失败终止，进程重启不自动恢复（残留 `running` 置 `fail` + `PROCESS_RESTART`）。等待 A/B 执行期间由 [relay.py](../../backend/app/business/automation/relay.py) 尾随 A/B 日志文件并逐行转写进本轮自动化日志，因此自动化实时日志与历史日志都能看到 A/B 的详细执行行（`[A#id]` / `[B#id]` 前缀）。
 10. 自动化任务接口：任务 CRUD / 批量删除 / 绑定选项 / 校验目录、启动 / 批量启动 / 停止 / 重置指纹 / 清空待校验、`GET /api/automation/active`、运行历史 `/api/automation/runs`、运行日志 `/runs/{id}/logs`、失败重试 `/runs/{id}/retry-failed`，以及 WebSocket `/api/automation/ws/{task_id}`（log / progress / status / alert 帧）。历史与日志清理由 [retention.py](../../backend/app/business/automation/retention.py) 在启动时执行一次并每日定时执行。
 
 ## 环境变量（backend/.env，应用配置）

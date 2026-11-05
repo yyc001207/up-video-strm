@@ -1,6 +1,6 @@
 # 上传管理模块 · 设计计划
 
-> 状态：计划评审中（未实施，先对齐方案再开发）
+> 状态：计划评审中（已按确认意见更新，**评审通过后再实施**，评审前不改代码）
 > 模块定位：与「任务调度」平级的新模块，自动把本地视频上传到 123 云盘
 > 参考实现：任务调度模块（`frontend/src/views/schedule/`、`backend/app/business/openlist/`、`App.vue` 模块化导航）
 > 外部依赖：123 云盘开放平台 API（凭据 `clientID` + `clientSecret`）
@@ -67,8 +67,8 @@
 |----|----------|------|
 | `upload_platform_config` | `id`、`client_id`、`client_secret`、`access_token`、`token_expires_at`、`updated_time` | §3，单行 |
 | `upload_rename_rule` | `id`、`name`、`template`、`description`、`enabled`、`created_time`、`updated_time` | 命名模板列表（§6.2） |
-| `upload_task` | `id`、`name`、`local_dirs`(JSON)、`remote_dir`、`recursive`、`exclude_dirs`(JSON)、`created_time`、`updated_time` | 上传任务；`remote_dir` 为 123 云盘目标目录路径（如 `/test`） |
-| `upload_execution` | `id`、`task_id`、`task_name`、`local_dirs`(JSON)、`remote_dir`、`conflict_policy`、`concurrency`、`slice_size`、`max_retries`、`dry_run`、`status`、`file_total`、`file_success`、`file_skipped`、`file_overwritten`、`file_failed`、`bytes_uploaded`、`duration_seconds`、`log_path`、`started_time`、`finished_time`、`created_time` | 一次执行（`status`: running/success/fail/cancelled） |
+| `upload_task` | `id`、`name`、`local_dirs`(JSON)、`remote_dir`、`season`、`rename_rule_id`、`recursive`、`exclude_dirs`(JSON)、`created_time`、`updated_time` | 上传任务；`remote_dir` 为 123 云盘目标目录路径（如 `/test`）；`season` 为季数（用户指定，默认 1） |
+| `upload_execution` | `id`、`task_id`、`task_name`、`local_dirs`(JSON)、`remote_dir`、`rename_rule_id`、`season`、`conflict_policy`、`concurrency`、`slice_size`、`max_retries`、`dry_run`、`status`、`file_total`、`file_success`、`file_skipped`、`file_overwritten`、`file_failed`、`bytes_uploaded`、`duration_seconds`、`log_path`、`started_time`、`finished_time`、`created_time` | 一次执行（`status`: running/success/fail/cancelled）；执行参数与季数在启动时固化 |
 | `upload_file_record` | `id`、`execution_id`、`local_path`、`remote_name`、`size`、`md5`、`status`、`phase`、`reason`、`remote_file_id`、`replaced_file_id`、`created_time` | 文件粒度历史（支持「仅重跑失败项」、覆盖留痕） |
 
 - 迁移策略对齐现有模块：`core/database.py` 启动时建表 / `_ensure_*_columns` 兼容旧库，不破坏已有数据。
@@ -108,30 +108,42 @@ create_file(parentFileId, filename, etag/md5, size, duplicate)
 |------|------|----------|
 | 1. 扫描本地文件 | 遍历任务 `local_dirs`（`recursive` 控制递归，跳过 `exclude_dirs`）、跳过系统/隐藏文件 | 目录不存在 → 执行失败并提示 |
 | 2. 过滤视频文件 | 复用**全局配置的「视频格式」**扩展名列表（如 `mp4,mkv,avi`） | 无匹配 → 执行成功但文件数为 0 |
-| 3. 重命名 | 使用指定命名模板（§6.2）生成 `remote_name`；非法字符清洗（`\ / : * ? " < > \|`）、长度截断、保留扩展名 | 模板无法生成合法名 → 该文件标记失败，继续后续文件 |
+| 3. 重命名 | 按命名规则（§6.2）用「任务季数 + 从文件名解析出的集数 + 原扩展名」生成 `SxxExx.ext`（如 `S01E03.mp4`） | 集数解析失败 → 该文件标记失败并给出提示，继续后续文件 |
 | 4. 预上传清单 | 产出 `本地路径 / 大小 / MD5 / 新文件名`，落 `upload_file_record`；`dry_run` 时到此为止，页面可预览清单 | — |
 | 5. 重复检查 | 分页拉取目标目录文件列表并缓存为 `name → fileId`；同名文件按执行参数决策 | 目标目录读取失败 → 执行失败（不盲传） |
 | 6. 上传 | 逐文件走 §5.2 流程；并发受限额；每文件状态写入记录与日志 | 单文件失败不影响其他文件，执行最终标记为 fail 并给出失败数 |
 
 ### 6.2 重命名规则（命名模板）
 
-- 规则列表是「候选命名模板」，每个上传任务指定使用其中一条（新增任务时默认选中第一条启用的规则；执行时也可临时使用任务绑定的模板）。
-- 模板变量：
+命名目标固定为剧集格式：**`S{季数}E{集数}.{扩展名}`**，例如 `S01E03.mp4`。
 
-| 变量 | 含义 | 示例 |
+- **季数由用户指定**：在「任务配置」中填写季数（整数，默认 1，范围 1–99），不从文件名推断。
+- **只从文件名获取集数与扩展名**：扩展名原样保留；集数按下方规则从文件名解析，解析不到则该文件跳过并记录原因（不猜测）。
+- 「重命名规则」页维护**名称格式列表**，每条规则是一个模板；默认模板 `S{season:02}E{episode:02}.{ext}`，任务配置选用一条启用中的规则。
+- 模板变量仅三个：
+
+| 变量 | 来源 | 示例 |
 |------|------|------|
-| `{name}` | 原文件名（去扩展名） | `第01集` |
-| `{ext}` | 扩展名（不含点） | `mp4` |
-| `{date}` | 当天日期，默认 `YYYYMMDD` | `20261105` |
-| `{index}` | 序号，支持 `{index:3}` 补零到 3 位 | `001` |
-| `{drama}` | 剧名（按任务配置的「剧名」字段或本地目录名推断） | `我的剧` |
-| `{season}` / `{episode}` | 季 / 集（从文件名 `S01E02`、`第01集` 等常见格式解析；解析失败留空并告警） | `01` / `02` |
+| `{season}` / `{season:02}` | 任务季数（用户填写） | `1` / `01` |
+| `{episode}` / `{episode:02}` | 从文件名解析出的集数 | `3` / `03` |
+| `{ext}` | 原扩展名（不含点） | `mp4` |
 
-- 示例模板：`{name}.{ext}`、`{date}_{name}.{ext}`、`{drama}_S{season}E{episode}.{ext}`。
-- 规则页提供**实时预览**：输入示例文件名，展示「原名 → 新名」及清洗结果；非法字符、空名、超长名给出明确提示。
-- 一期变量支持 `{name}`、`{ext}`、`{date}`、`{index}`；`{drama}`、`{season}`、`{episode}` 与解析规则建议一期同步实现（成本低），剧集命名复杂场景后置。
+- 模板校验：必须包含 `{episode}` 与 `{ext}`，保存时用示例数据渲染，结果须符合 `SxxExx.ext` 形态，否则拒绝保存。
+- 集数解析顺序（命中即停，识别到的数字取最后一个匹配）：
+  | 文件名示例 | 解析结果 |
+  |------------|----------|
+  | `第03集.mp4`、`第3话.mkv` | 3 |
+  | `S01E03.mp4` | 3（只取 E 后的集数，S01 不作为集数） |
+  | `EP03.mp4`、`E03.mp4` | 3 |
+  | `[03].mp4`、`03 - 标题.mp4` | 3 |
+  | 完全无数字（如 `预告.mp4`） | 解析失败 → 跳过并记录原因 |
+- 渲染后统一做非法字符清洗（`\ / : * ? " < > \|`）与长度截断，正常模板不会触发。
+- 规则页提供实时预览：输入示例文件名 + 季数 → 展示「原名 → 新名」与解析出的集数。
+- 一期不做剧名 / 日期 / 自定义前后缀变量（用户确认只保留季、集、扩展名）。
 
 ### 6.3 冲突策略（执行参数，执行管理页选择）
+
+默认策略：**跳过**（用户确认）。
 
 | 策略 | 行为 |
 |------|------|
@@ -198,8 +210,8 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 
 ## 10. 页面设计要点（样式对齐任务调度）
 
-- **任务配置**：顶部「默认运行参数」卡（并发、分片、重试、默认冲突策略）+ 编辑抽屉；工具栏搜索 / 新建 / 批量删除；表格列：任务名（主行）+ 本地目录/云端目录（副行）、最近执行、操作；空态 CTA。
-- **重命名规则**：列表（名称、模板、示例、启用状态、操作）；新建/编辑弹窗含模板输入、变量说明表、实时预览；删除确认写明影响。
+- **任务配置**：顶部「默认运行参数」卡（并发、分片、重试、默认冲突策略）+ 编辑抽屉；任务字段：任务名、本地扫描目录（可多个）、云端目标目录（联调固定 `/test`）、**季数（用户指定）**、命名规则；工具栏搜索 / 新建 / 批量删除；表格列：任务名（主行）+ 本地目录/云端目录（副行）、季数、最近执行、操作；空态 CTA。
+- **重命名规则**：列表（名称、模板、示例、启用状态、操作）；新建/编辑弹窗含模板输入、三个变量（`{season}` / `{episode}` / `{ext}`）说明、集数解析示例与实时预览；删除确认写明影响。
 - **执行管理**：三卡片一行（选择任务 / 执行参数 / 已选任务）+ 正在执行表（状态圆点、计数右对齐、取消）；`dry-run` 开关生成清单预览。
 - **实时日志**：进度摘要（文件总数 / 成功 / 跳过 / 失败 / 字节数）+ 终端日志区（级别着色、行号、自动滚动）+ 底部工具条（级别过滤、搜索、清屏、下载）。
 - **任务历史**：执行列表 → 详情页（文件粒度表格：本地文件、远端文件名、大小、状态、原因、云端 fileId）+ 日志抽屉 / 下载。
@@ -214,18 +226,29 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 
 每个阶段独立 `feat:` commit，逐项 `git add`，不 push；版本在阶段四统一递增一次。
 
-## 12. 待确认 / 开放问题
+## 12. 已确认决策与遗留问题
+
+已确认（评审基线，实施按此执行）：
+
+| # | 问题 | 结论 |
+|---|------|------|
+| 1 | 冲突默认策略 | **跳过**（执行管理页可切换为覆盖 / 追加后缀） |
+| 2 | 云端目标目录不存在 | **不自动创建**，提示先在 123 云盘手工建目录 |
+| 3 | 命名规则 | 季数由用户指定；只从文件名解析集数与扩展名；最终文件名固定 `S{季数}E{集数}.{ext}`（如 `S01E03.mp4`）；不做剧名/日期变量 |
+| 4 | 上传后删除本地源文件 | **不删除**（默认保留） |
+| 5 | 覆盖策略语义 | 先传新文件、成功后删除云端旧文件：用 `create_file` 的 `duplicate=2` 覆盖 + 按预检旧 `fileID` 幂等删除兜底；实施前在 `/test` 实测确认 |
+
+遗留待评审 / 待实测（不阻塞文档评审）：
 
 | # | 问题 | 当前建议 |
 |---|------|----------|
-| 1 | 覆盖策略的云端实现 | 用 `create_file` 的 `duplicate=2`（服务端覆盖）+ 上传完成后按旧 `fileID` 幂等删除兜底；实施前在 `/test` 实测确认语义 |
-| 2 | 目标云端目录不存在时 | 一期不自动建目录，提示先手工创建；二期可加「自动创建目录」 |
-| 3 | `{drama}` / `{season}` / `{episode}` 变量 | 建议一期实现常见命名（`SxxExx`、`第xx集`）；复杂命名后置 |
-| 4 | 上传后是否删除本地源文件 | 一期不做（默认保留），后续作为任务级选项 |
-| 5 | 重名大小写判定 | 以 123 云盘实测为准，文档后续补充结论 |
+| 1 | 集数解析边界：文件名含多个数字、分 P（如 `03-1.mp4`） | 取最后一组可识别集数；分 P 视为同一集还是独立文件需评审确认 |
+| 2 | 重名大小写敏感性 | 以 123 云盘实测行为为准，测试在 `/test` 进行 |
+| 3 | 大文件（> 单分片）上传失败重试 | 按官方分片流程整文件重试，二期再评估断点续传 |
 
 ## 13. 文档与交付要求
 
+- **本文档先评审**：§12「已确认决策」为实施基线；遗留项在阶段一实施前用 `/test` 实测并回填本文件。评审通过后才进入 §11 阶段一。
 - 本计划文档单独提交（`docs:`，纯文档不递增版本）。
 - 实施完成后同步：`README.md`（特性概览 + 文档导航）、`manual/用户手册.md`（新增上传管理章节）、`docs/rules/backend.md` / `frontend.md`（新增目录与页面）、`CHANGELOG.md`（4.3.0，MINOR）。
 - 测试约定见 §8；`/test` 目录约束必须写入手册的联调说明。

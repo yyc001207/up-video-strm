@@ -1,3 +1,4 @@
+from app.core.models.automation import AutomationRun, AutomationTask
 from app.core.models.openlist.config import OpenListConfig
 from app.core.models.openlist.execution import OpenListExecution
 from app.core.models.openlist.log import OpenListLog
@@ -13,6 +14,8 @@ from app.core.models.uploader import (
 )
 
 __all__ = [
+    "AutomationTask",
+    "AutomationRun",
     "OpenListConfig",
     "OpenListTask",
     "OpenListExecution",

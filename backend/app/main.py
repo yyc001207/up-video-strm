@@ -1,6 +1,7 @@
 """up-video-strm API：OpenList 任务调度独立服务（本地部署，无登录/无 Redis/MySQL）。"""
 
 from contextlib import asynccontextmanager
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -10,9 +11,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.settings import settings
-from app.core.database import init_db
+from app.core.database import AsyncSessionLocal, init_db
 from app.core.exceptions import UpVideoStrmException
+from app.core.logger import logger
 from app.core.paths import APP_DIR_NAME, exe_dir, is_frozen, resource_dir
+from app.business.automation.retention import cleanup_once, daily_cleanup_loop
 from app.utils.responses import success_response
 from app.api import desktop, openlist, uploader
 from app.version import __version__
@@ -21,7 +24,17 @@ from app.version import __version__
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    yield
+    # 自动化任务历史：进程启动清理一次，并注册每日定时清理
+    try:
+        async with AsyncSessionLocal() as db:
+            await cleanup_once(db)
+    except Exception as exc:  # noqa: BLE001  清理失败不阻塞启动
+        logger.warning("启动清理自动化任务历史失败: %s", exc)
+    cleanup_task = asyncio.create_task(daily_cleanup_loop(AsyncSessionLocal))
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
 
 
 app = FastAPI(

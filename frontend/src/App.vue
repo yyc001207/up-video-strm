@@ -23,7 +23,7 @@ interface NavPage {
   path: string
   label: string
   icon: Component
-  badge?: 'running' | 'upload-running'
+  badge?: 'running' | 'upload-running' | 'automation-running'
 }
 
 interface NavGroup {
@@ -121,8 +121,12 @@ const modules: NavModule[] = [
         title: '运行',
         pages: [
           { path: '/automation/execution', label: '执行管理', icon: VideoPlay },
-          { path: '/automation/realtime', label: '实时日志', icon: Monitor }
+          { path: '/automation/realtime', label: '实时日志', icon: Monitor, badge: 'automation-running' }
         ]
+      },
+      {
+        title: '记录',
+        pages: [{ path: '/automation/history', label: '任务历史', icon: Clock }]
       }
     ]
   }
@@ -170,10 +174,11 @@ const capsuleText = computed(() => {
 })
 const showOfflineAlert = computed(() => runningStore.offline && !offlineDismissed.value)
 
-/** 导航徽标值：任务调度与上传管理分别取各自模块的运行数。 */
+/** 导航徽标值：任务调度、上传管理与自动化任务分别取各自模块的运行数。 */
 function badgeCount(badge: NavPage['badge']): number {
   if (badge === 'running') return runningStore.scheduleCount
   if (badge === 'upload-running') return runningStore.uploadCount
+  if (badge === 'automation-running') return runningStore.automationCount
   return 0
 }
 
@@ -688,3 +693,4 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 </style>
+

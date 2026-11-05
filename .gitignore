@@ -31,3 +31,6 @@ backend/tests/
 
 # Logs
 *.log
+
+# 一次性脚本目录
+.build/

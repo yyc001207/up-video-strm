@@ -103,6 +103,12 @@ const router = createRouter({
       meta: { title: '实时日志', description: '实时查看自动化任务每轮链路的执行日志' }
     },
     {
+      path: '/automation/history',
+      name: 'AutomationHistory',
+      component: () => import('@/views/automation/TaskHistory.vue'),
+      meta: { title: '任务历史', description: '按轮次查看自动化任务运行结果与失败重试' }
+    },
+    {
       // 桌面托盘外壳经 window.__upVideoStrmNavigate('/settings') 跳转，此路径必须保持不变。
       path: '/settings',
       name: 'Settings',

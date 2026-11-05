@@ -232,7 +232,9 @@ const STATUS_TEXT: Record<ExecutionStatus, string> = {
   cancelled: '已取消'
 }
 
-const statusText = computed(() => STATUS_TEXT[currentStatus.value])
+const statusText = computed(() =>
+  selectedExecutionId.value === null ? '—' : STATUS_TEXT[currentStatus.value]
+)
 
 const showStatus = computed(
   () => selectedExecutionId.value !== null && (finalStatus.value !== null || connectionState.value !== 'disconnected')

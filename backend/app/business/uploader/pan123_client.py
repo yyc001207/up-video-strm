@@ -103,7 +103,7 @@ class Pan123Client:
         params: Optional[dict] = None,
         json: Optional[dict] = None,
     ) -> Any:
-        headers = {"Platform": "open", "Accept": "application/json"}
+        headers = {"Platform": "open_platform", "Accept": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         try:
@@ -231,10 +231,10 @@ class Pan123Client:
         """预上传：返回 ``reuse=True`` 即秒传完成，否则含 ``preuploadID`` / ``sliceSize``。"""
         data = await self._request(
             "POST",
-            "/api/v1/upload/create_file",
+            "/upload/v1/file/create",
             token=token,
             json={
-                "parentFileId": parent_file_id,
+                "parentFileID": parent_file_id,
                 "filename": filename,
                 "etag": etag,
                 "size": size,
@@ -246,7 +246,7 @@ class Pan123Client:
     async def get_upload_url(self, token: str, preupload_id: str, slice_no: int) -> str:
         data = await self._request(
             "POST",
-            "/api/v1/upload/get_upload_url",
+            "/upload/v1/file/get_upload_url",
             token=token,
             json={"preuploadID": preupload_id, "sliceNo": slice_no},
         )
@@ -266,17 +266,17 @@ class Pan123Client:
 
     async def list_upload_parts(self, token: str, preupload_id: str) -> list[dict]:
         data = await self._request(
-            "GET",
-            "/api/v1/upload/list_upload_parts",
+            "POST",
+            "/upload/v1/file/list_upload_parts",
             token=token,
-            params={"preuploadID": preupload_id},
+            json={"preuploadID": preupload_id},
         )
         return list((data or {}).get("parts") or [])
 
     async def upload_complete(self, token: str, preupload_id: str) -> dict:
         data = await self._request(
             "POST",
-            "/api/v1/upload/complete",
+            "/upload/v1/file/upload_complete",
             token=token,
             json={"preuploadID": preupload_id},
         )
@@ -285,7 +285,7 @@ class Pan123Client:
     async def upload_async_result(self, token: str, preupload_id: str) -> dict:
         data = await self._request(
             "POST",
-            "/api/v1/upload/upload_async_result",
+            "/upload/v1/file/upload_async_result",
             token=token,
             json={"preuploadID": preupload_id},
         )

@@ -81,20 +81,22 @@
 ### 5.1 鉴权与限流
 
 - `POST /api/v1/access_token`（`clientID` + `clientSecret`）→ `accessToken`、有效期；缓存到 `upload_platform_config`，过期前自动刷新。
-- 后续请求头：`Authorization: Bearer <accessToken>`、`Platform: open`。
+- 后续请求头：`Authorization: Bearer <accessToken>`、`Platform: open_platform`。
 - 限流：全局并发上限（默认 1–2），HTTP 429 / 5xx 指数退避重试（默认 3 次，可配置）。
 - 端点与字段以[官方开放平台文档](https://www.123pan.com/developer)为准，接入时逐一核对；本文档只约束流程与封装边界。
 
-### 5.2 上传流程（官方 v2 分片流程）
+### 5.2 上传流程（官方 V1 分片流程，2026-11-05 在 `/test` 实测通过）
 
 ```text
-create_file(parentFileId, filename, etag/md5, size, duplicate)
+POST /upload/v1/file/create  (parentFileID, filename, etag, size, duplicate)
   ├─ reuse = true  → 秒传成功，结束
   └─ reuse = false → 返回 preuploadID + sliceSize
-        → 逐片（sliceNo 从 1 开始）获取 presignedURL → PUT 上传分片
-        → （可选）列举已上传分片做 MD5 比对（文件 < sliceSize 时跳过）
-        → 上传完毕：async=false 且 fileID≠0 → 完成；async=true → 每 1s 轮询结果
+        → 逐片（sliceNo 从 1 开始）POST /upload/v1/file/get_upload_url → PUT presignedURL
+        → （可选）POST /upload/v1/file/list_upload_parts 比对 MD5（文件 < sliceSize 时跳过）
+        → POST /upload/v1/file/upload_complete：async=false 且 fileID≠0 即完成；否则每秒 POST /upload/v1/file/upload_async_result 轮询
 ```
+
+- 注意：上传接口**不带 `/api` 前缀**（token / 列目录仍是 `/api/v1/*`），Header 必须 `Platform: open_platform`，create 的父目录字段为 `parentFileID`；这些与早期草稿不同，以官方文档为准。
 
 - `duplicate`：`1` = 保留两者（同名并存），`2` = 覆盖原文件。**覆盖策略优先用 `duplicate=2`**（服务端替换，等价于「上传成功后旧文件被替换」）；上传完成后按预检记录的旧 `fileID` 做一次幂等删除兜底，兼容 API 对该参数语义的差异。
 - 其他封装：`list_files(parentFileId, 分页)`（列目标目录全部文件，构建 `filename → fileId` 索引）、`delete_files([fileId])`（删除进回收站，可人工找回）、`find_file(name)`。
@@ -253,7 +255,7 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 | 2 | 云端目标目录不存在 | **不自动创建**，提示先在 123 云盘手工建目录 |
 | 3 | 命名规则 | 季数由用户指定；只从文件名解析集数与扩展名；最终文件名固定 `S{季数}E{集数}.{ext}`（如 `S01E03.mp4`）；不做剧名/日期变量 |
 | 4 | 上传后删除本地源文件 | **不删除**（默认保留） |
-| 5 | 覆盖策略语义 | 先传新文件、成功后删除云端旧文件：用 `create_file` 的 `duplicate=2` 覆盖 + 按预检旧 `fileID` 幂等删除兜底；实施前在 `/test` 实测确认 |
+| 5 | 覆盖策略语义 | 先传新文件、成功后删除云端旧文件：用 `create_file` 的 `duplicate=2` 覆盖 + 按预检旧 `fileID` 幂等删除兜底；V1 主流程已于 2026-11-05 在 `/test` 实测通过，覆盖语义仍需专项实测（同名文件） |
 | 6 | 集数映射（跨季绝对集号） | **基础模式**：任务配置「输出季数 + 源起始集号（默认 1）」；解析出的集号一律视为绝对集号，`季内集号 = 绝对集号 − 源起始集号 + 1`；越界（<1）跳过并告警；每季集数自动切季列二期。
 
 遗留待评审 / 待实测（不阻塞文档评审）：

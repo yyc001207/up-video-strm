@@ -21,6 +21,14 @@
 
 - 暂无。
 
+## [4.6.1] - 2026-11-05
+
+**级别：PATCH（缺陷修复）** · 代码见本次提交
+
+- 修复上传管理「上传失败：123 云盘返回非 JSON 数据（HTTP 404）」：上传接口路径由错误的 `/api/v1/upload/*` 改为官方 `/upload/v1/file/*`（`create` / `get_upload_url` / `list_upload_parts` / `upload_complete` / `upload_async_result`），请求头 `Platform` 改为官方要求的 `open_platform`，`create` 的父目录字段改为 `parentFileID`。
+- 已在 123 云盘 `/test` 目录用真实凭据完成上传冒烟（探针文件上传成功后删除），并回填 `docs/design/upload-module-plan.md` §5.2 的官方端点与实测结论。
+- 单测补充 mock 传输层对官方路径与 `Platform` 头的断言；后端全量 80 tests OK。
+
 ## [4.6.0] - 2026-11-05
 
 **级别：MINOR（新增接口与交互）** · 代码见本次提交

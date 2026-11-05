@@ -21,6 +21,17 @@
 
 - 暂无。
 
+## [4.11.0] - 2026-11-06
+
+**级别：MINOR（交互行为调整）** · 代码见本次提交
+
+- 托盘图标默认行为改为**收进 Windows 11 任务栏「^」溢出区**：启动时（在注册托盘图标之前）把 `HKCU\Control Panel\NotifyIconSettings\<hash>` 的 `IsPromoted` 写为 `0`，升级后首次启动即生效，不再像旧版本那样每次启动把图标固定到任务栏常驻区；用户手动调整后，重启应用仍恢复默认收起。
+- 移除启动时「图标在折叠区」的一次性气泡提示（折叠已是默认行为）。
+- 设置页「修复托盘图标」保留，仍可显式将图标固定到常驻区（本次运行有效）。
+- 新增 `backend/tests/test_tray_win.py`（6 个用例，用假 `winreg` 校验按可执行文件路径匹配条目与 `IsPromoted` 写入）；后端全量 103 tests OK。
+- 文档：`manual/用户手册.md`（§2 系统托盘、§10 设置表、FAQ）、`docs/rules/backend.md`（tray_win 职责）。
+- 验证：`python -m compileall app` 通过；后端全量 unittest 通过。
+
 ## [4.10.3] - 2026-11-05
 
 **级别：PATCH（文案调整）** · 代码见本次提交

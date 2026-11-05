@@ -83,7 +83,7 @@ backend/
 
 - 桌面偏好与自启：[app/core/desktop_prefs.py](../../backend/app/core/desktop_prefs.py) 把 `start_minimized` / `close_to_tray` 存数据目录 `desktop.json`（不落库，避免桌面偏好影响其他运行方式）；开机自启读写 `HKCU\...\CurrentVersion\Run` 的 `up-video-strm` 值（仅冻结态；启动时若检测到旧版值 `video-strm` 已启用，自动改写成新值并删除旧值）。[api/desktop.py](../../backend/app/api/desktop.py) 暴露 `/api/desktop/info|autostart|preferences|open-data-dir|open-log-dir` 等接口（`open-log-dir` 按 `kind=openlist|upload` 用资源管理器打开对应日志目录），非桌面态只读、写操作返回 400。
 - 窗口关闭默认走托盘：[desktop.py](../../backend/app/desktop.py) 监听 `closing` 事件返回 False 取消关闭，并延迟隐藏窗口（事件内直接 hide 会被 WinForms 取消关闭流程重新显示）；关窗时现读 `desktop.json` 的 `close_to_tray`，设置页/托盘改完立即生效。pystray 菜单「打开主界面 / 设置… / 快捷设置（开机自启、启动最小化、关窗收进托盘）/ 打开数据目录 / 退出」，「设置…」通过 `window.__upVideoStrmNavigate('/settings')`（前端 [main.ts](../../frontend/src/main.ts) 注册）切页而非整页重载；退出时 `icon.stop()` → `window.destroy()` → 服务关停。
-- 窗口相关辅助：[app/core/tray_win.py](../../backend/app/core/tray_win.py) 负责 Windows 托盘图标探测与还原（Windows 11 托盘折叠场景），供托盘菜单与「修复托盘图标」接口调用。
+- 窗口相关辅助：[app/core/tray_win.py](../../backend/app/core/tray_win.py) 负责 Windows 托盘图标探测与可见性（Win11 的 `HKCU\Control Panel\NotifyIconSettings\<hash>` 的 `IsPromoted`）：启动时 `check_tray` 调 `hide_tray_icon()` 写 `0`，让图标**默认收进「^」**；设置页「修复托盘图标」接口（`POST /api/desktop/fix-tray`）仍调 `promote_tray_icon()` 写 `1` 供用户临时固定到常驻区。
 
 启动器环境变量（进程环境，**不读取 .env**）：
 

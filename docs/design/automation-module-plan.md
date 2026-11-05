@@ -1,6 +1,6 @@
 # 自动化任务模块（模块 C）设计与实现计划
 
-> 状态：**待第三轮短评审**（已按[第二轮评审意见](automation-module-plan-review-round2.md)对 5 项阻断 P0 与 P1/P2 项做针对性修订；本文只描述设计，评审通过后再实施代码）
+> 状态：**待第三轮短评审**（已按[第二轮评审意见](automation-module-plan-review-round2.md)对 5 项阻断 P0 与 P1/P2 项做针对性修订；第二轮涉及的 3 项行为变化——失败策略分级、A/B 共享启动闸门、空轮处理——已获用户确认（2026-11-06）；本文只描述设计，评审通过后再实施代码）
 >
 > 关联文档：[上传管理模块计划](upload-module-plan.md) · [第一轮评审意见](automation-module-plan-review.md) · [第二轮评审意见](automation-module-plan-review-round2.md) · [前端规范](../rules/frontend.md) · [后端规范](../rules/backend.md)
 
@@ -484,6 +484,8 @@ manager 键类型放宽 `int | str`，路由边界统一转 str；A/B 实时日�
 | R2-P1-13 退避基数 | 以 `wait_interval_seconds` 为基数（base/2×/4×，封顶 60）+ 抖动 |
 | R2-P1-14 指标/错误码 | 指标可统计；错误码枚举补全；表格语法修正 |
 | P2 | API 风格说明、stopping 进 phase、A/B 措辞、round_no 续号、日志清理 404、名称唯一、error_message 截断、索引迁移、回滚说明、missed 上限、interval 最小 10、测试补齐、WS 键回归 |
+
+> 用户已确认（2026-11-06）：① 失败策略改为「轮次失败重试 3 次、配置错误才终止」；② A/B 共享启动闸门成立（并发启动返回 400）；③ 空目录/无视频不再判失败（提交空指纹跳过）。
 
 ## 13. 实施阶段（第三轮短评审通过后）
 

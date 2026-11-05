@@ -37,7 +37,7 @@
 
 - 系统要求：Windows 10 / 11 x64；应用窗口依赖 Microsoft Edge WebView2 运行时（Windows 10/11 通常自带，缺失时安装程序与启动都会给出提示）。
 - 运行数据统一存放在 `%LOCALAPPDATA%\up-video-strm`，卸载不会删除，重装沿用。
-- 详细说明：[安装](manual/用户手册.md#1-安装windows-安装包)、[启动与托盘](manual/用户手册.md#2-启动与托盘)、[桌面设置](manual/用户手册.md#10-桌面设置)。
+- 详细说明：[安装与启动](manual/用户手册.md#31-安装启动与托盘)、[桌面设置](manual/用户手册.md#312-设置与主题)。
 
 ### 方式二：源码运行
 
@@ -87,7 +87,7 @@ npm run preview                   # 本地预览构建产物
 
 | 文档 | 内容 |
 |------|------|
-| [manual/用户手册.md](manual/用户手册.md) | 使用者视角：安装、启动与托盘、全局/服务器/任务配置、执行、日志、历史、设置、升级备份、常见问题 |
+| [manual/用户手册.md](manual/用户手册.md) | 使用者视角：功能概述、业务流程、各页面操作步骤、常见场景、注意事项与常见问题 |
 | [docs/rules/project.md](docs/rules/project.md) | 工程总览：定位、技术栈、端口、运行方式、打包发布、冻结运行差异 |
 | [docs/rules/backend.md](docs/rules/backend.md) | 后端目录结构、业务模块、数据层、关键流程、环境变量、冻结运行 |
 | [docs/rules/frontend.md](docs/rules/frontend.md) | 前端技术栈、目录结构、页面组件、接口与状态 |

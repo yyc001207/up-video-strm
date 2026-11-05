@@ -76,4 +76,4 @@ npm run dev
 | 配置读取 | `.env` 依次读取数据目录与 exe 同级（后者优先）；启动器环境变量（`UP_VIDEO_STRM_HOST` 等）只从进程环境读取，不读 `.env` |
 | 前端托管 | [backend/app/main.py](../../backend/app/main.py) 依次尝试 exe 同级与资源目录下的 `frontend/dist`，存在即挂载静态资源并做 SPA 回退 |
 
-> 旧版本数据目录与旧环境变量的兼容行为见 [manual/用户手册.md](../../manual/用户手册.md#12-旧版本数据兼容)。
+> 旧版本数据目录与旧环境变量的兼容行为见 [manual/用户手册.md](../../manual/用户手册.md#58-升级与备份)。

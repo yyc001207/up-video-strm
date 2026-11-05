@@ -8,10 +8,10 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Refresh, VideoPlay } from '@element-plus/icons-vue'
-import dayjs from 'dayjs'
 
 import StatusDot from '@/components/StatusDot.vue'
 import { uploaderApi } from '@/api/uploader'
+import { formatDateTime } from '@/utils/date'
 import type {
   UploadConflictPolicy,
   UploadExecution,
@@ -49,10 +49,6 @@ const conflictHint = computed(
 )
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
-
-function formatTime(value: string | null): string {
-  return value ? dayjs(value).format('MM-DD HH:mm:ss') : '—'
-}
 
 function progressText(row: UploadExecution): string {
   return `${row.file_success}/${row.file_total}`
@@ -305,8 +301,8 @@ onBeforeUnmount(() => {
         <el-table-column label="任务名称" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">{{ row.task_name }}</template>
         </el-table-column>
-        <el-table-column label="开始时间" width="150">
-          <template #default="{ row }">{{ formatTime(row.started_time) }}</template>
+        <el-table-column label="开始时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.started_time) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
@@ -342,22 +338,19 @@ onBeforeUnmount(() => {
     display: grid;
     grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.85fr) minmax(260px, 0.95fr);
     gap: var(--up-strm-space-4, 16px);
-    align-items: stretch;
+    align-items: start;
   }
 }
 
 .exec-card {
   display: flex;
   flex-direction: column;
-  height: clamp(380px, 52vh, 560px);
+  height: auto;
   margin: 0;
 
   :deep(.el-card__body) {
-    flex: 1;
-    min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
   }
 
   &__header {
@@ -381,8 +374,7 @@ onBeforeUnmount(() => {
 
 .task-list,
 .selected-list {
-  flex: 1;
-  min-height: 0;
+  max-height: 320px;
   overflow-y: auto;
 }
 
@@ -516,15 +508,6 @@ onBeforeUnmount(() => {
 @media (max-width: 1100px) {
   .upload-execution__cards {
     grid-template-columns: 1fr;
-  }
-
-  .exec-card {
-    height: auto;
-    min-height: 320px;
-
-    :deep(.el-card__body) {
-      max-height: 60vh;
-    }
   }
 }
 </style>

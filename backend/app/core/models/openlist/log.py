@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from app.core.beijing import beijing_now
 
 from app.core.database import Base
 
@@ -18,7 +18,7 @@ class OpenListLog(Base):
     log_level: Mapped[str] = mapped_column(Enum("info", "warn", "error", "progress", name="open_list_log_level"), nullable=False, default="info", comment="日志级别")
     content: Mapped[str] = mapped_column(Text, nullable=False, comment="日志内容")
     metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True, comment="附加数据（如进度百分比、文件名等）")
-    created_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), comment="日志时间")
+    created_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=beijing_now, comment="日志时间")
 
     execution: Mapped["OpenListExecution"] = relationship(back_populates="logs")
 

@@ -9,11 +9,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Delete, Download, Refresh, Search } from '@element-plus/icons-vue'
-import dayjs from 'dayjs'
 
 import LogViewer from '@/components/LogViewer.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { uploaderApi } from '@/api/uploader'
+import { beijingMillis, parseBeijing } from '@/utils/date'
 import { connectUploadWs, disconnectWs, type WsState } from '@/utils/ws'
 import type {
   UploadExecution,
@@ -141,8 +141,7 @@ function toNumber(value: unknown): number {
 
 function formatLogTime(value: string | null | undefined): string | undefined {
   if (!value) return undefined
-  const parsed = dayjs(value)
-  return parsed.isValid() ? parsed.format('HH:mm:ss') : undefined
+  return parseBeijing(value)?.format('HH:mm:ss') ?? undefined
 }
 
 function parseTargets(raw: unknown): RealtimeTarget[] {
@@ -194,7 +193,7 @@ async function maybeStart(target: RealtimeTarget): Promise<void> {
   const detail = await uploaderApi.getExecutionDetail(target.executionId)
   const execution = detail.data.execution
   if (execution.started_time) {
-    startedAt.value = startedAt.value ?? dayjs(execution.started_time).valueOf()
+    startedAt.value = startedAt.value ?? beijingMillis(execution.started_time)
     return
   }
   if (execution.status !== 'running') {

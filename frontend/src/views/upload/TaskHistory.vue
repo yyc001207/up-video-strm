@@ -375,7 +375,7 @@ defineExpose({ reload: load })
       <div v-loading="logLoading" class="upload-history__log">
         <pre v-if="logs.length" class="upload-history__log-pre">{{
           logs
-            .map(l => `[${l.created_time ?? '—'}] [${l.log_level.toUpperCase()}] ${l.content}`)
+            .map(l => `[${formatDateTime(l.created_time)}] [${l.log_level.toUpperCase()}] ${l.content}`)
             .join('\n')
         }}</pre>
         <el-empty v-else description="暂无日志" />

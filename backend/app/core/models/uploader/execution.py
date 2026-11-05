@@ -9,7 +9,7 @@ from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from app.core.beijing import beijing_now
 
 from app.core.database import Base
 
@@ -50,7 +50,7 @@ class UploadExecution(Base):
     started_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="开始执行时间")
     finished_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="执行结束时间")
     created_time: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now(), comment="创建时间"
+        DateTime, nullable=False, default=beijing_now, comment="创建时间"
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="逻辑删除")
 

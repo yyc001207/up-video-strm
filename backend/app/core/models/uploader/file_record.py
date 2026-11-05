@@ -9,7 +9,7 @@ from typing import Optional
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from app.core.beijing import beijing_now
 
 from app.core.database import Base
 
@@ -42,10 +42,10 @@ class UploadFileRecord(Base):
         Integer, nullable=True, comment="覆盖策略下被替换的旧 fileId"
     )
     created_time: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now(), comment="创建时间"
+        DateTime, nullable=False, default=beijing_now, comment="创建时间"
     )
     updated_time: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        DateTime, nullable=False, default=beijing_now, onupdate=beijing_now, comment="更新时间"
     )
 
     execution: Mapped["UploadExecution"] = relationship("UploadExecution", back_populates="records")

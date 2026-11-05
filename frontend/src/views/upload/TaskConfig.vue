@@ -19,11 +19,30 @@ const formRef = ref<FormInstance>()
 const form = reactive<UploadTaskCreate>({
   name: '',
   local_dir: '',
-  remote_dir: '/test',
+  remote_dir: '',
   season: 1,
   start_episode: 1,
   rename_rule_id: null
 })
+
+interface DesktopBridge {
+  api?: {
+    pick_directory?: (startDir?: string) => Promise<string | null>
+  }
+}
+
+/** 桌面版通过 pywebview 打开系统目录选择框；网页版退化为手动输入。 */
+async function pickLocalDir(): Promise<void> {
+  const bridge = (window as unknown as { pywebview?: DesktopBridge }).pywebview
+  if (!bridge?.api?.pick_directory) {
+    ElMessage.warning('目录快速选择仅在桌面版可用，请手动输入本地目录')
+    return
+  }
+  const picked = await bridge.api.pick_directory(form.local_dir.trim() || undefined)
+  if (picked) {
+    form.local_dir = picked
+  }
+}
 
 const rulesOptions = computed(() => rules.value.map(rule => ({ label: rule.name, value: rule.id })))
 
@@ -56,7 +75,7 @@ async function load(): Promise<void> {
 function resetForm(): void {
   form.name = ''
   form.local_dir = ''
-  form.remote_dir = '/test'
+  form.remote_dir = ''
   form.season = 1
   form.start_episode = 1
   form.rename_rule_id = null
@@ -132,7 +151,7 @@ function handleRemoteSelect(path: string): void {
 
 const remoteTip = computed(() => {
   if (!form.remote_dir) {
-    return ''
+    return '尚未选择云端目录；测试与联调请使用 /test 目录'
   }
   return form.remote_dir === '/test' || form.remote_dir.startsWith('/test/')
     ? '将以 /test 目录进行联调'
@@ -189,7 +208,10 @@ onMounted(() => void load())
           <el-input v-model="form.name" placeholder="例如：某剧 第二季" maxlength="64" />
         </el-form-item>
         <el-form-item label="本地目录" prop="local_dir">
-          <el-input v-model="form.local_dir" placeholder="例如：D:\\videos\\某剧" />
+          <div class="local-picker">
+            <el-input v-model="form.local_dir" placeholder="例如：D:\\videos\\某剧" />
+            <el-button :icon="FolderOpened" @click="pickLocalDir">浏览</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="云端目录" prop="remote_dir">
           <div class="remote-picker">
@@ -237,7 +259,7 @@ onMounted(() => void load())
       </template>
     </el-drawer>
 
-    <el-dialog v-model="remoteDialogVisible" title="选择云端目录" width="600px" append-to-body>
+    <el-dialog v-model="remoteDialogVisible" title="选择云端目录" width="640px" append-to-body>
       <RemoteDirPanel @select="handleRemoteSelect" />
     </el-dialog>
   </div>
@@ -261,6 +283,7 @@ onMounted(() => void load())
     white-space: nowrap;
   }
 
+  .local-picker,
   .remote-picker {
     display: flex;
     gap: var(--up-strm-space-2);

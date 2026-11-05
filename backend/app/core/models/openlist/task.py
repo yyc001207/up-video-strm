@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from app.core.beijing import beijing_now
 
 from app.core.database import Base
 
@@ -20,8 +20,8 @@ class OpenListTask(Base):
     process_path: Mapped[str] = mapped_column(String(512), nullable=False, comment="处理路径")
     pause_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="间隔文件数量（NULL=用全局配置）")
     pause_time: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="暂停时间（秒，逗号分隔；NULL=用全局配置）")
-    created_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
-    updated_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间")
+    created_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=beijing_now, comment="创建时间")
+    updated_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now, comment="更新时间")
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="逻辑删除")
 
     executions: Mapped[list["OpenListExecution"]] = relationship(back_populates="task")

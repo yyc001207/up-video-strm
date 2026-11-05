@@ -9,6 +9,7 @@ import type {
   UploadRenameRule,
   UploadRenameRuleCreate
 } from '@/types/uploader'
+import { formatDateTime } from '@/utils/date'
 
 const loading = ref(false)
 const rules = ref<UploadRenameRule[]>([])
@@ -129,7 +130,9 @@ onMounted(() => void load())
         <el-table-column label="命名模板" min-width="240">
           <template #default="{ row }"><code class="template">{{ row.template }}</code></template>
         </el-table-column>
-        <el-table-column label="更新时间" prop="updated_time" width="180" />
+        <el-table-column label="更新时间" width="180">
+          <template #default="{ row }">{{ formatDateTime(row.updated_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="150" align="right">
           <template #default="{ row }">
             <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>

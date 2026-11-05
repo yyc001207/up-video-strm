@@ -13,6 +13,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.beijing import BEIJING_TZ, beijing_now
 from app.business.openlist import dir_cache
 from app.business.openlist.execution_engine import run_generation, set_semaphore_size
 from app.business.openlist.openlist_api import OpenListAPI
@@ -315,10 +316,10 @@ async def _fetch_dirs(server: OpenListServer, path: str, verify_ssl: bool) -> li
 
 
 def _format_modified(ts) -> Optional[str]:
-    """OpenList 返回的 modified 为毫秒时间戳，统一转 ISO 字符串；异常返回 None。"""
+    """OpenList 返回的 modified 为毫秒时间戳，统一转北京时间 ISO 字符串；异常返回 None。"""
     if isinstance(ts, (int, float)) and ts:
         try:
-            return datetime.fromtimestamp(ts / 1000).isoformat(sep=" ")
+            return datetime.fromtimestamp(ts / 1000, BEIJING_TZ).replace(tzinfo=None).isoformat(sep=" ")
         except Exception:
             return None
     if isinstance(ts, str) and ts:
@@ -802,7 +803,7 @@ async def create_execution(db: AsyncSession, data: OpenListExecutionCreate) -> d
         is_incremental=data.is_incremental,
         is_force=data.is_force,
         strm_only=data.strm_only,
-        started_time=datetime.now(),
+        started_time=beijing_now(),
     )
     db.add(execution)
     await db.commit()
@@ -830,7 +831,7 @@ async def batch_create_executions(db: AsyncSession, data: OpenListExecutionBatch
             is_incremental=item.is_incremental,
             is_force=item.is_force,
             strm_only=item.strm_only,
-            started_time=datetime.now(),
+            started_time=beijing_now(),
         )
         db.add(execution)
         created.append(execution)
@@ -861,7 +862,7 @@ async def batch_create_dir_executions(db: AsyncSession, data: OpenListDirExecuti
             is_incremental=data.is_incremental,
             is_force=data.is_force,
             strm_only=data.strm_only,
-            started_time=datetime.now(),
+            started_time=beijing_now(),
         )
         db.add(execution)
         created.append(execution)
@@ -914,7 +915,7 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int, ser
         cancel_key = None
 
     # 防重复启动：以 status 为唯一启动标记，先置为启动中再提交
-    execution.started_time = datetime.now()
+    execution.started_time = beijing_now()
     await db.commit()
 
     asyncio.create_task(

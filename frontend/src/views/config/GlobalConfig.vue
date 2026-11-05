@@ -8,6 +8,7 @@ import { uploaderApi } from '@/api/uploader'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListConfig, OpenListServer } from '@/types/openlist'
 import type { UploadPlatformConfig } from '@/types/uploader'
+import { formatDateTime } from '@/utils/date'
 
 const store = useOpenlistStore()
 
@@ -50,6 +51,7 @@ const formatForm = reactive({ video_formats: '', subtitle_formats: '' })
 // 123 云盘：clientID/clientSecret 保存后只回显脱敏值；token 由后端自动续期
 const pan123Config = ref<UploadPlatformConfig | null>(null)
 const pan123Form = reactive({ client_id: '', client_secret: '' })
+const pan123DialogVisible = ref(false)
 const savingPan123 = ref(false)
 const testingPan123 = ref(false)
 
@@ -269,6 +271,13 @@ async function loadPan123() {
   }
 }
 
+/** 打开编辑弹框：Client ID 回填，Secret 始终留空（留空表示不修改）。 */
+function openPan123Edit() {
+  pan123Form.client_id = pan123Config.value?.client_id ?? ''
+  pan123Form.client_secret = ''
+  pan123DialogVisible.value = true
+}
+
 /** 保存 123 云盘凭据：密钥留空表示保持不变。 */
 async function handleSavePan123() {
   savingPan123.value = true
@@ -280,6 +289,7 @@ async function handleSavePan123() {
     pan123Config.value = res.data
     pan123Form.client_id = res.data.client_id ?? ''
     pan123Form.client_secret = ''
+    pan123DialogVisible.value = false
     ElMessage.success('123 云盘配置已保存')
   } catch {
     /* 拦截器提示 */
@@ -416,7 +426,7 @@ defineExpose({ reload: load })
       </el-col>
     </el-row>
 
-    <!-- 123 云盘：上传管理模块的凭据配置（全局唯一，密钥仅脱敏回显） -->
+    <!-- 123 云盘：上传管理模块的凭据配置（全局唯一，密钥仅脱敏回显；展示卡片 + 编辑弹框） -->
     <el-card shadow="never" class="global-config__card pan123-card">
       <template #header>
         <div class="card-header">
@@ -429,12 +439,41 @@ defineExpose({ reload: load })
           </div>
           <div class="card-header__actions">
             <el-button :loading="testingPan123" @click="handleTestPan123">测试连接</el-button>
-            <el-button type="primary" :loading="savingPan123" @click="handleSavePan123">保存</el-button>
+            <el-button type="primary" :icon="Edit" @click="openPan123Edit">编辑</el-button>
           </div>
         </div>
       </template>
 
-      <el-form label-width="120px" class="pan123-form">
+      <dl v-if="pan123Config" class="meta-list">
+        <div class="meta-list__item">
+          <dt>Client ID</dt>
+          <dd>{{ pan123Config.client_id || '未配置' }}</dd>
+        </div>
+        <div class="meta-list__item">
+          <dt>Client Secret</dt>
+          <dd>{{ pan123Config.has_secret ? `已配置（${pan123Config.secret_masked}）` : '未配置' }}</dd>
+        </div>
+        <div class="meta-list__item">
+          <dt>Token 状态</dt>
+          <dd>{{ pan123TokenText }}</dd>
+        </div>
+        <div class="meta-list__item">
+          <dt>Token 过期时间</dt>
+          <dd>{{ formatDateTime(pan123Config.token_expires_at) }}</dd>
+        </div>
+      </dl>
+      <el-empty v-else description="尚未配置 123 云盘凭据" :image-size="70">
+        <el-button type="primary" :icon="Edit" @click="openPan123Edit">立即配置</el-button>
+      </el-empty>
+    </el-card>
+
+    <el-dialog
+      v-model="pan123DialogVisible"
+      title="编辑 123 云盘配置"
+      width="520px"
+      destroy-on-close
+    >
+      <el-form label-width="120px">
         <el-form-item label="Client ID">
           <el-input
             v-model="pan123Form.client_id"
@@ -457,14 +496,18 @@ defineExpose({ reload: load })
           />
           <div class="remark">密钥使用 Windows DPAPI 加密存储，接口只回显脱敏值</div>
         </el-form-item>
-        <el-form-item label="Token 状态">
-          <span class="pan123-token">{{ pan123TokenText }}</span>
-          <span v-if="pan123Config?.token_expires_at" class="global-config__muted">
-            （{{ pan123Config.token_expires_at }} 过期）
-          </span>
-        </el-form-item>
       </el-form>
-    </el-card>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button :loading="testingPan123" @click="handleTestPan123">测试连通性</el-button>
+          <div class="dialog-footer__right">
+            <el-button @click="pan123DialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="savingPan123" @click="handleSavePan123">保存</el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
+
 
     <el-dialog
       v-model="serverDialogVisible"
@@ -677,14 +720,5 @@ defineExpose({ reload: load })
 
 .pan123-card {
   margin-top: var(--up-strm-space-4, 16px);
-}
-
-.pan123-form {
-  max-width: 720px;
-
-  .pan123-token {
-    font-size: var(--up-strm-font-size-sm, 13px);
-    color: var(--el-text-color-primary);
-  }
 }
 </style>

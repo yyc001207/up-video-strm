@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
+from app.core.beijing import beijing_now
 
 from app.core.database import Base
 
@@ -21,10 +21,10 @@ class UploadPlatformConfig(Base):
         DateTime, nullable=True, comment="access_token 过期时间"
     )
     created_time: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now(), comment="创建时间"
+        DateTime, nullable=False, default=beijing_now, comment="创建时间"
     )
     updated_time: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        DateTime, nullable=False, default=beijing_now, onupdate=beijing_now, comment="更新时间"
     )
 
     __table_args__ = ({"comment": "123 云盘开放平台配置表"},)

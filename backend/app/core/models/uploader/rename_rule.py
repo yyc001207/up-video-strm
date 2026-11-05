@@ -8,7 +8,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
+from app.core.beijing import beijing_now
 
 from app.core.database import Base
 
@@ -24,10 +24,10 @@ class UploadRenameRule(Base):
         String(256), nullable=False, comment="文件名模板，如 S{season:02}E{episode:02}.{ext}"
     )
     created_time: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now(), comment="创建时间"
+        DateTime, nullable=False, default=beijing_now, comment="创建时间"
     )
     updated_time: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+        DateTime, nullable=False, default=beijing_now, onupdate=beijing_now, comment="更新时间"
     )
 
     __table_args__ = ({"comment": "上传重命名规则表"},)

@@ -11,6 +11,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.beijing import beijing_now
 from app.business.uploader import rename_engine
 from app.business.uploader.rename_engine import DEFAULT_TEMPLATE
 from app.business.uploader.pan123_client import Pan123Client
@@ -60,7 +61,7 @@ def _token_status(config: UploadPlatformConfig) -> str:
         return TOKEN_STATUS_NONE
     if config.token_expires_at is None:
         return TOKEN_STATUS_VALID
-    if config.token_expires_at <= datetime.now() + TOKEN_REFRESH_MARGIN:
+    if config.token_expires_at <= beijing_now() + TOKEN_REFRESH_MARGIN:
         return TOKEN_STATUS_EXPIRED
     return TOKEN_STATUS_VALID
 
@@ -515,7 +516,7 @@ async def start_execution(db: AsyncSession, execution_id: int, task_id: int) -> 
     if execution.started_time is not None:
         raise BadRequestException("执行记录已启动")
 
-    execution.started_time = datetime.now()
+    execution.started_time = beijing_now()
     await db.commit()
     await db.refresh(execution)
 
@@ -534,7 +535,7 @@ async def cancel_execution(db: AsyncSession, execution_id: int) -> dict:
 
     TaskStatusManager.cancel(str(execution.id))
     execution.status = "cancelled"
-    execution.finished_time = datetime.now()
+    execution.finished_time = beijing_now()
     await db.commit()
     return {"cancelled": True, "status": "cancelled"}
 

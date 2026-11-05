@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 import httpx
 
+from app.core.beijing import BEIJING_TZ
 from app.core.exceptions import BadRequestException
 
 DEFAULT_BASE_URL = "https://open-api.123pan.com"
@@ -32,14 +33,14 @@ def parse_expiry(raw: Any) -> Optional[datetime]:
         return None
     if isinstance(raw, (int, float)) or (isinstance(raw, str) and raw.strip().isdigit()):
         timestamp = float(raw)
-        return datetime.fromtimestamp(timestamp)
+        return datetime.fromtimestamp(timestamp, BEIJING_TZ).replace(tzinfo=None)
     if isinstance(raw, str):
         try:
             parsed = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
         except ValueError:
             return None
         if parsed.tzinfo is not None:
-            parsed = parsed.astimezone().replace(tzinfo=None)
+            parsed = parsed.astimezone(BEIJING_TZ).replace(tzinfo=None)
         return parsed
     return None
 

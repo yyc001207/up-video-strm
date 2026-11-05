@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from typing import Dict, Optional
 
+from app.core.beijing import BEIJING_TZ
 from app.websocket.manager import ws_manager
 
 STOP = object()
@@ -32,7 +33,7 @@ def map_level(levelname: str) -> str:
 
 
 def format_ts(ts: float) -> str:
-    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.fromtimestamp(ts, BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class ExecutionLogHandler(logging.Handler):

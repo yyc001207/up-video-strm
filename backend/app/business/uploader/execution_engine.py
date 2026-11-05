@@ -22,6 +22,7 @@ from typing import Optional
 
 from sqlalchemy import select
 
+from app.core.beijing import beijing_now
 from app.business.openlist.task_status_manager import TaskStatusManager
 from app.business.uploader import rename_engine, scanner
 from app.business.uploader.execution_logger import ExecutionLogHandler, UploadLogPump
@@ -386,7 +387,7 @@ async def _finish_execution(
             execution.file_failed = progress.get("failed", 0)
             execution.bytes_uploaded = progress.get("bytesUploaded", 0)
             execution.duration_seconds = duration_seconds
-            execution.finished_time = datetime.now()
+            execution.finished_time = beijing_now()
             execution.log_path = log_path
             await db.commit()
     except Exception as exc:

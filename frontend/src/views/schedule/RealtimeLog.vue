@@ -3,7 +3,7 @@
  * 实时日志（/schedule/realtime）
  *
  * 三段式布局：顶部进度摘要（状态 / 连接状态 / 视频与字幕进度 / 耗时）、
- * 中部可复用日志终端（LogViewer）、底部工具条（级别过滤 / 关键字 / 清屏 / 下载）。
+ * 日志工具条（级别过滤 / 关键字 / 清屏 / 下载）、可复用日志终端（LogViewer）。
  *
  * 启动时序（与旧实现保持一致）：路由 query 传入 `execs` 与 `server`；
  * launch=true 的执行先建立 WebSocket（可先看到启动前的日志），连接建立后再调用
@@ -14,11 +14,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Delete, Download, Refresh, Search } from '@element-plus/icons-vue'
-import dayjs from 'dayjs'
 
 import StatusDot from '@/components/StatusDot.vue'
 import LogViewer from '@/components/LogViewer.vue'
 import { connectWs, disconnectWs, type WsState } from '@/utils/ws'
+import { beijingMillis } from '@/utils/date'
 import { openlistApi } from '@/api/openlist'
 import type {
   ExecutionStatus,
@@ -179,9 +179,8 @@ function parseExecutions(raw: unknown): QueryExecution[] {
 }
 
 function parseTime(value: string | null | undefined): number | null {
-  if (value === null || value === undefined || value === '') return null
-  const parsed = dayjs(value)
-  return parsed.isValid() ? parsed.valueOf() : null
+  if (!value) return null
+  return beijingMillis(value)
 }
 
 /** 后端日志 ts 为 'YYYY-MM-DD HH:MM:SS'，终端内只展示时间部分。 */
@@ -667,15 +666,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <LogViewer
-      v-model:auto-scroll="autoScroll"
-      class="realtime-page__viewer"
-      :lines="filteredLines"
-      :max-lines="MAX_LOG_LINES"
-      :empty-text="emptyText"
-    />
-
-    <footer class="realtime-page__toolbar">
+    <div class="realtime-page__toolbar">
       <div class="realtime-page__filters">
         <el-select v-model="levelFilter" class="realtime-page__level-filter" size="small" aria-label="日志级别过滤">
           <el-option label="全部级别" value="all" />
@@ -706,7 +697,15 @@ onBeforeUnmount(() => {
           下载日志
         </el-button>
       </div>
-    </footer>
+    </div>
+
+    <LogViewer
+      v-model:auto-scroll="autoScroll"
+      class="realtime-page__viewer"
+      :lines="filteredLines"
+      :max-lines="MAX_LOG_LINES"
+      :empty-text="emptyText"
+    />
   </div>
 </template>
 
@@ -818,6 +817,8 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: var(--up-strm-space-2, 8px);
+    padding-bottom: var(--up-strm-space-1, 4px);
+    border-bottom: 1px solid var(--el-border-color-lighter);
   }
 
   &__filters {

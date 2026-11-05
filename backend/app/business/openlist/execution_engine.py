@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
+from app.core.beijing import beijing_now
 from app.business.openlist.execution_logger import ExecutionLogHandler, LogPump
 from app.business.openlist.strm_generator import STRMGenerator
 from app.business.openlist.task_status_manager import TaskStatusManager
@@ -58,7 +59,7 @@ async def _finish_execution(
             execution.subtitle_success_count = progress.get("successSubtitles", 0)
             execution.subtitle_total_count = progress.get("totalSubtitles", 0)
             execution.duration_seconds = duration_seconds
-            execution.finished_time = datetime.now()
+            execution.finished_time = beijing_now()
             execution.log_path = log_path
             await db.commit()
     except Exception as exc:

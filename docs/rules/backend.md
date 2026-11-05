@@ -13,10 +13,13 @@
 backend/
 ├── app/
 │   ├── main.py / desktop.py / version.py   # 入口、原生窗口外壳、版本源
-│   ├── api/                # openlist 业务路由 / desktop 桌面设置路由
-│   ├── business/openlist/  # 业务层（见下）
+│   ├── api/                # openlist / uploader / automation 业务路由、desktop 桌面设置路由
+│   ├── business/openlist/  # 任务调度业务层（见下）
+│   ├── business/uploader/  # 上传管理业务层（见下）
+│   ├── business/automation/# 自动化任务业务层（见下）
+│   ├── business/execution_registry.py  # 执行启动闸门（同任务互斥）
 │   ├── core/               # settings / paths / database / desktop_prefs / logger / exceptions / tray_win
-│   │   └── models/openlist/# ORM 模型
+│   │   └── models/         # ORM 模型（openlist / uploader / automation）
 │   ├── utils/              # 响应封装、helpers
 │   └── websocket/          # 实时日志连接管理（manager.py）
 ├── tests/                  # unittest 冒烟测试（本地，不纳入版本管理）
@@ -50,11 +53,26 @@ backend/
 | [execution_logger.py](../../backend/app/business/uploader/execution_logger.py) | 日志通道：按执行写 `upload_logs/execution_{id}.log` + WebSocket 广播 log/progress/status 帧（不落库） |
 | [schema.py](../../backend/app/business/uploader/schema.py) | Pydantic 请求/响应模型 |
 
+## 自动化任务业务层（`app/business/automation/`）
+
+| 文件 | 职责 |
+|------|------|
+| [service.py](../../backend/app/business/automation/service.py) | 任务 CRUD、绑定唯一性校验（同一上传/STRM 任务只能绑定一个自动化任务）、绑定选项、校验目录探测、运行历史查询、失败文件写回待校验 |
+| [schema.py](../../backend/app/business/automation/schema.py) | Pydantic 请求模型（创建/更新/批量删除/校验目录/启动参数/清空待校验） |
+| [registry.py](../../backend/app/business/automation/registry.py) | 进程内运行登记：运行任务、停止事件、每任务锁、运行态快照（阶段 / 下一轮时间 / 当前运行 id） |
+| [execution_engine.py](../../backend/app/business/automation/execution_engine.py) | 每任务后台循环：指纹判断 → 等待 A/B 空闲 → 触发上传 → 可见性校验 → 触发 STRM → 收尾（待校验 / 指纹 / 连续失败计数）；超时、退避与停止 |
+| [change_detector.py](../../backend/app/business/automation/change_detector.py) | 本地目录 stat 指纹（路径 + 大小 + mtime_ns，按视频格式过滤） |
+| [adapters.py](../../backend/app/business/automation/adapters.py) | A/B 调用适配层：按模式创建并启动执行、查询终态、读取上传成功的远端文件名、取消 |
+| [execution_logger.py](../../backend/app/business/automation/execution_logger.py) | 每轮日志文件 `automation_logs/automation_run_{run_id}.log` + WebSocket 广播（log / progress / status） |
+| [notifier.py](../../backend/app/business/automation/notifier.py) | 异常终止托盘通知 + 网页 `alert` 帧；主动停止不通知 |
+| [refs.py](../../backend/app/business/automation/refs.py) | A/B 任务、服务器删除前的自动化绑定引用检查 |
+| [retention.py](../../backend/app/business/automation/retention.py) | 历史与日志清理：运行记录保留 90 天且每任务最多 1000 条、日志保留 90 天且每任务最多 200 个 |
+
 ## 数据层
 
 - 无 Alembic；启动时 [database.py](../../backend/app/core/database.py) 用 `create_all` 建表 + `PRAGMA`/`ALTER TABLE` 轻量列级迁移，并写入默认全局配置。上传模块的 `episode_pattern` 列由 `_ensure_upload_columns()` 为旧库自动 `ADD COLUMN`（`upload_rename_rule`、`upload_execution`）。
 - 废弃列清理：`obsolete_column_statements()` 会针对旧库中已不再映射的物理列（`open_list_execution.strip_series`/`server_name`、`open_list_config.log_to_db`、`open_list_server.name`）生成 `ALTER TABLE ... DROP COLUMN`，`init_db()` 在 SQLite ≥ 3.35 时执行，避免旧库 `NOT NULL` 列导致新代码 INSERT 失败（4.1.1 修复）。
-- 数据表：`open_list_config`、`open_list_server`、`open_list_server_dir`、`open_list_task`、`open_list_execution`、`open_list_log`；上传管理另有 `upload_platform_config`、`upload_rename_rule`、`upload_task`、`upload_execution`、`upload_file_record`。
+- 数据表：`open_list_config`、`open_list_server`、`open_list_server_dir`、`open_list_task`、`open_list_execution`、`open_list_log`；上传管理另有 `upload_platform_config`、`upload_rename_rule`、`upload_task`、`upload_execution`、`upload_file_record`；自动化任务另有 `automation_task`、`automation_run`。
 - 输出根目录：`open_list_config.output_root`（可空）。任务输出目录以 `/` 开头时由 [strm_generator.resolve_output_base()](../../backend/app/business/openlist/strm_generator.py) 相对其解析；为空回退 `CWD/output`（源码运行即 `backend/output`；冻结运行已 `chdir` 到数据目录，落在 `%LOCALAPPDATA%\up-video-strm\output`）。
 - 默认 SQLite 路径：`./data/up_video_strm.db`（见 [settings.py](../../backend/app/core/settings.py)）；冻结运行指向数据目录下 `data/up_video_strm.db`。
 - 旧库兼容：同目录下新库 `up_video_strm.db` 不存在、而旧库 `video_strm.db` 存在时，[settings.py](../../backend/app/core/settings.py) 自动沿用旧库文件（源码 `./data` 与冻结数据目录规则一致），避免升级后数据「消失」。
@@ -69,6 +87,8 @@ backend/
 6. 启动闸门（阶段⓿）：[execution_registry.py](../../backend/app/business/execution_registry.py) 在 `start_execution` 入队前按 `(模块, execution_id) -> task_id` 登记，引擎 `finally` 注销；同模块同 `task_id` 已有活跃执行时返回 400「任务正在执行，请等待当前执行结束」，`task_id=0`（目录执行）不互斥。
 7. 进程重启清理（阶段⓿）：[database.py](../../backend/app/core/database.py) 的 `init_db` 在建表/列迁移后把遗留 `running` 执行置为 `fail` 并写 `error_code='PROCESS_RESTART'`、`error_message='进程重启中断'`；不自动恢复执行。
 8. 引用保护（阶段⓿）：[automation/refs.py](../../backend/app/business/automation/refs.py) 在 A/B 任务或服务器删除前检查是否被自动化任务绑定，命中返回 400「任务正被自动化任务「X」绑定，请先解除绑定后再删除」。
+9. 自动化任务链路：由 `POST /api/automation/tasks/{id}/start` 启动后台循环，每轮先按本地目录指纹判断是否有新增/变化（无变化不建运行记录）；有待校验文件时跳过上传直接校验，否则等待 A/B 空闲后创建并启动上传（冲突策略固定跳过）。上传成功后按 `remote_name` 轮询 `check_dir` 可见性，全部可见后触发 STRM 任务；成功后清空待校验并提交指纹，失败保留待校验供下一轮补偿。轮次间隔 60s，连续 3 次轮次失败终止，进程重启不自动恢复（残留 `running` 置 `fail` + `PROCESS_RESTART`）。
+10. 自动化任务接口：任务 CRUD / 批量删除 / 绑定选项 / 校验目录、启动 / 批量启动 / 停止 / 重置指纹 / 清空待校验、`GET /api/automation/active`、运行历史 `/api/automation/runs`、运行日志 `/runs/{id}/logs`、失败重试 `/runs/{id}/retry-failed`，以及 WebSocket `/api/automation/ws/{task_id}`（log / progress / status / alert 帧）。历史与日志清理由 [retention.py](../../backend/app/business/automation/retention.py) 在启动时执行一次并每日定时执行。
 
 ## 环境变量（backend/.env，应用配置）
 

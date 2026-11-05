@@ -20,6 +20,7 @@
 | 实时日志 | WebSocket 实时推送，多任务切换查看 |
 | 上传管理 | 与任务调度平级的独立模块，面向 123 云盘：上传任务（本地/云端目录、季数与起始集号）、重命名规则（`SxxExx` 模板预览）、执行管理（冲突策略 / 并发 / 重试 / 试运行）、实时日志、任务历史（文件明细 / 打开日志文件夹 / 重跑） |
 | 上传执行 | 六阶段流水线（扫描 → 过滤 → 重命名 → 预上传清单 → 重复检查 → 上传）；同名冲突支持跳过 / 覆盖 / 追加后缀，进度与日志经 WebSocket 实时推送 |
+| 自动化任务 | 与任务调度、上传管理平级的独立模块：把「上传任务」与「STRM 任务」串联为轮询链路——本地新增 → 上传到 123 云盘 → 校验 OpenList 可见性 → 触发 STRM 生成；含任务配置、执行管理、实时日志、任务历史与失败文件补偿 |
 | 桌面版 | 原生 WebView2 窗口、系统托盘常驻、开机自启、启动/关闭最小化到托盘、单实例唤起 |
 | 界面主题 | 浅色 / 深色 / 跟随系统一键切换，本地记忆、首屏无闪烁 |
 
@@ -93,7 +94,7 @@ npm run preview                   # 本地预览构建产物
 | [docs/rules/frontend.md](docs/rules/frontend.md) | 前端技术栈、目录结构、页面组件、接口与状态 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本演进记录：各版本的级别、变更要点与版本判定依据 |
 | [docs/design/upload-module-plan.md](docs/design/upload-module-plan.md) | 上传管理模块设计计划：信息架构、数据模型、执行流水线、123 云盘对接与测试约束 |
-| [docs/design/automation-module-plan.md](docs/design/automation-module-plan.md) | 自动化任务模块设计计划：三模块平级、B→OpenList 校验→A 链路、等待机制与触发来源 |
+| [docs/design/automation-module-plan.md](docs/design/automation-module-plan.md) | 自动化任务模块设计计划：四模块平级、B→OpenList 校验→A 链路、等待机制与触发来源 |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 

@@ -1,5 +1,6 @@
 """SQLite 异步数据库：启动时自动建表 + 种子数据（本地部署，无需 Alembic 迁移）。"""
 
+import logging
 from pathlib import Path
 
 from sqlalchemy import text
@@ -16,6 +17,29 @@ DATABASE_URL = f"sqlite+aiosqlite:///{settings.sqlite_path}"
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 Base = declarative_base()
+
+logger = logging.getLogger("up-video-strm")
+
+# 功能已移除、但旧库仍残留的列：旧库中部分列是 NOT NULL（如 strip_series），
+# 新代码不再写入会让插入失败，因此启动时清理旧列，保证升级用户可继续新增记录。
+_OBSOLETE_COLUMNS: dict[str, tuple[str, ...]] = {
+    "open_list_execution": ("strip_series", "server_name"),
+    "open_list_config": ("log_to_db",),
+    "open_list_server": ("name",),
+}
+
+# SQLite 3.35+ 才支持 ALTER TABLE ... DROP COLUMN。
+_SQLITE_DROP_COLUMN_MIN_VERSION = (3, 35, 0)
+
+
+def obsolete_column_statements(existing_columns: dict[str, set[str]]) -> list[str]:
+    """按现有列集合生成清理旧列的 ALTER 语句（纯函数，便于单元测试）。"""
+    return [
+        f"ALTER TABLE {table} DROP COLUMN {column}"
+        for table, columns in _OBSOLETE_COLUMNS.items()
+        for column in columns
+        if column in existing_columns.get(table, set())
+    ]
 
 
 async def get_db():
@@ -64,6 +88,33 @@ async def _ensure_task_columns() -> None:
             await conn.execute(text("ALTER TABLE open_list_task ADD COLUMN server_id INTEGER"))
 
 
+async def _drop_obsolete_columns() -> None:
+    """清理旧库中已废弃的列（功能已移除但仍残留）。
+
+    旧库的 ``open_list_execution.strip_series``、``open_list_config.log_to_db``
+    等列带 NOT NULL 约束且新代码不再写入，不清理会导致新增执行/配置记录时报
+    ``NOT NULL constraint failed``。新库由 create_all 直接建出干净结构，此函数自动跳过。
+    """
+    async with engine.begin() as conn:
+        version_text = (await conn.execute(text("select sqlite_version()"))).scalar() or "0.0.0"
+        version = tuple(int(part) for part in version_text.split(".")[:3])
+        if version < _SQLITE_DROP_COLUMN_MIN_VERSION:
+            logger.warning(
+                "SQLite %s 不支持 DROP COLUMN，跳过旧列清理（升级用户可能无法新增记录）",
+                version_text,
+            )
+            return
+        existing_columns: dict[str, set[str]] = {}
+        for table in _OBSOLETE_COLUMNS:
+            rows = await conn.execute(text(f"PRAGMA table_info({table})"))
+            existing_columns[table] = {row[1] for row in rows}
+        statements = obsolete_column_statements(existing_columns)
+        for statement in statements:
+            await conn.execute(text(statement))
+        if statements:
+            logger.info("已清理旧库废弃列：%s", len(statements))
+
+
 async def _bind_orphan_tasks_to_default_server() -> None:
     """迁移：旧任务（server_id 为空）绑定到第一个启用服务器（幂等）。"""
     from sqlalchemy import select
@@ -103,6 +154,7 @@ async def init_db() -> None:
     await _ensure_config_columns()
     await _ensure_execution_columns()
     await _ensure_task_columns()
+    await _drop_obsolete_columns()
     async with AsyncSessionLocal() as session:
         await seed_default_openlist_config(session)
     await _bind_orphan_tasks_to_default_server()

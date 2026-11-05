@@ -21,6 +21,16 @@
 
 - 暂无。
 
+## [4.7.0] - 2026-11-05
+
+**级别：MINOR（新增交互与接口）** · 代码见本次提交
+
+- 日志收尾信息补全：上传执行在重命名阶段输出 `重命名：原文件 -> 新文件`（如 `重命名：Show.S01E13.mp4 -> S02E01.mp4`），上传前输出 `开始上传：共 N 个文件（并发 M）`，上传后输出 `上传完成：成功/跳过/失败/剩余待处理`，结束时输出 `任务结束：状态=成功|失败|部分完成|已取消 … 用时 N 秒`。
+- 实时日志状态一致性：无执行记录时上传实时日志显示「无运行中任务」而非「运行中」；WebSocket 建连后若执行已结束，直接显示最终状态并断开连接（刷新回放不再卡在「运行中」）。
+- 全系统日志操作统一为「打开日志文件夹」：新增 `POST /api/desktop/open-log-dir`（`kind=openlist|upload`，在资源管理器打开对应日志目录，非 Windows/网页版返回 400），移除任务调度与上传管理的 `log-download` 接口与前端下载方法；实时日志工具条与任务历史行操作按钮同步替换。
+- 文档：`manual/用户手册.md`、`docs/rules/frontend.md`、`docs/rules/backend.md`、`README.md`、`docs/design/upload-module-plan.md`、`docs/design/ui-redesign-plan.md` 同步日志目录、上传业务层与打开日志文件夹说明。
+- 单测：新增 `backend/tests/test_desktop_open_log_dir.py`（4 用例）与流水线日志断言，后端全量 **86 tests OK**。
+
 ## [4.6.1] - 2026-11-05
 
 **级别：PATCH（缺陷修复）** · 代码见本次提交

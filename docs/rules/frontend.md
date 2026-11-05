@@ -61,14 +61,14 @@ frontend/
 - `Execution.vue`：一行三卡片（选择任务 / 执行参数 / 已选任务），执行模式用 `el-segmented`（增量 / 全量 / 仅 strm）；「已选任务」卡片承载摘要与「清空选择 / 执行任务」操作；「正在执行」表支持查看日志与取消，5s 轮询刷新。
 - `GlobalConfig.vue`：全局配置模块单页——左侧单服务器卡片（无服务器时为空态 + 新增；标题右侧显示连通状态标签：在线 / 离线 / 未配置 / 检测中，进入页面及每 60s 轮询探测；卡片展示服务器地址 / Token 是否配置 / 父级目录标签，可编辑、刷新缓存、删除），右侧视频与字幕格式摘要卡 + 编辑抽屉；底部 123 云盘「摘要卡 + 编辑弹框」：卡头为状态标签与测试连接 / 编辑 / 删除按钮（删除需二次确认，调用 `DELETE /api/upload/config` 清空凭据与缓存 Token），卡体展示 Client ID、脱敏后的 Client Secret、Token 状态与过期时间（`formatDateTime`），未配置时为空态「立即配置」，编辑入口打开 `el-dialog` 修改 Client ID / Secret。三张卡片头部的操作按钮统一为 `plain`（镂空）风格，删除一律 `type="danger" plain`。
 - `TaskManage.vue`：页顶部「默认运行参数」卡（最大并发、限流、SSL 校验、输出目录前缀与根目录）+ 编辑抽屉（配置全局生效，任务未单独设置时使用）；工具栏分组（搜索 / 新建、快速添加、批量删除）；表格任务名与路径双行；快速添加使用 `DirTreePanel.vue`（目录树勾选 + 搜索下钻 + 缓存刷新）。
-- `TaskHistory.vue`：列表（每任务最近执行 + 状态点）与页面级详情（分页 20、日志抽屉、下载日志）。
-- `RealtimeLog.vue`：三段式（进度摘要 / `LogViewer` 终端 / 级别与关键字过滤、清屏、下载日志）；日志工具条位于**页面顶部**（终端之上），状态帧结束即断开并提示前往任务历史。
+- `TaskHistory.vue`：列表（每任务最近执行 + 状态点）与页面级详情（分页 20、日志抽屉、「日志文件夹」在资源管理器中打开日志目录）。
+- `RealtimeLog.vue`：三段式（进度摘要 / `LogViewer` 终端 / 级别与关键字过滤、清屏、打开日志文件夹）；日志工具条位于**页面顶部**（终端之上），状态帧结束即断开并提示前往任务历史。
 - 通用组件：`StatusDot.vue`（执行状态点 + 文案）、`LogViewer.vue`（可复用日志终端）、`ThemeToggle.vue`（浅色 / 深色 / 跟随系统）。
 - `TaskConfig.vue`（上传管理）：上传任务列表与抽屉编辑（任务名 / 本地目录 / 云端目录 / 输出季数 / 源起始集号 / 命名规则）；本地目录可点「浏览」调用桌面端 `window.pywebview.api.pick_directory()` 快速选择（网页版提示手动输入）；云端目录不预填 `/test`，用 `RemoteDirPanel.vue` **逐级导航**选择（打开只请求根目录一次，点击目录行进入下级、每次进入仅一次接口；面包屑与「返回上级」可回退；底部醒目展示当前目录，确认后回填；只读浏览、不自动建目录，提示仅使用 `/test`）；集号换算提示为「季内集号 = 绝对集号 − 起始集号 + 1」。
 - `RenameRules.vue`（上传管理）：规则列表 + 模板编辑对话框（变量 `{season}` / `{episode}` / `{ext}`，`:02` 补零）+ 文件名预览（显示解析出的绝对集号或原因）；被任务引用的规则不可删除。
 - `Execution.vue`（上传管理）：一行三卡片（选择任务 / 执行参数 / 已选任务），卡片高度随各自内容自适应（列表超高时内部滚动）；执行参数为冲突策略（跳过 / 覆盖 / 追加后缀）、并发上传、失败重试、试运行；批量创建执行记录后跳转实时日志页，由 WS 连接成功后逐个启动；「正在执行」表 5s 轮询，可查看日志或取消。
-- `RealtimeLog.vue`（上传管理）：顶部连接状态与执行选择、6 阶段进度摘要（总数 / 成功 / 跳过 / 失败 / 已上传字节 / 用时 / 当前文件）、日志终端与级别 / 关键字过滤；状态帧结束后自动切到下一个排队执行，全部结束停留回放最近日志。
-- `TaskHistory.vue`（上传管理）：列表按任务汇总（最近执行 + 累计次数），进入详情后展示该任务全部执行记录（状态 / 冲突策略 / 文件统计），可查看文件粒度明细抽屉、日志回放 / 下载，并按原执行固化参数重跑（跳转实时日志自动启动）。
+- `RealtimeLog.vue`（上传管理）：顶部连接状态与执行选择、6 阶段进度摘要（总数 / 成功 / 跳过 / 失败 / 已上传字节 / 用时 / 当前文件）、日志终端与级别 / 关键字过滤，以及「打开日志文件夹」；状态帧结束后自动切到下一个排队执行，全部结束停留回放最近日志。无执行记录时展示「无运行中任务」而不是「运行中」；WS 连接建立后若执行已结束，直接显示最终状态并断开连接。
+- `TaskHistory.vue`（上传管理）：列表按任务汇总（最近执行 + 累计次数），进入详情后展示该任务全部执行记录（状态 / 冲突策略 / 文件统计），可查看文件粒度明细抽屉、日志回放 / 打开日志文件夹，并按原执行固化参数重跑（跳转实时日志自动启动）。
 
 ## 设计与令牌
 
@@ -79,7 +79,7 @@ frontend/
 
 ## 接口与状态
 
-- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)。
+- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
 - 后端 API 基址由 `VITE_API_BASE_URL` 控制（默认 `/api`）。
 - Pinia store：[stores/openlist.ts](../../frontend/src/stores/openlist.ts)（业务，含 `runningCount`）、[stores/theme.ts](../../frontend/src/stores/theme.ts)（浅色/深色/跟随系统，localStorage 记忆，键名 `up-video-strm-theme`，首屏无闪烁）。
 - WebSocket 工具：[utils/ws.ts](../../frontend/src/utils/ws.ts)，连接 `ws://.../api/openlist/ws/{execution_id}`。

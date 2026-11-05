@@ -224,7 +224,8 @@ backend/app/api/uploader.py    # /api/upload/* 路由（main.py include_router�
 | POST | `/api/upload/executions/start`、`/cancel` | 启动 / 取消（创建后可先连 WS 再启动，对齐调度模块时序） |
 | GET | `/api/upload/executions`、`/executions/{id}` | 执行列表 / 详情 |
 | GET | `/api/upload/history`、`/history/task/{taskId}` | 历史汇总 / 按任务历史 |
-| GET | `/api/upload/executions/{id}/records`、`/logs`、`/log-download` | 文件记录分页、日志读取、日志下载 |
+| GET | `/api/upload/executions/{id}/records`、`/logs` | 文件记录分页、日志读取 |
+| POST | `/api/desktop/open-log-dir` | 在资源管理器中打开日志目录（`kind=openlist|upload`，替代日志下载） |
 | WS | `/api/upload/ws/{execution_id}` | 实时日志 / 进度 / 状态 |
 
 ## 10. 页面设计要点（样式对齐任务调度）

@@ -1,8 +1,8 @@
 # 自动化任务模块（模块 C）设计与实现计划
 
-> 状态：**待第三轮短评审**（已按[第二轮评审意见](automation-module-plan-review-round2.md)对 5 项阻断 P0 与 P1/P2 项做针对性修订；第二轮涉及的 3 项行为变化——失败策略分级、A/B 共享启动闸门、空轮处理——已获用户确认（2026-11-06）；本文只描述设计，评审通过后再实施代码）
+> 状态：**已按第三轮评审补齐口径，待 Go 开工**（已按[第三轮评审意见](automation-module-plan-review-round3.md)补齐 1 项残余 P0 与 6 项 P1 的书面口径，并吸收 7 项 P2 备注；第三轮结论为「补完即可实施、不需要第四轮评审」；本文只描述设计，用户确认开工后再写代码）
 >
-> 关联文档：[上传管理模块计划](upload-module-plan.md) · [第一轮评审意见](automation-module-plan-review.md) · [第二轮评审意见](automation-module-plan-review-round2.md) · [前端规范](../rules/frontend.md) · [后端规范](../rules/backend.md)
+> 关联文档：[上传管理模块计划](upload-module-plan.md) · [第一轮评审意见](automation-module-plan-review.md) · [第二轮评审意见](automation-module-plan-review-round2.md) · [第三轮评审意见](automation-module-plan-review-round3.md) · [前端规范](../rules/frontend.md) · [后端规范](../rules/backend.md)
 
 ## 1. 背景与定位
 
@@ -48,34 +48,37 @@
 
 ```text
 每轮（任务运行循环开始）
-  if task.pending_files 非空:                 # 补偿 / 续校验路径
-       跳过指纹判定，直接进入「建 run → OpenList 校验 pending」
+  F = 本地视频指纹（路径+大小+mtime_ns；范围与 B 扫描一致：视频格式、跳过隐藏/系统文件）   # 每轮始终计算
+  if pending_files 非空:                       # 补偿 / 续校验路径
+        跳过指纹判定与 B，建 run → 等空闲 → OpenList 校验 pending
   else:
-       F = 本地视频指纹（路径+大小+mtime_ns；范围与 B 扫描一致：视频格式、跳过隐藏/系统文件）
-       if 本地无视频: 提交空集指纹；WS「本轮无视频文件，跳过」；等 interval → 下一轮
-       if F == task.scan_fingerprint: WS「无本地变更，跳过本轮」；等 interval → 下一轮
-       建 run（round_no = last_round_no + 1）
-  等待绑定 A/B 空闲（共享启动闸门 is_task_active；超时 idle_wait_timeout → 轮次失败）
-  若 pending 为空：创建并启动 B（conflict_policy=skip）；否则跳过 B（直接校验 pending）
+        if 本地无视频: 提交空集指纹；WS「本轮无视频文件，跳过」；等 interval → 下一轮
+        if F == task.scan_fingerprint: WS「无本地变更，跳过本轮」；等 interval → 下一轮
+        建 run（round_no = last_round_no + 1）
+  等待绑定 A/B 空闲（共享启动闸门 is_task_active；超时 idle_wait_timeout → 轮次失败；
+    收到 TASK_BUSY 400 视为仍在等待，不计失败）
+  若 pending 为空：创建并启动 B（conflict_policy=skip，trigger_source=automation）；否则跳过 B
   phase=waiting_upload → B 终态：
-       file_total==0 且 failed==0 → run success（empty，new_file_count=0）+ 提交指纹 + 不执行 A → 结束
-       success+skipped>0 → new_files = 本次 status='success' 的 remote_name 集合
-                          pending = pending ∪ new_files
-       success+skipped==0 且 failed>0 → 轮次失败（需 error_code 区分扫描错误→致命）
-  phase=waiting_openlist_check（pending 为空时跳过）：OpenList 精确校验 pending
-       全部可见 → phase=waiting_openlist_task → 启动 A（openlist_mode）
-       超时 / API 5xx → 轮次失败（pending 保留；退避后下一轮重新校验 → 补偿）
+        file_total==0 且 failed==0 → run success（本轮无文件，new_file_count=0）+ 提交指纹 + 不执行 A → 结束
+        success+skipped>0 → pending = pending ∪ {本次 status='success' 的 remote_name}
+                            pending_fingerprint = F（记录产生 pending 时的扫描状态）
+        success+skipped==0 且 failed>0 → 轮次失败（error_code 区分扫描错误→致命）
+  phase=waiting_openlist_check（pending 为空时跳过）：OpenList 精确校验 pending（每退避步至少一次 refresh=True）
+        全部可见 → phase=waiting_openlist_task → 启动 A（openlist_mode）
+        超时 / API 5xx → 轮次失败（pending 保留；退避后下一轮重新校验 → 补偿）
   A 终态：
-       成功 → 清空 pending + 提交指纹 → run success（B 有失败文件时 status=partial）
-       失败/取消 → 轮次失败（pending 保留；退避后下一轮重新校验并重跑 A）
+        成功 → 清空 pending + pending_fingerprint + 提交指纹（scan_fingerprint = pending_fingerprint ?? F）
+               → run success（B 有失败文件时 status=partial）
+        失败/取消 → 轮次失败（pending 保留；退避后下一轮重新校验并重跑 A）
   轮次失败 → consecutive_failures++，等退避后下一轮；连续 3 次 → 终止任务（致命，通知）
   A/B 配置类错误（任务/目录不存在、凭据失效、check_dir 不可访问）→ 立即终止（致命，不重试）
 ```
 
 关键规则：
 
-1. **指纹语义 = 上次完整成功**：仅当「pending 清空且 A 成功」时提交；空轮提交空集指纹（避免每轮重复扫描空目录）。
-2. **手动启动强制一轮**（跳过指纹判定）；**本轮无新增上传时仍执行 A**（保证 A 失败可补偿、首次配置时云端已有文件也能生成 STRM）。
+
+1. **指纹语义 = 上次完整成功**：`scan_fingerprint` 仅当「pending 清空且 A 成功」时提交；若本轮产生过 pending，则提交 `pending_fingerprint`（产生 pending 时那一轮的 F），否则提交本轮 F；空轮提交空集指纹（避免每轮重复扫描空目录）。
+2. **手动启动强制一轮**（跳过指纹判定）；**本轮无新增上传时仍执行 A**（保证 A 失败可补偿、首次配置时云端已有文件也能生成 STRM）。若 pending 非空，手动启动**优先处理待校验文件**（不跑 B）；需要处理新本地文件时先清除 pending。手动启动同时把 `consecutive_failures` 复位为 0。
 3. **pending 决定了可见性校验**：本轮/历史轮 B 成功上传的文件进入 `automation_task.pending_files`（JSON），只有「OpenList 全部可见 + A 成功」后才清空。因此补偿路径（A 失败、OpenList 超时、校验阶段进程重启）都会重新校验，不会因「本轮新文件为 0」而跳过校验。
 4. **绑定唯一 + 共享启动闸门**：同一 A/B 任务只能被一个自动化任务绑定（部分唯一索引 + 应用层校验）；A/B 的 `start_execution` 增加**共享按任务启动闸门**（任务已有活跃执行 → 400「任务正在执行」），手动与自动化都受同一约束，自动化侧用 `idle_wait_timeout` 等待空闲并浮出提示。
 5. **失败分级**：见 §10.1 矩阵——**轮次失败**（A/OpenList/网络/B 全失败/空闲超时）退避后继续，连续 3 次才终止；**配置错误**立即终止。
@@ -83,6 +86,11 @@
 7. **停止语义**：只取消本轮 `trigger_ref == automation_run:{id}` 的 B/A 执行；等待空闲/OpenList 等待阶段可立即打断；先进入 `phase=stopping`，等 B/A 终态（或 `stage_timeout`）后 run 记 `cancelled`，补日志结束行与 WS 终帧。
 8. **无变更轮**：不建 run、不落日志文件，仅实时日志页一行「无本地变更，跳过本轮」（回放不可见）。
 9. **轮次间隔中停止**：只停循环，不产生 run 终态；`/active` 返回 `phase=interval` 与 `next_round_at`。
+10. **pending 清除出口（R3-P0-1）**：提供 `POST /tasks/{id}/pending/clear`（可指定 `remote_names`，空表示全部）与 UI「忽略选中 / 全部清除」；二次确认写明「这些文件不再等待校验，也不会自动重试」；清除后写系统日志 + WS 事件；pending 清空后下一轮按指纹正常走 B/A，避免「永久不可见文件」死循环（v1 仅手动出口；连续 N 次校验失败自动移出留待后续版本）。
+11. **A 目录执行不受任务闸门约束（R3-P1-2）**：闸门只对 `task_id > 0` 的任务执行生效；A 的目录执行（`task_id=0`，取消键为 execution_id）不参与按任务闸门，避免所有目录执行互相排斥。
+12. **OpenList 刷新策略（R3-P1-6）**：等待期间每个退避步至少一次 `refresh=True`（或每 3 次轮询刷新一次）；bootstrap / pending 为空的首次执行 A 之前，先对 `check_dir` 做一次 `refresh=True` 预热，避免 A 生成器（默认 `refresh=False`）读到旧缓存。
+13. **stage_timeout 收尾（R3-P1-5）**：30s grace 后执行仍活跃 → 只记 run 轮次失败 `STAGE_TIMEOUT` 并标记该执行 orphan（不再重复取消）；下一轮闸门会等到其结束或 `idle_wait_timeout`，日志写明确切原因。
+14. **外部取消语义（R3-P2-5）**：用户在 A/B 页面手动取消自动化触发的执行 → 本轮记轮次失败 `A_CANCELLED` / `B_CANCELLED`（重试 3 次后终止），实时日志与历史写明「执行被外部取消」。
 
 ## 3. 子模块功能
 
@@ -98,7 +106,7 @@
   - 超时：`wait_interval_seconds`（5-120，默认 15，作为退避基数）、`openlist_wait_timeout`（60-3600，默认 600）、`idle_wait_timeout`（60-3600，默认 600）、`stage_timeout`（60-7200，默认 3600）；
   - 循环间隔：`interval_seconds`（10-3600，默认 60；0 不支持，API/UI 双重最小 10）；
   - 指纹只读展示（`scan_time`）＋「重新扫描并补齐 STRM」按钮（`reset-fingerprint`）；
-  - pending 只读展示（当前待校验文件数）＋「查看待校验文件」。
+  - pending 展示（当前待校验文件数）＋「查看待校验文件」抽屉：抽屉内支持「忽略选中 / 全部清除」（调 `POST /tasks/{id}/pending/clear`），操作后写系统日志与 WS 事件。
 - 保存校验：B/A 任务存在且未删除、A 所属服务器启用、`check_dir` 非空且与 B `remote_dir` 映射一致（`openlist_remote_prefix + remote_dir == check_dir`，空前缀时直接相等）、名称唯一、绑定唯一；保存时调用 OpenList 检测 `check_dir` 可访问（不可达警告但允许保存）。
 - **不提供试运行参数**；B 模块自身保留。
 - **运行中限制编辑**：运行中编辑抽屉只读；停止后可改。
@@ -106,10 +114,12 @@
 ### 3.2 执行管理（`/automation/execution`）
 
 - 顶部卡片式操作区：选择自动化任务（多选）→ 配置本次启动参数（并发数/重试次数/A 模式可临时覆盖）→ 启动；多选启动走 `POST /tasks/batch-start`，逐项返回结果（已在运行、绑定任务被手动执行占用等以行内提示，不影响其它任务启动）。
-- **手动启动总是强制执行一轮**（跳过指纹；无新增上传也执行 A）。
+- **手动启动总是强制执行一轮**（跳过指纹；无新增上传也执行 A；`consecutive_failures` 复位为 0）。pending 非空时优先处理待校验文件（不跑 B），启动提示写明该语义。
 - 运行中列表：任务名、绑定关系、状态（运行中/成功/部分完成/失败/已取消）、当前轮次、当前阶段（等待空闲/等待 B/校验 OpenList/等待 A/轮次间隔/停止中）、开始时间、操作（详情/实时日志/停止）。
 - 停止 = 只取消本轮自有 B/A 执行 + 打断等待 + 写 `cancelled` 终态；「等待空闲」时只退出等待。
-- **重试失败文件**：run 为 `partial` 时提供按钮——启动一次强制轮（跳过指纹），B 按 skip 策略重试失败项、已成功项跳过。
+- 启动/轮询收到 `TASK_BUSY`（绑定任务被手动执行占用）→ 回到「等待空闲」继续轮询，直到 `idle_wait_timeout` 或空闲，**不计入 consecutive_failures**。
+- 若本轮自动化触发的 B/A 执行被用户在 A/B 页面取消 → 按轮次失败 `B_CANCELLED` / `A_CANCELLED` 处理（重试 3 次后终止），日志提示「执行被外部取消」。
+- **重试失败文件**：仅当 run 为 `partial`、任务未运行、pending 为空时可用；调用时复位 `consecutive_failures`，启动一次强制轮（跳过指纹），B 按 skip 策略重试失败项、已成功项跳过；条件不满足返回 400。
 - 失败/终止任务行提供「重新启动」（跳过指纹）。
 
 ### 3.3 实时日志（`/automation/realtime`）
@@ -149,6 +159,7 @@
 | stage_timeout | int | 默认 3600（60-7200） |
 | interval_seconds | int | 轮次间隔，默认 60（10-3600） |
 | pending_files | text NULL | 待完成文件（JSON 数组，`remote_name` 列表；B 成功后写入，OpenList 验证 + A 成功后清空） |
+| pending_fingerprint | varchar(64) NULL | 产生 pending 时的扫描指纹；A 成功清 pending 时提交为 `scan_fingerprint` |
 | scan_fingerprint | varchar(64) NULL | 上次完整成功指纹 |
 | scan_time | datetime NULL | 指纹提交时间（北京时间） |
 | last_round_no | int | 最近一轮轮次号（避免保留清理后 round_no 重置） |
@@ -170,7 +181,7 @@
 | task_name | varchar(128) | 冗余快照 |
 | round_no | int | 第几轮（建 run 递增） |
 | status | enum | running / success / partial / fail / cancelled |
-| phase | varchar(32) | waiting_idle / waiting_upload / waiting_openlist_check / waiting_openlist_task / interval / stopping |
+| phase | varchar(32) | waiting_idle / waiting_upload / waiting_openlist_check / waiting_openlist_task / stopping（`interval` 只出现在 `/active` 任务运行时，不进 run.phase；R3-P2-2） |
 | upload_execution_id | int NULL | 本轮 B 执行 ID（补偿轮可为空） |
 | openlist_execution_id | int NULL | 本轮 A 执行 ID |
 | new_file_count | int | 本轮 B 新上传成功文件数（0 时 UI 显示「已同步」/「本轮无文件」） |
@@ -216,9 +227,9 @@
 | `schema.py` | 任务/运行/启动参数/批量启动 Pydantic 模型 |
 | `service.py` | 任务 CRUD（软删、名称与绑定唯一校验、批量绑定整体校验）、run 查询与保留清理、启动/停止/批量启动/重试失败文件入口、check_dir 检测 |
 | `registry.py` | 运行实例表 `{task_id: asyncio.Task}`、按 `(kind,id)` 的 FIFO 锁（**不维护排队位次**；唯一绑定后仅用于 C 内部启动互斥）、停止事件 `asyncio.Event` |
-| `execution_engine.py` | 可恢复状态机：pending 优先 → 指纹 → 启动闸门 → B → 精确校验 → A → 提交/清除 → 轮次失败退避；`stopping` 收尾 |
+| `execution_engine.py` | 可恢复状态机：每轮始终计算 F → pending 优先 → 指纹 → 启动闸门（`TASK_BUSY` 回到等待）→ B → 精确校验（周期 refresh）→ A → 提交 pending_fingerprint/清除 → 轮次失败退避；`stopping`/orphan 收尾 |
 | `change_detector.py` | 视频文件 stat 指纹（范围复用 B 扩展名与跳过规则）、比对与提交 |
-| `adapters.py` | 封装 A/B 的执行创建、启动、状态（含 error_code）、取消、活跃检查（is_task_active/is_execution_active） |
+| `adapters.py` | 封装 A/B 的执行创建、启动（`TASK_BUSY` 识别）、状态（含 error_code）、取消、活跃检查（is_task_active 仅 task_id>0 / is_execution_active） |
 | `notifier.py` | 终止通知：桌面版经模块级托盘通知器（线程安全投递）、网页版仅写 WS status 帧（前端红点/未读存储由前端维护） |
 | `execution_logger.py` | 每 run Logger + 日志队列泵（写文件 + WS 广播） |
 
@@ -228,15 +239,15 @@
 
 - B：`uploader.service.create_execution(conflict_policy="skip")` + `start_execution`；取消键 `str(execution_id)`；B 执行记录的 `error_code/error_message` 由 B 引擎在失败时写入。
 - A：`openlist.service.create_execution` + `start_execution`；**取消键改为 `str(execution_id)`**（§9 ⓿-2）；`openlist_mode` 映射 `(is_force, strm_only)`：incremental→(False,False)、full→(True,False)、strm_only→(False,True)。
-- 启动闸门：A/B `start_execution` 在**入队前**检查并注册活跃执行（`is_task_active(task_id)` 为真 → 400「任务正在执行」），引擎 `finally` 注销；排队中的执行也算活跃。
+- 启动闸门：A/B `start_execution` 在**入队前**检查并注册活跃执行（`is_task_active(task_id)` 为真 → 400「任务正在执行」），引擎 `finally` 注销；排队中的执行也算活跃。**仅 `task_id > 0` 生效**；A 目录执行（`task_id=0`）跳过闸门、仍按 execution_id 取消键登记（R3-P1-2）。
 - OpenList：`OpenListAPI.list_files(check_dir, refresh=...)`；只比对 `remote_name`（平铺，不递归）。
 - WebSocket：`ws_manager.broadcast(key, frame)`，key 归一化为字符串（`automation:{task_id}`），manager 键类型放宽为 `int | str`，路由边界统一转 str。
 - 桌面：`POST /api/desktop/open-log-dir` 扩展 `kind=automation`。
 
 轮询、超时与生命周期：
 
-- 空闲检查：先查 A/B 活跃注册表，再查 DB 兜底（`status='running'` 且 `started_time` 在 `stage_timeout` 窗口内）；每 2s 轮询，超过 `idle_wait_timeout` → 轮次失败 `IDLE_TIMEOUT`。
-- B/A 终态：每 2s 查询；超过 `stage_timeout` → 先请求取消（A/B 各自取消接口），给 30s grace 期等终态，再记轮次失败 `STAGE_TIMEOUT`。
+- 空闲检查：先查 A/B 活跃注册表，再查 DB 兜底（`status='running'` 且 `started_time` 在 `stage_timeout` 窗口内）；每 2s 轮询；启动请求收到 `TASK_BUSY` 视为继续等待（R3-P1-3），超过 `idle_wait_timeout` → 轮次失败 `IDLE_TIMEOUT`。
+- B/A 终态：每 2s 查询；超过 `stage_timeout` → 先请求取消（A/B 各自取消接口），给 30s grace 期等终态；仍活跃 → 记轮次失败 `STAGE_TIMEOUT` 并把该执行标记 orphan（之后不再重复取消，闸门等待其结束或 idle 超时），日志记录（R3-P1-5）。
 - OpenList 可见性：见 §6。
 - 进程生命周期：运行实例仅进程内有效；应用退出 → 自动化停止。**启动清理**：lifespan 在 `init_db()` 后把 `open_list_execution` / `upload_execution` / `automation_run` 中 `status='running'` 置 `fail`，`error_message='进程重启中断'`（`automation_run` 另记 `PROCESS_RESTART`），清空 A/B 活跃注册表；不自动恢复，UI 提示手动启动。
 - 同一自动化任务只允许一个运行实例；重复启动 400。
@@ -247,9 +258,10 @@
 - **校验目录 = 精确映射**：`check_dir` 必须等于 B `remote_dir` 在 OpenList 中的路径（含全局 `openlist_remote_prefix` 时按「前缀 + 后缀」规范化校验；不解析多级子目录）。不做递归校验：B 的上传记录只有 `local_path`/`remote_name`，云端目录结构平铺到 `remote_dir`，无法可靠推导子路径。
 - **保存校验**：保存时校验 `check_dir` 与 B `remote_dir` 的映射一致性；调用 OpenList 检测目录存在且可列（不可达时警告但允许保存）。
 - **启动前校验**：任务启动时再次检测 `check_dir`；不可访问 → 400 拒绝启动（不建 run、不产生无意义失败记录）。
+- **bootstrap 预热**：pending 为空且即将执行 A 之前，先对 `check_dir` 做一次 `refresh=True` 预热（A 生成器默认 `refresh=False`），再启动 A。
 - **检测目录映射接口**：`POST /tasks/check-dir`（新建时不传 task_id，body 带 `upload_task_id` + `check_dir`）返回规范化结果、目录样例文件（最多 20 个）与映射是否一致。
-- **可见性校验**：`list_files(check_dir)` 拉取该目录文件集合（按 `remote_name` 比对 pending 中全部文件）；全部出现即通过。B 为平铺上传，等价单层比对。
-- **等待策略**：首次 `refresh=True`，其后 `refresh=False`；退避以 `wait_interval_seconds` 为基数（base → 2×base → 4×base，封顶 60s）+ ±20% 抖动；同一进程内多个自动化轮询串行化，避免 OpenList 限流。
+- **可见性校验**：`list_files(check_dir)` 拉取该目录文件集合（按 `remote_name` 比对 pending 中全部文件）；只匹配 `is_dir=false` 的文件条目，`content=None` 视为空目录，同名目录不当作命中（R3-P2-6）；全部出现即通过。B 为平铺上传，等价单层比对。
+- **等待策略**：退避以 `wait_interval_seconds` 为基数（base → 2×base → 4×base，封顶 60s）+ ±20% 抖动；**每个退避步至少一次 `refresh=True`（或每 3 次轮询刷新一次）**，避免始终读旧缓存（R3-P1-6）；同一进程内多个自动化轮询串行化，避免 OpenList 限流。
 - **超时**：达到 `openlist_wait_timeout` → 轮次失败 `OPENLIST_TIMEOUT`，pending 保留、`missed_files` 记录（最多 200 条），下一轮自动重新校验。
 - **冲突策略固定「跳过」**；同一文件内容更新不属自动化范围。
 
@@ -271,7 +283,8 @@ API 风格沿用本项目既有**动作式**（与 `/executions/start`、`/execu
 | POST | `/tasks/batch-start` | 批量启动（逐项结果） |
 | POST | `/tasks/{id}/stop` | 停止（返回 `stopping` phase；无 run 时可立即返回） |
 | POST | `/tasks/{id}/reset-fingerprint` | 重新扫描并补齐 STRM（清指纹，下一轮强制） |
-| POST | `/runs/{id}/retry-failed` | 重试失败文件（partial run；跳过指纹强制一轮） |
+| POST | `/tasks/{id}/pending/clear` | 清除/忽略 pending（body 可选 `remote_names`，空=全部；写系统日志与 WS 事件） |
+| POST | `/runs/{id}/retry-failed` | 重试失败文件（仅 partial、任务未运行、pending 为空；复位失败计数后强制一轮） |
 | GET | `/active` | 运行中任务：`task_id/run_id/log_path/phase/next_round_at/started_time`（无 queue_pos） |
 | GET | `/runs` | 运行历史（task_id/status/start/end/page） |
 | GET | `/runs/{id}` | 运行详情（缺失文件、错误码、log_path） |
@@ -309,7 +322,7 @@ lifespan `init_db()` 后把 `open_list_execution`、`upload_execution`、`automa
 `openlist/service.py:start_execution` 传 `cancel_key=str(execution.id)`；引擎按该键检查取消；补回归用例。
 
 **⓿-3 A/B 活跃执行注册表 + 共享启动闸门（R2-P0-4）**
-A/B 引擎模块维护 `ACTIVE_EXECUTIONS: dict[int, int]`（执行开始**入队前**注册、`finally` 注销），暴露 `is_task_active(task_id)` / `is_execution_active(execution_id)`；`start_execution` 先检查，活跃则 400「任务正在执行」；手动与自动化同受约束。
+A/B 引擎模块维护 `ACTIVE_EXECUTIONS: dict[int, int]`（执行开始**入队前**注册、`finally` 注销），暴露 `is_task_active(task_id)` / `is_execution_active(execution_id)`；`start_execution` 先检查，活跃则 400「任务正在执行」；手动与自动化同受约束。**闸门只对 `task_id > 0` 生效**：A 目录执行（`task_id=0`）跳过闸门，避免目录执行互相排斥（R3-P1-2）；C 侧对 `TASK_BUSY` 按「继续等待空闲」处理（R3-P1-3）。
 
 **⓿-4 A `started_time` 迁移**
 创建执行不写 `started_time`，`start_execution` 时写入；历史排序/列表用 `coalesce(started_time, created_time)`；实时日志用时缺失时用 `created_time`/当前时间兜底。
@@ -351,10 +364,13 @@ manager 键类型放宽 `int | str`，路由边界统一转 str；A/B 实时日�
 | B 部分文件失败（`success+skipped>0`） | partial | 继续执行 A | 清空 pending + 提交指纹 + 失败文件列表 + 「重试失败文件」入口 | 非致命提示 |
 | B 全部文件失败（`file_total>0`、`success+skipped=0`） | 轮次失败 `B_NO_PROGRESS` | 退避后继续，连续 3 次终止 | 不提交，pending 保留 | 第 3 次通知 |
 | B 预扫描失败（`file_total=0`、`failed>0`） | 致命 `B_SCAN_ERROR` | 停止 | 不提交 | 通知 |
+| B 云端瞬时错误（`B_CLOUD_ERROR`） | 轮次失败 `B_CLOUD_ERROR` | 退避后继续，连续 3 次终止 | 不提交，pending 保留 | 第 3 次通知 |
+| 绑定任务被手动执行占用（启动 400 `TASK_BUSY`） | 继续等待空闲（不计失败） | 继续 | 保持 | 无 |
+| 用户清除 pending（忽略部分/全部） | 不改变 run 终态（进行中 run 继续） | 继续 | pending 更新，清空后的下一轮按指纹正常 | 系统日志 + WS 事件 |
 | OpenList 超时 / API 5xx | 轮次失败 `OPENLIST_TIMEOUT`/`OPENLIST_API_ERROR` | 退避后继续，3 次终止 | 不提交，pending 保留 | 第 3 次通知 |
-| A 失败 / 取消（外部原因） | 轮次失败 `A_FAILED`/`A_CANCELLED` | 退避后继续，3 次终止 | 不提交，pending 保留 | 第 3 次通知 |
+| A 失败 / 外部取消（用户在 A 页面取消自动化触发的执行） | 轮次失败 `A_FAILED`/`A_CANCELLED` | 退避后继续，3 次终止 | 不提交，pending 保留 | 第 3 次通知 + 日志写明被外部取消 |
 | 等待绑定任务空闲超时 | 轮次失败 `IDLE_TIMEOUT` | 退避后继续，3 次终止 | 不提交 | 第 3 次通知 |
-| 等待 B/A 终态超时（已尝试取消 + 30s grace） | 轮次失败 `STAGE_TIMEOUT` | 退避后继续，3 次终止 | 不提交，pending 保留 | 第 3 次通知 |
+| 等待 B/A 终态超时（已取消 + 30s grace 后仍活跃） | 轮次失败 `STAGE_TIMEOUT`（执行标记 orphan，不重复取消） | 退避后继续，3 次终止 | 不提交，pending 保留 | 第 3 次通知 |
 | 连续 3 次轮次失败 | fail（终止） | 停止 | 不提交，pending 保留 | 通知 + 一键重新启动 |
 | 用户停止 | cancelled | 停止 | 不提交 | 不通知（轻提示） |
 | 进程重启 | 启动清理为 fail `PROCESS_RESTART` | 不恢复 | 保持 | 启动后提示 |
@@ -409,6 +425,13 @@ manager 键类型放宽 `int | str`，路由边界统一转 str；A/B 实时日�
 - 迁移：A/B 新增三列 + 错误列 + 索引存在；A 未启动记录 started_time 为空且排序/用时兜底正常。
 - WS：字符串键广播；A/B 实时日志回归。
 - 通知：异常终止触发通知器、主动停止不触发（mock）。
+- pending 清除：忽略部分/全部后文件不再进入校验；清空后下一轮正常走 B/A；清除写系统日志与 WS 事件（R3-P0-1）。
+- pending 指纹口径：pending 跨轮期间本地新增文件不丢失——A 成功后提交 `pending_fingerprint`，下一轮检测到新 F 差异并上传（R3-P1-1）。
+- 目录执行不误伤：A 目录执行（task_id=0）不被任务闸门拒绝；同任务手动执行与自动化互斥仍生效（R3-P1-2）。
+- TASK_BUSY：C 启动收到 400 时回到等待，不计 consecutive_failures，idle 超时后按轮次失败处理（R3-P1-3）。
+- 失败计数复位：手动启动、retry-failed 后 consecutive_failures=0；主请求在新失败时不会立即累计到 4（R3-P1-4）。
+- stage_timeout：执行不配合取消时只记一次 STAGE_TIMEOUT，不重复取消；下一轮闸门等待其结束或 idle 超时（R3-P1-5）。
+- OpenList 刷新：等待退避每步至少一次 refresh=True；bootstrap 预热后 A 读到新缓存（R3-P1-6）。
 
 前端：`npm run type-check`、`npm run build`；分页/筛选/高亮/重试失败文件手工冒烟。
 
@@ -449,6 +472,10 @@ manager 键类型放宽 `int | str`，路由边界统一转 str；A/B 实时日�
 | 14 | pending 集合 | 引入持久化 `pending_files`（B 成功写入；OpenList 可见 + A 成功清空），补偿与超时路径必须重新校验（第二轮 R2-P0-2） |
 | 15 | 启动闸门 | A/B `start_execution` 增加共享按任务活跃检查（入队前注册，400 拒绝），手动与自动化一致（第二轮 R2-P0-4） |
 | 16 | 失败重试入口 | partial run 提供「重试失败文件」；连续失败终止后提供一键重新启动（第二轮 R2-P1-4） |
+| 17 | pending 清除出口 | 提供 `POST /tasks/{id}/pending/clear` + UI 忽略/清除（第三轮 R3-P0-1），避免永久不可见文件死循环 |
+| 18 | pending 轮指纹 | 每轮始终计算 F；产生 pending 时记录 `pending_fingerprint`；A 成功后提交它（第三轮 R3-P1-1） |
+| 19 | 失败计数复位 | 手动启动、retry-failed 时 `consecutive_failures=0`（第三轮 R3-P1-4） |
+| 20 | 外部取消语义 | A/B 执行被外部取消 → 轮次失败 `A_CANCELLED`/`B_CANCELLED`，重试 3 次后终止（第三轮 R3-P2-5） |
 
 ### 12.2 第一轮评审修订摘要
 
@@ -487,7 +514,26 @@ manager 键类型放宽 `int | str`，路由边界统一转 str；A/B 实时日�
 
 > 用户已确认（2026-11-06）：① 失败策略改为「轮次失败重试 3 次、配置错误才终止」；② A/B 共享启动闸门成立（并发启动返回 400）；③ 空目录/无视频不再判失败（提交空指纹跳过）。
 
-## 13. 实施阶段（第三轮短评审通过后）
+### 12.4 第三轮评审针对性修订
+
+| 评审项 | 修订 |
+|--------|------|
+| R3-P0-1 pending 无清除出口 | 新增 `pending/clear` API + 任务配置抽屉「忽略/全部清除」+ 系统日志/WS 事件；解决永久不可见文件死循环 |
+| R3-P1-1 pending 轮指纹 | 每轮始终计算 F；产生 pending 时持久化 `pending_fingerprint`，A 成功提交它，避免 pending 跨轮期间本地新增文件被跳过 |
+| R3-P1-2 目录执行误伤 | 启动闸门仅对 `task_id>0` 生效；A 目录执行（task_id=0）跳过闸门 |
+| R3-P1-3 TASK_BUSY | C 收到 400 回到等待空闲，不计失败；矩阵与测试补齐 |
+| R3-P1-4 失败计数复位 | 手动启动/retry-failed 复位 `consecutive_failures` |
+| R3-P1-5 stage_timeout | 30s grace 后仍活跃 → orphan 标记，只记一次 STAGE_TIMEOUT、不重复取消 |
+| R3-P1-6 OpenList 刷新 | 每个退避步至少一次 refresh；bootstrap 先预热 check_dir |
+| P2-1 空轮语义 | 本地无视频 → 不建 run；B 0 文件 → run success +「本轮无文件」 |
+| P2-2 phase.interval | run.phase 删除 interval（仅 `/active` 使用） |
+| P2-3 事务口径 | pending 在 B 成功后写入、指纹在 A 成功后提交，不要求同一事务（RK-10 已改） |
+| P2-4 retry-failed 条件 | 仅 partial、任务未运行、pending 为空；复位计数 |
+| P2-5 错误矩阵 | 补 `B_CLOUD_ERROR`、`TASK_BUSY` 行；外部取消 A/B 定义为轮次失败 |
+| P2-6 只匹配文件 | `is_dir=false` 才算命中，`content=None` 视为空目录 |
+| P2-7 手动启动 pending 语义 | 手动启动优先处理 pending，文案明示 |
+
+## 13. 实施阶段（第三轮评审已补齐口径，用户确认后开工）
 
 | 阶段 | 内容 | 前置关系 |
 |------|------|----------|
@@ -513,8 +559,9 @@ manager 键类型放宽 `int | str`，路由边界统一转 str；A/B 实时日�
 | RK-07 | 历史/日志增长淹没数据 | 2 | 3 | 6 中 | 保留策略 + 每日定时清理 |
 | RK-08 | 用户误以为会同步文件更新 | 4 | 3 | 12 中 | 文档与界面写明「只处理新增」 |
 | RK-09 | 瞬时故障导致任务停摆未被发现 | 3 | 4 | 12 中 | 3 次轮次失败终止 + 托盘/顶栏通知 + 一键重新启动 |
-| RK-10 | pending 丢失导致文件永久无 STRM | 2 | 4 | 8 中 | pending 持久化在任务表；DB 与指纹一起事务提交 |
+| RK-10 | pending 丢失导致文件永久无 STRM | 2 | 4 | 8 中 | pending 在 B 成功后持久化、指纹在 A 成功后提交（不要求同一事务）；pending 有清除出口 |
 | RK-11 | 空目录/删除文件导致指纹反复变化 | 2 | 2 | 4 低 | 空轮提交空指纹，避免重复扫描 |
+| RK-12 | 文件永久不可见导致任务死循环 | 2 | 4 | 8 中 | pending 人工清除出口 + 连续失败终止通知（R3-P0-1） |
 
 ---
 

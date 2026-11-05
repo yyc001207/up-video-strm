@@ -44,6 +44,7 @@
 | 1 | 全局错误提示无去重、无节流，轮询失败时弹窗轰炸：每 5–10 秒弹出一条相同「网络异常，请稍后重试」，连续堆叠并遮挡卡片头部 | `api/index.ts:34-37`（拦截器每错必弹）；`App.vue:158-168`（10s 轮询）→ `stores/openlist.ts:46`（`fetchRunning` 未传 `silent`）；`views/schedule/Execution.vue:146-154`（5s 轮询的 `silent` 参数只控制 loading，**未透传** axios `silent`） | `schedule-execution-light.png`：3 条相同 toast 纵向堆叠盖住卡片 |
 | 2 | 顶栏运行状态胶囊语义失真且不聚合上传模块：接口失败时 `runningCount=0` 显示「空闲」；且 `runningCount` 只来自任务调度（openlist）执行，上传管理执行走独立接口，全局胶囊与导航徽标均不纳入；点击固定跳 `/schedule/realtime`，运行的是上传任务时会跳错模块 | `App.vue:150-176, 552-585`；`stores/openlist.ts:46-49`；`api/uploader.ts:75`（上传执行独立接口）；`views/upload/Execution.vue:63` | `schedule-tasks-light.png`：后端不可达时胶囊仍显示「空闲」 |
 | 3 | 执行管理三卡片在 1100–1600px 区间中栏过窄：1440 视口下中栏仅 ≈285px，`el-segmented` 的「全量更新 / 仅更新 STRM」文字截断为省略号，核心参数不可读。两个模块同构复用此布局 | `views/schedule/Execution.vue:541`（`minmax(0,1.6fr) minmax(240px,0.85fr) minmax(260px,0.95fr)`）；`views/upload/Execution.vue:339` 同构 | `schedule-execution-light.png`：分段控件显示「全量重… / 仅更新 …」 |
+| 4 | 重命名规则弹窗「集数提取正则」的说明文字被输入框遮挡：`.form-tip` 的 `margin-top: -4px` 在 `.el-form-item__content`（flex 容器）内直接把提示拉进输入框底边。Playwright 实测（1440×900，2026-11-05）：输入框底边 y=413、提示首行顶 y=409，重叠 4px，提示首行上半被裁切 | `views/upload/RenameRules.vue:186-189`（提示）+ `:250`（负外边距） | `.workbuddy/tmp/dialog-before.png`（复现截图） |
 
 ### P1（体验 / 信息架构级）
 
@@ -128,6 +129,29 @@
 | 9 | `index.html` 标题改为「up-video-strm 控制台」 |
 | 10 | 重建截图脚本（11 路由 × 明暗 + 折叠态共 23 张）并纳入仓库，作为后续评审的可重复基线；`manual/images/` 16 张旧图重拍（可与第一轮 P2 遗留合并为一次文档交付） |
 
+### 3.7 P0-4 重命名规则弹窗提示遮挡修复
+
+**根因**：`RenameRules.vue` 的 `.form-tip` 定义了 `margin-top: calc(-1 * var(--up-strm-space-1))`（即 -4px）。该提示是 `el-form-item` 内容区（`.el-form-item__content`，flex 容器、行高 32px）的 flex 子项，换行后本已紧贴输入框下缘，再上提 4px 就直接压进输入框底边——实测输入框底边 y=413、提示首行顶 y=409，首行文字上半被裁切。
+
+**方案（三处，均在 `RenameRules.vue` 单文件内）：**
+
+1. **修正间距**：`.form-tip` 的负外边距改为正值并显式独占一行，杜绝未来再加内联元素时与输入框挤到同一行：
+
+   ```scss
+   .form-tip {
+     flex-basis: 100%;                    // 独占 flex 一行
+     margin-top: var(--up-strm-space-1);  // +4px（原 -4px 是遮挡根因）
+     color: var(--el-text-color-secondary); // 由 placeholder 色改为次要色，12px 文字需 ≥4.5:1
+   }
+   ```
+
+2. **提示归位**：把现挂在「集数提取正则」之后的「可用变量：{season} / {episode} / {ext}…」提示移入**命名模板**表单项的内容区——它解释的是模板字段，放错位置让用户在填模板时看不到提示、填正则时看到两条不相关说明。归位后弹窗内不再有游离于表单项之外的独立提示。
+3. **顺带统一**：工具栏的 `.toolbar__hint`（模板变量提示）同步由 placeholder 色改为次要色，遵守第一轮令牌注释「placeholder 仅限占位/禁用，勿用于正文」。
+
+**验证方式**：实现后重放 `.workbuddy/tmp/measure-dialog.mjs` 实测脚本，断言每条 `.form-tip` 的 top ≥ 所属输入框 bottom + 4px；并重截弹窗截图核对视觉。
+
+**验收标准**：提示文字与输入框无任何像素重叠；两条提示各自紧邻其字段（模板变量提示在「命名模板」下、正则示例在「集数提取正则」下）；12px 提示文字对比度 ≥4.5:1。
+
 ---
 
 ## 4. 实施路线（建议，未实施）
@@ -135,7 +159,7 @@
 | 批次 | 内容 | 建议发布级别 | 预估改动面 |
 |------|------|--------------|------------|
 | 第一批 | P0-1 错误治理 + P0-2 状态聚合（两项都集中在 `api/index.ts` / `App.vue` / store，建议同一批次一次 `minor` 交付） | `minor` | 4 个文件 + 新增 1 个 store |
-| 第二批 | P0-3 三卡片宽度（两个 Execution 同步）+ P1-4 空态引导 + 第 6 节刷新控件位置统一（与空态同批，避免同一文件反复改） | `patch` | 7 个文件 |
+| 第二批 | P0-3 三卡片宽度（两个 Execution 同步）+ P1-4 空态引导 + P0-4 弹窗提示遮挡（单文件小改，也可单独 `fix` 提前交付）+ 第 6 节刷新控件位置统一（与空态同批，避免同一文件反复改） | `patch` | 7 个文件 |
 | 第三批 | P1-5/6 可访问性回补 + P2 全部打磨项 | `patch` | 6 个文件 + 文档截图 |
 
 实施纪律沿用 [AGENTS.md](../../AGENTS.md)：每批独立 commit、逐项 `git add`、测试全绿后交付、按上表递增版本并更新 [CHANGELOG.md](../../CHANGELOG.md)。
@@ -154,7 +178,8 @@
 | `frontend/src/views/{schedule,upload}/RealtimeLog.vue`、`views/config/GlobalConfig.vue` | P2 打磨 |
 | `frontend/index.html` | 标题 |
 | 截图脚本（重建）与 `frontend/shots/`、`manual/images/` | 截图基线补全 |
-| `frontend/src/views/schedule/TaskHistory.vue`、`views/schedule/TaskManage.vue`、`views/upload/RenameRules.vue` | 刷新控件位置统一（见第 6 节） |
+| `frontend/src/views/upload/RenameRules.vue` | 正则提示遮挡修复 + 提示归位（见 3.7）与刷新控件位置统一（见第 6 节） |
+| `frontend/src/views/schedule/TaskHistory.vue`、`views/schedule/TaskManage.vue` | 刷新控件位置统一（见第 6 节） |
 | `docs/rules/frontend.md`、`manual/用户手册.md` | 实施后同步 |
 
 ---

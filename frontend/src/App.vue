@@ -99,6 +99,10 @@ const modules: NavModule[] = [
           { path: '/upload/execution', label: '执行管理', icon: VideoPlay },
           { path: '/upload/realtime', label: '实时日志', icon: Monitor }
         ]
+      },
+      {
+        title: '记录',
+        pages: [{ path: '/upload/history', label: '任务历史', icon: Clock }]
       }
     ]
   }

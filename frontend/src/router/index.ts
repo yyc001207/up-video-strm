@@ -75,6 +75,12 @@ const router = createRouter({
       meta: { title: '实时日志', description: '跟踪上传进度、文件明细与实时输出' }
     },
     {
+      path: '/upload/history',
+      name: 'UploadHistory',
+      component: () => import('@/views/upload/TaskHistory.vue'),
+      meta: { title: '上传历史', description: '按任务查看上传执行记录、文件明细与日志回放' }
+    },
+    {
       // 桌面托盘外壳经 window.__upVideoStrmNavigate('/settings') 跳转，此路径必须保持不变。
       path: '/settings',
       name: 'Settings',

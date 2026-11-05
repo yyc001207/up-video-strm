@@ -197,4 +197,17 @@ export interface UploadWsStatusFrame {
 
 export type UploadWsFrame = UploadWsLogFrame | UploadWsProgressFrame | UploadWsStatusFrame
 
+/** 历史汇总：每个任务的最近一次执行与累计执行次数。 */
+export interface UploadHistorySummaryItem {
+  task_id: number
+  task_name: string
+  local_dir: string
+  remote_dir: string
+  season: number
+  start_episode: number
+  total_executions: number
+  last_execution: UploadExecution | null
+}
+
+
 

@@ -195,6 +195,27 @@ async def download_execution_log(execution_id: int, db: AsyncSession = Depends(g
     return FileResponse(file, media_type="text/plain", filename=f"upload_execution_{execution_id}.log")
 
 
+@router.get("/history", summary="历史汇总（按任务：最近执行 + 执行次数）")
+async def history_summary(db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.history_summary(db))
+
+
+@router.get("/history/task/{task_id}", summary="某任务的全部执行记录（分页）")
+async def history_by_task(
+    task_id: int,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    items, total = await service.history_by_task(db, task_id, page, pageSize)
+    return success_response(data={"list": items}, total=total)
+
+
+@router.post("/executions/{execution_id}/retry", summary="以原参数重跑（新建执行记录，不启动）")
+async def retry_execution(execution_id: int, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.retry_execution(db, execution_id))
+
+
 # ---------------------------------------------------------------------------
 # 实时日志（WebSocket）
 # ---------------------------------------------------------------------------

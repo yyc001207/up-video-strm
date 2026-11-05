@@ -10,6 +10,7 @@ import type {
   UploadExecution,
   UploadExecutionStatus,
   UploadFileRecord,
+  UploadHistorySummaryItem,
   UploadPlatformConfig,
   UploadPlatformConfigUpdate,
   UploadRemoteDirList,
@@ -88,6 +89,15 @@ export const uploaderApi = {
       `/upload/executions/${executionId}/logs`,
       { params: { page, pageSize } }
     ),
+
+  historySummary: () => request.get<unknown, Res<UploadHistorySummaryItem[]>>('/upload/history'),
+  historyByTask: (taskId: number, page: number, pageSize: number) =>
+    request.get<unknown, Res<{ list: UploadExecution[] }>>(`/upload/history/task/${taskId}`, {
+      params: { page, pageSize }
+    }),
+  /** 以原执行的固化参数重新创建一条执行记录（不启动）。 */
+  retryExecution: (executionId: number) =>
+    request.post<unknown, Res<UploadExecution>>(`/upload/executions/${executionId}/retry`),
 
   /** 下载执行日志文件（blob，本地部署无鉴权）。 */
   async downloadLog(executionId: number): Promise<void> {

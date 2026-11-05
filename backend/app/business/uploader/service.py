@@ -593,6 +593,88 @@ async def list_file_records(
 
 
 # ---------------------------------------------------------------------------
+# 历史汇总 / 按任务历史 / 失败重跑（阶段四）
+# ---------------------------------------------------------------------------
+
+
+async def history_summary(db: AsyncSession) -> list[dict]:
+    """按任务汇总历史：任务信息 + 最近一次执行 + 执行次数。"""
+    tasks_result = await db.execute(select(UploadTask).order_by(UploadTask.id.desc()))
+    tasks = list(tasks_result.scalars())
+    if not tasks:
+        return []
+
+    last_id_rows = await db.execute(
+        select(func.max(UploadExecution.id))
+        .where(UploadExecution.is_deleted == False)  # noqa: E712
+        .group_by(UploadExecution.task_id)
+    )
+    last_ids = [row[0] for row in last_id_rows if row[0] is not None]
+    latest: dict[int, dict] = {}
+    if last_ids:
+        latest_result = await db.execute(select(UploadExecution).where(UploadExecution.id.in_(last_ids)))
+        for execution in latest_result.scalars():
+            latest[execution.task_id] = execution_to_dict(execution)
+
+    count_rows = await db.execute(
+        select(UploadExecution.task_id, func.count(UploadExecution.id))
+        .where(UploadExecution.is_deleted == False)  # noqa: E712
+        .group_by(UploadExecution.task_id)
+    )
+    counts = {task_id: total for task_id, total in count_rows}
+
+    return [
+        {
+            "task_id": task.id,
+            "task_name": task.name,
+            "local_dir": task.local_dir,
+            "remote_dir": task.remote_dir,
+            "season": task.season,
+            "start_episode": task.start_episode,
+            "total_executions": counts.get(task.id, 0),
+            "last_execution": latest.get(task.id),
+        }
+        for task in tasks
+    ]
+
+
+async def history_by_task(
+    db: AsyncSession, task_id: int, page: int = 1, page_size: int = 20
+) -> tuple[list[dict], int]:
+    """某任务的全部执行记录（分页，倒序）。"""
+    await get_upload_task(db, task_id)
+    return await list_executions(db, task_id=task_id, page=page, page_size=page_size)
+
+
+async def retry_execution(db: AsyncSession, execution_id: int) -> dict:
+    """以原执行固化的参数重新创建一条执行记录（整任务重跑，不启动）。"""
+    execution = await _get_execution(db, execution_id)
+    task = await db.get(UploadTask, execution.task_id)
+    if task is None:
+        raise NotFoundException("原任务已被删除，无法重跑")
+
+    new_execution = UploadExecution(
+        task_id=execution.task_id,
+        task_name=execution.task_name,
+        local_dir=execution.local_dir,
+        remote_dir=execution.remote_dir,
+        season=execution.season,
+        start_episode=execution.start_episode,
+        rename_rule_id=execution.rename_rule_id,
+        template=execution.template,
+        conflict_policy=execution.conflict_policy,
+        concurrency=execution.concurrency,
+        retry_times=execution.retry_times,
+        dry_run=False,
+        status="running",
+    )
+    db.add(new_execution)
+    await db.commit()
+    await db.refresh(new_execution)
+    return execution_to_dict(new_execution)
+
+
+# ---------------------------------------------------------------------------
 # 执行日志文件读取（与 OpenList 模块同构，文件为唯一权威源）
 # ---------------------------------------------------------------------------
 

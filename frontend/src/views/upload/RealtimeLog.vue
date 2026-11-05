@@ -416,11 +416,11 @@ onBeforeUnmount(() => {
 
     <div class="log-toolbar">
       <div class="log-toolbar__left">
-        <el-select v-model="levelFilter" size="small" style="width: 110px">
+        <el-select v-model="levelFilter" size="small" style="width: 128px">
           <el-option label="全部级别" value="all" />
-          <el-option label="INFO" value="info" />
-          <el-option label="WARN" value="warn" />
-          <el-option label="ERROR" value="error" />
+          <el-option label="信息" value="info" />
+          <el-option label="警告" value="warn" />
+          <el-option label="错误" value="error" />
         </el-select>
         <el-input
           v-model="keyword"

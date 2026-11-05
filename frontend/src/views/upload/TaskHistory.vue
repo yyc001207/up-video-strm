@@ -269,6 +269,10 @@ defineExpose({ reload: load })
   <div class="page page--fill list-page upload-history">
     <!-- 列表页面：按任务汇总 -->
     <template v-if="viewMode === 'list'">
+      <p class="page-hint">
+        按任务汇总最近一次上传执行与累计执行次数，点击任务名进入执行记录，可查看文件明细、执行日志、打开日志文件夹或重跑；列表支持按任务名称、执行时间范围与执行状态筛选。
+      </p>
+
       <div class="toolbar">
         <div class="toolbar__left">
           <el-input
@@ -307,25 +311,26 @@ defineExpose({ reload: load })
       <el-card shadow="never" class="list-card">
         <div class="list-card__table">
           <el-table v-loading="loading" :data="pagedList" row-key="task_id" class="upload-history__table">
-            <el-table-column label="任务" min-width="280">
+            <el-table-column label="任务" min-width="260">
               <template #default="{ row }">
                 <div class="cell-primary">
                   <el-link type="primary" :underline="false" @click="openDetail(row)">{{ row.task_name }}</el-link>
                 </div>
-                <div class="cell-secondary" :title="row.local_dir">{{ row.local_dir || '—' }}</div>
-                <div class="cell-secondary" :title="row.remote_dir">云端 {{ row.remote_dir || '—' }}</div>
+                <div class="cell-secondary" :title="`${row.local_dir || '—'} → 云端 ${row.remote_dir || '—'}`">
+                  {{ row.local_dir || '—' }}
+                </div>
               </template>
             </el-table-column>
             <el-table-column label="季数 / 起始集" width="130">
               <template #default="{ row }">{{ seasonText(row.season, row.start_episode) }}</template>
             </el-table-column>
-            <el-table-column label="最近执行" width="120">
+            <el-table-column label="状态" width="110">
               <template #default="{ row }">
                 <StatusDot v-if="row.last_execution" :status="row.last_execution.status" />
                 <span v-else class="muted">—</span>
               </template>
             </el-table-column>
-            <el-table-column label="最近结果" width="120" align="right">
+            <el-table-column label="文件" width="96" align="right">
               <template #default="{ row }">
                 <span class="num">
                   {{ row.last_execution ? countText(row.last_execution.file_success, row.last_execution.file_total) : '—' }}
@@ -337,7 +342,7 @@ defineExpose({ reload: load })
                 {{ row.last_execution ? durationText(row.last_execution.duration_seconds) : '—' }}
               </template>
             </el-table-column>
-            <el-table-column label="最近执行时间" width="170">
+            <el-table-column label="执行时间" width="170">
               <template #default="{ row }">
                 {{ row.last_execution ? formatDateTime(row.last_execution.started_time) : '—' }}
               </template>
@@ -506,7 +511,7 @@ defineExpose({ reload: load })
 
 <style scoped lang="scss">
 .upload-history {
-  gap: var(--up-strm-space-3, 12px);
+  gap: var(--up-strm-space-4, 16px);
 
   &__table {
     width: 100%;
@@ -536,12 +541,21 @@ defineExpose({ reload: load })
   flex: none;
 }
 
+// 列表页顶部功能说明（次要色，遵循页面 hint 风格）
+.page-hint {
+  flex: none;
+  margin: 0;
+  font-size: var(--up-strm-font-size-sm, 13px);
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+
 .toolbar__keyword {
-  width: 220px;
+  width: 200px;
 }
 
 .toolbar__date {
-  width: 300px;
+  width: 280px;
   max-width: 100%;
 }
 

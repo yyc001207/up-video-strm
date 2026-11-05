@@ -11,7 +11,7 @@
  * launch=false 的执行只连接查看已运行的日志，不触发启动。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Delete, FolderOpened, Refresh, Search } from '@element-plus/icons-vue'
 
@@ -83,6 +83,7 @@ const CONNECTION_META: Record<WsState, { label: string; tone: 'info' | 'success'
 
 const route = useRoute()
 const store = useOpenlistStore()
+const router = useRouter()
 
 const socket = ref<WebSocket | null>(null)
 const connectionState = ref<WsState>('disconnected')
@@ -200,15 +201,6 @@ function formatDuration(seconds: number): string {
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
-function percentOf(success: number, total: number): number {
-  if (total <= 0) return 0
-  return Math.min(100, Math.round((success / total) * 100))
-}
-
-function countText(success: number, total: number): string {
-  return total > 0 ? `${success}/${total}` : '—'
-}
-
 const executionOptions = computed<{ id: number; name: string }[]>(() => {
   const options: { id: number; name: string }[] = []
   const known = new Set<number>()
@@ -232,6 +224,16 @@ const connectionMeta = computed(() => CONNECTION_META[connectionState.value])
 
 const currentStatus = computed<ExecutionStatus>(() => finalStatus.value ?? 'running')
 
+/** 执行状态文案（进度卡与筛选一致，不依赖 StatusDot）。 */
+const STATUS_TEXT: Record<ExecutionStatus, string> = {
+  running: '运行中',
+  success: '成功',
+  fail: '失败',
+  cancelled: '已取消'
+}
+
+const statusText = computed(() => STATUS_TEXT[currentStatus.value])
+
 const showStatus = computed(
   () => selectedExecutionId.value !== null && (finalStatus.value !== null || connectionState.value !== 'disconnected')
 )
@@ -239,15 +241,6 @@ const showStatus = computed(
 const canReconnect = computed(
   () => selectedExecutionId.value !== null && connectionState.value === 'disconnected' && finalStatus.value === null
 )
-
-const videoPercent = computed(() => percentOf(progress.value.successVideos, progress.value.totalVideos))
-const subtitlePercent = computed(() => percentOf(progress.value.successSubtitles, progress.value.totalSubtitles))
-
-const barStatus = computed<'' | 'success' | 'exception'>(() => {
-  if (finalStatus.value === 'success') return 'success'
-  if (finalStatus.value === 'fail') return 'exception'
-  return ''
-})
 
 const elapsedText = computed(() => {
   const start = startedAt.value
@@ -556,6 +549,10 @@ async function handleOpenLogDir(): Promise<void> {
   }
 }
 
+function handleBackToExecution(): void {
+  void router.push('/schedule/execution')
+}
+
 async function init(): Promise<void> {
   try {
     await store.fetchRunning()
@@ -605,71 +602,79 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page page--fill realtime-page">
-    <section class="realtime-page__summary">
-      <div class="realtime-page__summary-head">
-        <div class="realtime-page__identity">
-          <div class="realtime-page__identity-row">
-            <StatusDot v-if="showStatus" :status="currentStatus" />
-            <el-select
-              class="realtime-page__selector"
-              :model-value="selectedExecutionId"
-              placeholder="选择执行记录"
-              :disabled="executionOptions.length === 0"
-              @change="handleExecutionChange"
-            >
-              <el-option
-                v-for="option in executionOptions"
-                :key="option.id"
-                :value="option.id"
-                :label="option.name"
-              />
-            </el-select>
-            <el-tag :type="connectionMeta.tone" size="small" effect="light">
-              {{ connectionMeta.label }}
-            </el-tag>
-            <el-button
-              v-if="canReconnect"
-              link
-              type="primary"
-              size="small"
-              :icon="Refresh"
-              @click="handleReconnect"
-            >
-              重新连接
-            </el-button>
-          </div>
-          <p v-if="selectedExecutionId === null" class="realtime-page__hint">
-            从「执行管理」启动任务后将自动打开此页，也可以在上方选择正在运行的执行记录。
-          </p>
-        </div>
-        <div class="realtime-page__elapsed">
-          <span class="realtime-page__elapsed-label">耗时</span>
-          <span class="realtime-page__elapsed-value">{{ elapsedText }}</span>
-        </div>
-      </div>
+  <div class="page realtime-page">
+    <p class="realtime-page__desc">
+      本页实时显示所选任务执行的日志与进度；批量排队时按队列串行启动并自动切换。可通过日志级别与关键字过滤日志；当前没有运行中的执行时，请到「执行管理」发起执行。
+    </p>
 
-      <div class="realtime-page__progress">
-        <div class="realtime-page__progress-item">
-          <div class="realtime-page__progress-head">
-            <span>视频</span>
-            <span class="realtime-page__progress-count">{{ countText(progress.successVideos, progress.totalVideos) }}</span>
-          </div>
-          <el-progress :percentage="videoPercent" :stroke-width="8" :show-text="false" :status="barStatus" />
-        </div>
-        <div class="realtime-page__progress-item">
-          <div class="realtime-page__progress-head">
-            <span>字幕</span>
-            <span class="realtime-page__progress-count">{{ countText(progress.successSubtitles, progress.totalSubtitles) }}</span>
-          </div>
-          <el-progress :percentage="subtitlePercent" :stroke-width="8" :show-text="false" :status="barStatus" />
-        </div>
+    <div class="realtime-toolbar">
+      <div class="realtime-toolbar__left">
+        <el-select
+          class="realtime-toolbar__selector"
+          :model-value="selectedExecutionId"
+          placeholder="选择执行记录"
+          :disabled="executionOptions.length === 0"
+          @change="handleExecutionChange"
+        >
+          <el-option
+            v-for="option in executionOptions"
+            :key="option.id"
+            :label="option.name"
+            :value="option.id"
+          />
+        </el-select>
+        <el-tag :type="connectionMeta.tone" size="small" disable-transitions>
+          {{ connectionMeta.label }}
+        </el-tag>
+        <el-tag v-if="launching" type="warning" size="small" disable-transitions>启动中</el-tag>
+        <StatusDot v-if="showStatus" :status="currentStatus" />
+        <el-tag v-else type="info" size="small" disable-transitions>无运行中任务</el-tag>
       </div>
-    </section>
+      <div class="realtime-toolbar__right">
+        <el-button v-if="canReconnect" :icon="Refresh" @click="handleReconnect">重连</el-button>
+        <el-button :icon="Delete" @click="handleClear">清空</el-button>
+        <el-button :icon="FolderOpened" :loading="opening" @click="handleOpenLogDir">
+          打开日志文件夹
+        </el-button>
+      </div>
+    </div>
 
-    <div class="realtime-page__toolbar">
-      <div class="realtime-page__filters">
-        <el-select v-model="levelFilter" class="realtime-page__level-filter" size="small" aria-label="日志级别过滤">
+    <div class="progress-card">
+      <div class="progress-card__item">
+        <span class="progress-card__label">视频总数</span>
+        <span class="progress-card__value">{{ progress.totalVideos }}</span>
+      </div>
+      <div class="progress-card__item">
+        <span class="progress-card__label">视频成功</span>
+        <span class="progress-card__value progress-card__value--success">{{ progress.successVideos }}</span>
+      </div>
+      <div class="progress-card__item">
+        <span class="progress-card__label">字幕总数</span>
+        <span class="progress-card__value">{{ progress.totalSubtitles }}</span>
+      </div>
+      <div class="progress-card__item">
+        <span class="progress-card__label">字幕成功</span>
+        <span class="progress-card__value progress-card__value--success">{{ progress.successSubtitles }}</span>
+      </div>
+      <div class="progress-card__item">
+        <span class="progress-card__label">执行状态</span>
+        <span class="progress-card__value">{{ statusText }}</span>
+      </div>
+      <div class="progress-card__item">
+        <span class="progress-card__label">用时</span>
+        <span class="progress-card__value">{{ elapsedText }}</span>
+      </div>
+      <div class="progress-card__item progress-card__item--wide">
+        <span class="progress-card__label">当前任务</span>
+        <span class="progress-card__value progress-card__value--mono">
+          {{ selectedExecutionName || '—' }}
+        </span>
+      </div>
+    </div>
+
+    <div class="log-toolbar">
+      <div class="log-toolbar__left">
+        <el-select v-model="levelFilter" size="small" class="log-toolbar__level">
           <el-option label="全部级别" value="all" />
           <el-option label="信息" value="info" />
           <el-option label="警告" value="warn" />
@@ -677,193 +682,147 @@ onBeforeUnmount(() => {
         </el-select>
         <el-input
           v-model="keyword"
-          class="realtime-page__keyword"
+          class="log-toolbar__keyword"
           size="small"
-          placeholder="搜索日志关键字"
+          placeholder="筛选关键字"
           clearable
           :prefix-icon="Search"
         />
+        <span class="log-toolbar__count">{{ filteredLines.length }} 行</span>
       </div>
-      <div class="realtime-page__toolbar-right">
-        <span class="realtime-page__line-count">{{ filteredLines.length }} / {{ logLines.length }} 行</span>
-        <el-button size="small" :icon="Delete" :disabled="logLines.length === 0" @click="handleClear">清屏</el-button>
-        <el-button
-          size="small"
-          type="primary"
-          :icon="FolderOpened"
-          :loading="opening"
-          @click="handleOpenLogDir"
-        >
-          打开日志文件夹
+      <div class="log-toolbar__right">
+        <el-button v-if="selectedExecutionId !== null" size="small" @click="handleBackToExecution">
+          返回执行管理
         </el-button>
       </div>
     </div>
 
-    <LogViewer
-      v-model:auto-scroll="autoScroll"
-      class="realtime-page__viewer"
-      :lines="filteredLines"
-      :max-lines="MAX_LOG_LINES"
-      :empty-text="emptyText"
-    />
+    <div class="log-area">
+      <LogViewer
+        v-model:auto-scroll="autoScroll"
+        :lines="filteredLines"
+        :max-lines="MAX_LOG_LINES"
+        :empty-text="emptyText"
+      />
+    </div>
   </div>
 </template>
 
 <style scoped lang="scss">
 .realtime-page {
+  display: flex;
+  flex-direction: column;
   gap: var(--up-strm-space-3, 12px);
   min-height: 0;
+  height: 100%;
 
-  &__summary {
+  &__desc {
     flex: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--up-strm-space-3, 12px);
-    padding: var(--up-strm-space-3, 12px) var(--up-strm-space-4, 16px);
-    background: var(--el-bg-color);
-    border: 1px solid var(--el-border-color-lighter);
-    border-radius: var(--up-strm-radius-md, 8px);
-  }
-
-  &__summary-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--up-strm-space-4, 16px);
-  }
-
-  &__identity {
-    display: flex;
-    flex-direction: column;
-    gap: var(--up-strm-space-1, 4px);
-    min-width: 0;
-  }
-
-  &__identity-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--up-strm-space-2, 8px);
-  }
-
-  &__selector {
-    width: 260px;
-    max-width: 100%;
-  }
-
-  &__hint {
     margin: 0;
     font-size: var(--up-strm-font-size-xs, 12px);
-    color: var(--el-text-color-secondary);
-  }
-
-  &__elapsed {
-    flex: none;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
-    min-width: 96px;
-  }
-
-  &__elapsed-label {
-    font-size: var(--up-strm-font-size-xs, 12px);
-    color: var(--el-text-color-secondary);
-  }
-
-  &__elapsed-value {
-    font-size: var(--up-strm-font-size-lg, 16px);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--el-text-color-primary);
-  }
-
-  &__progress {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--up-strm-space-4, 16px);
-  }
-
-  &__progress-item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--up-strm-space-1, 4px);
-    min-width: 0;
-  }
-
-  &__progress-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--up-strm-space-2, 8px);
-    font-size: var(--up-strm-font-size-sm, 13px);
-    color: var(--el-text-color-regular);
-  }
-
-  &__progress-count {
-    font-size: var(--up-strm-font-size-xs, 12px);
-    font-variant-numeric: tabular-nums;
-    color: var(--el-text-color-secondary);
-  }
-
-  &__viewer {
-    flex: 1;
-    min-height: 0;
-  }
-
-  &__toolbar {
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--up-strm-space-2, 8px);
-    padding-bottom: var(--up-strm-space-1, 4px);
-    border-bottom: 1px solid var(--el-border-color-lighter);
-  }
-
-  &__filters {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--up-strm-space-2, 8px);
-  }
-
-  &__level-filter {
-    width: 128px;
-  }
-
-  &__keyword {
-    width: 240px;
-    max-width: 100%;
-  }
-
-  &__toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: var(--up-strm-space-2, 8px);
-  }
-
-  &__line-count {
-    font-size: var(--up-strm-font-size-xs, 12px);
-    font-variant-numeric: tabular-nums;
+    line-height: 1.6;
     color: var(--el-text-color-secondary);
   }
 }
 
-@media (max-width: 768px) {
-  .realtime-page {
-    &__progress {
-      grid-template-columns: minmax(0, 1fr);
+.realtime-toolbar,
+.log-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--up-strm-space-2, 8px);
+  flex-wrap: wrap;
+
+  &__left,
+  &__right {
+    display: flex;
+    align-items: center;
+    gap: var(--up-strm-space-2, 8px);
+    flex-wrap: wrap;
+  }
+}
+
+.realtime-toolbar__selector {
+  width: 260px;
+  max-width: 100%;
+}
+
+.progress-card {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) minmax(0, 1.6fr);
+  gap: var(--up-strm-space-2, 8px);
+  padding: var(--up-strm-space-3, 12px) var(--up-strm-space-4, 16px);
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--up-strm-radius-md, 8px);
+
+  &__item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  &__label {
+    font-size: var(--up-strm-font-size-xs, 12px);
+    color: var(--el-text-color-secondary);
+  }
+
+  &__value {
+    font-size: var(--up-strm-font-size-lg, 16px);
+    font-weight: 600;
+    color: var(--el-text-color-primary);
+    font-variant-numeric: tabular-nums;
+
+    &--success {
+      color: var(--el-color-success);
     }
 
-    &__selector {
-      width: 100%;
+    &--danger {
+      color: var(--el-color-danger);
     }
 
-    &__keyword {
-      width: 100%;
+    &--mono {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      font-size: var(--up-strm-font-size-xs, 12px);
+      font-weight: 500;
+      color: var(--el-text-color-regular);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
+  }
+}
+
+.log-toolbar__level {
+  width: 128px;
+}
+
+.log-toolbar__keyword {
+  width: 220px;
+  max-width: 100%;
+}
+
+.log-toolbar__count {
+  font-size: var(--up-strm-font-size-xs, 12px);
+  color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-area {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .progress-card {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .progress-card__item--wide {
+    grid-column: span 3;
   }
 }
 </style>

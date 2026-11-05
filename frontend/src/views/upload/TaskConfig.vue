@@ -215,7 +215,7 @@ onMounted(() => void load())
         </el-form-item>
         <el-form-item label="云端目录" prop="remote_dir">
           <div class="remote-picker">
-            <el-input v-model="form.remote_dir" readonly />
+            <el-input v-model="form.remote_dir" readonly placeholder="点击「浏览」选择云端目录" />
             <el-button :icon="FolderOpened" @click="remoteDialogVisible = true">浏览</el-button>
           </div>
           <div v-if="remoteTip" class="form-tip">{{ remoteTip }}</div>

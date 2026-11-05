@@ -21,6 +21,14 @@
 
 - 暂无。
 
+## [4.1.2] - 2026-11-05
+
+**级别：PATCH（缺陷修复）** · 代码 `88d8ebc`
+
+### 修复
+
+- 中文 Windows 下执行 `pip install -r packaging/requirements-build.txt` 报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0x96`：该文件含中文注释但未声明编码，pip 按系统默认 GBK 解码失败。按 PEP 263 在首行加入 `# -*- coding: utf-8 -*-`，pip 可正确解析并安装 PyInstaller 等打包依赖（已用 `pip install --dry-run` 验证解析通过）。
+
 ## [4.1.1] - 2026-11-05
 
 **级别：PATCH（缺陷修复 + 布局调整）** · 代码 `2274002`、`8f218eb`

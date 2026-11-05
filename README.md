@@ -90,6 +90,7 @@ npm run preview                   # 本地预览构建产物
 | [docs/rules/project.md](docs/rules/project.md) | 工程总览：定位、技术栈、端口、运行方式、打包发布、冻结运行差异 |
 | [docs/rules/backend.md](docs/rules/backend.md) | 后端目录结构、业务模块、数据层、关键流程、环境变量、冻结运行 |
 | [docs/rules/frontend.md](docs/rules/frontend.md) | 前端技术栈、目录结构、页面组件、接口与状态 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本演进记录：各版本的级别、变更要点与版本判定依据 |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 
@@ -106,7 +107,7 @@ up-video-strm/
 │   │   ├── core/               # settings / database / models / paths / desktop_prefs
 │   │   ├── utils/              # 响应封装与工具
 │   │   └── websocket/          # 实时日志连接管理
-│   ├── tests/                  # pytest 冒烟测试（本地，不纳入版本管理）
+│   ├── tests/                  # 冒烟测试（unittest，本地，不纳入版本管理）
 │   ├── frontend/dist/          # 前端构建产物（由 build.ps1 自动同步生成）
 │   ├── requirements.txt / requirements-dev.txt
 │   ├── pytest.ini
@@ -117,6 +118,7 @@ up-video-strm/
 ├── packaging/                  # Windows 打包：up-video-strm.spec / build.ps1 / installer.iss / bump_version.py
 ├── docs/                       # 工程规则与规范（rules/，后续计划、需求等文档）
 ├── manual/                     # 用户手册与界面截图
+├── CHANGELOG.md                # 版本记录
 ├── AGENTS.md
 ├── LICENSE
 └── README.md

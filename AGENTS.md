@@ -57,6 +57,7 @@ backend/.venv/Scripts/python.exe packaging/bump_version.py --show  # 查看当�
 ```
 
 - [packaging/build.ps1](packaging/build.ps1) 打包前校验上述**四处版本一致**，不一致直接失败；禁止手改单处。
+- 每次递增版本时，必须在 [`CHANGELOG.md`](CHANGELOG.md) 顶部追加该版本条目（版本号、日期、级别、变更要点与 commit），并维护「未发布」小节；不得事后补写或漏写。
 - 安装包文件名、exe 版本资源、关于页版本均取自该版本号；一次交付只递增一次，多个改动按最高级别合并递增。
 - 发布时建议打标签 `git tag v<version>`（未经用户许可不 push）。
 
@@ -69,4 +70,5 @@ backend/.venv/Scripts/python.exe packaging/bump_version.py --show  # 查看当�
 - [ ] 端口占用时已自动切换并告知用户
 - [ ] 文档与注释已与代码逻辑同步
 - [ ] 版本号已按语义递增，且四处一致（`bump_version.py`）
+- [ ] 版本记录已更新（`CHANGELOG.md`，纯文档改动除外）
 - [ ] 未对已提交代码执行未经许可的回退操作

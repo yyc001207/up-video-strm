@@ -19,6 +19,7 @@ backend/output/
 backend/webview/
 backend/desktop.json
 .workbuddy/*
+.vscode/
 
 # Tests（测试文件不纳入版本管理）
 backend/tests/

@@ -301,7 +301,7 @@ onBeforeUnmount(() => {
           <el-button link :icon="Refresh" @click="loadRunning()">刷新</el-button>
         </div>
       </template>
-      <el-table :data="running" row-key="id" style="width: 100%">
+      <el-table :data="running" row-key="id" :max-height="320" style="width: 100%">
         <el-table-column label="任务名称" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">{{ row.task_name }}</template>
         </el-table-column>
@@ -343,19 +343,31 @@ onBeforeUnmount(() => {
     flex: none;
     grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr) minmax(280px, 1fr);
     gap: var(--up-strm-space-4, 16px);
-    align-items: start;
+    align-items: stretch;
+    // 与任务调度执行管理一致：整行卡片高度固定，内容变化不改变卡片高度，超高由卡片内部滚动
+    height: clamp(380px, 52vh, 560px);
+    min-height: 380px;
   }
 }
 
 .exec-card {
   display: flex;
   flex-direction: column;
-  height: auto;
+  height: 100%;
+  min-height: 0;
   margin: 0;
 
   :deep(.el-card__body) {
     display: flex;
+    flex: 1;
     flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  // 卡片定高后，空态在剩余空间内垂直居中，避免贴顶留白
+  :deep(.el-empty) {
+    margin: auto 0;
   }
 
   &__header {
@@ -379,7 +391,8 @@ onBeforeUnmount(() => {
 
 .task-list,
 .selected-list {
-  max-height: 320px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -508,6 +521,12 @@ onBeforeUnmount(() => {
 @media (max-width: 1280px) {
   .upload-execution__cards {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+  }
+
+  .exec-card {
+    height: auto;
   }
 }
 </style>

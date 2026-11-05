@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, FolderOpened, Refresh, RefreshRight, View } from '@element-plus/icons-vue'
+import { ArrowLeft, FolderOpened, Refresh, RefreshRight, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { desktopApi } from '@/api/desktop'
@@ -13,7 +13,7 @@ import type {
   UploadFileRecord,
   UploadHistorySummaryItem
 } from '@/types/uploader'
-import { formatDateTime } from '@/utils/date'
+import { beijingMillis, formatDateTime } from '@/utils/date'
 
 const router = useRouter()
 
@@ -33,6 +33,25 @@ const RECORD_STATUS_LABELS: Record<string, string> = {
 
 const list = ref<UploadHistorySummaryItem[]>([])
 const loading = ref(false)
+
+/** 列表筛选状态：未执行对应 last_execution 为空。 */
+type HistoryStatusFilter = 'all' | 'success' | 'fail' | 'cancelled' | 'none'
+
+const STATUS_FILTER_OPTIONS: { label: string; value: HistoryStatusFilter }[] = [
+  { label: '全部状态', value: 'all' },
+  { label: '成功', value: 'success' },
+  { label: '失败', value: 'fail' },
+  { label: '已取消', value: 'cancelled' },
+  { label: '未执行', value: 'none' }
+]
+
+// 列表筛选与客户端分页（详情页仍走后端分页）
+const keyword = ref('')
+const statusFilter = ref<HistoryStatusFilter>('all')
+const dateRange = ref<[string, string] | null>(null)
+const page = ref(1)
+const pageSize = ref(20)
+const PAGE_SIZES = [10, 20, 50]
 
 /** 视图切换：列表 ↔ 详情（同任务调度历史，详情作为页面而非抽屉）。 */
 const viewMode = ref<'list' | 'detail'>('list')
@@ -79,11 +98,69 @@ function conflictText(policy: string): string {
   return CONFLICT_LABELS[policy as UploadConflictPolicy] ?? policy
 }
 
+/** 取最近一次执行的时间（结束 → 开始 → 创建），按北京时间比较。 */
+function executionTimestamp(item: UploadHistorySummaryItem): number | null {
+  const exec = item.last_execution
+  if (!exec) return null
+  return beijingMillis(exec.finished_time ?? exec.started_time ?? exec.created_time)
+}
+
+const filteredList = computed(() => {
+  const needle = keyword.value.trim().toLowerCase()
+  const range = dateRange.value
+  let startMs: number | null = null
+  let endMs: number | null = null
+  if (range !== null) {
+    // 起止日期分别按北京时间 00:00:00 / 23:59:59 计算
+    startMs = beijingMillis(`${range[0]} 00:00:00`)
+    endMs = beijingMillis(`${range[1]} 23:59:59`)
+  }
+  return list.value.filter(item => {
+    if (needle !== '' && !item.task_name.toLowerCase().includes(needle)) return false
+    if (statusFilter.value !== 'all') {
+      const status = item.last_execution?.status ?? 'none'
+      if (status !== statusFilter.value) return false
+    }
+    if (startMs !== null && endMs !== null) {
+      const timestamp = executionTimestamp(item)
+      if (timestamp === null || timestamp < startMs || timestamp > endMs) return false
+    }
+    return true
+  })
+})
+
+const pagedList = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredList.value.slice(start, start + pageSize.value)
+})
+
+const hasFilters = computed(
+  () => keyword.value.trim() !== '' || statusFilter.value !== 'all' || dateRange.value !== null
+)
+
+const emptyDescription = computed(() =>
+  hasFilters.value ? '没有匹配的上传历史' : '暂无上传历史（执行上传任务后才会生成记录）'
+)
+
+// 筛选条件或每页条数变化时回到第一页
+watch([keyword, statusFilter, dateRange, pageSize], () => {
+  page.value = 1
+})
+
+// 数据量变化（刷新 / 筛选）时把页码收敛到最后一页
+watch(filteredList, value => {
+  const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value))
+  if (page.value > maxPage) {
+    page.value = maxPage
+  }
+})
+
 async function load() {
   loading.value = true
   try {
     const res = await uploaderApi.historySummary()
     list.value = res.data
+    page.value = 1
   } finally {
     loading.value = false
   }
@@ -189,68 +266,108 @@ defineExpose({ reload: load })
 </script>
 
 <template>
-  <div class="page upload-history">
+  <div class="page page--fill list-page upload-history">
     <!-- 列表页面：按任务汇总 -->
     <template v-if="viewMode === 'list'">
       <div class="toolbar">
-        <span class="toolbar__hint">按任务查看最近一次执行与累计执行次数，点击任务名进入执行记录。</span>
+        <div class="toolbar__left">
+          <el-input
+            v-model="keyword"
+            class="toolbar__keyword"
+            clearable
+            :prefix-icon="Search"
+            placeholder="搜索任务名称"
+            @keyup.enter="page = 1"
+            @clear="page = 1"
+          />
+          <el-date-picker
+            v-model="dateRange"
+            class="toolbar__date"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            unlink-panels
+          />
+          <el-select v-model="statusFilter" class="toolbar__status" placeholder="任务状态">
+            <el-option
+              v-for="option in STATUS_FILTER_OPTIONS"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </div>
         <div class="toolbar__right">
-          <el-button :icon="Refresh" @click="load">刷新</el-button>
+          <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         </div>
       </div>
 
-      <el-card shadow="never" class="upload-history__card">
-        <el-table v-loading="loading" :data="list" row-key="task_id" class="upload-history__table">
-          <el-table-column label="任务" min-width="280">
-            <template #default="{ row }">
-              <div class="cell-primary">
-                <el-link type="primary" :underline="false" @click="openDetail(row)">{{ row.task_name }}</el-link>
-              </div>
-              <div class="cell-secondary" :title="row.local_dir">{{ row.local_dir || '—' }}</div>
-              <div class="cell-secondary" :title="row.remote_dir">云端 {{ row.remote_dir || '—' }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="季数 / 起始集" width="130">
-            <template #default="{ row }">{{ seasonText(row.season, row.start_episode) }}</template>
-          </el-table-column>
-          <el-table-column label="最近执行" width="120">
-            <template #default="{ row }">
-              <StatusDot v-if="row.last_execution" :status="row.last_execution.status" />
-              <span v-else class="muted">—</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="最近结果" width="120" align="right">
-            <template #default="{ row }">
-              <span class="num">
-                {{ row.last_execution ? countText(row.last_execution.file_success, row.last_execution.file_total) : '—' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="耗时" width="110">
-            <template #default="{ row }">
-              {{ row.last_execution ? durationText(row.last_execution.duration_seconds) : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="最近执行时间" width="170">
-            <template #default="{ row }">
-              {{ row.last_execution ? formatDateTime(row.last_execution.started_time) : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="执行次数" width="96" align="right">
-            <template #default="{ row }">
-              <span class="num">{{ row.total_executions }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-            </template>
-          </el-table-column>
+      <el-card shadow="never" class="list-card">
+        <div class="list-card__table">
+          <el-table v-loading="loading" :data="pagedList" row-key="task_id" class="upload-history__table">
+            <el-table-column label="任务" min-width="280">
+              <template #default="{ row }">
+                <div class="cell-primary">
+                  <el-link type="primary" :underline="false" @click="openDetail(row)">{{ row.task_name }}</el-link>
+                </div>
+                <div class="cell-secondary" :title="row.local_dir">{{ row.local_dir || '—' }}</div>
+                <div class="cell-secondary" :title="row.remote_dir">云端 {{ row.remote_dir || '—' }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="季数 / 起始集" width="130">
+              <template #default="{ row }">{{ seasonText(row.season, row.start_episode) }}</template>
+            </el-table-column>
+            <el-table-column label="最近执行" width="120">
+              <template #default="{ row }">
+                <StatusDot v-if="row.last_execution" :status="row.last_execution.status" />
+                <span v-else class="muted">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近结果" width="120" align="right">
+              <template #default="{ row }">
+                <span class="num">
+                  {{ row.last_execution ? countText(row.last_execution.file_success, row.last_execution.file_total) : '—' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="耗时" width="110">
+              <template #default="{ row }">
+                {{ row.last_execution ? durationText(row.last_execution.duration_seconds) : '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="最近执行时间" width="170">
+              <template #default="{ row }">
+                {{ row.last_execution ? formatDateTime(row.last_execution.started_time) : '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="执行次数" width="96" align="right">
+              <template #default="{ row }">
+                <span class="num">{{ row.total_executions }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
 
-          <template #empty>
-            <el-empty description="暂无上传历史（执行上传任务后才会生成记录）" :image-size="80" />
-          </template>
-        </el-table>
+            <template #empty>
+              <el-empty :description="emptyDescription" :image-size="80" />
+            </template>
+          </el-table>
+        </div>
+        <div class="list-card__pager">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
+            :total="filteredList.length"
+            :page-sizes="PAGE_SIZES"
+            layout="total, sizes, prev, pager, next"
+            background
+          />
+        </div>
       </el-card>
     </template>
 
@@ -264,55 +381,57 @@ defineExpose({ reload: load })
         </div>
       </div>
 
-      <el-card v-loading="detailLoading" shadow="never" class="upload-history__card">
-        <el-table :data="executions" row-key="id" class="upload-history__table">
-          <el-table-column label="编号" prop="id" width="80" />
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }">
-              <StatusDot :status="row.status" />
-            </template>
-          </el-table-column>
-          <el-table-column label="冲突策略" width="100">
-            <template #default="{ row }">{{ conflictText(row.conflict_policy) }}</template>
-          </el-table-column>
-          <el-table-column label="文件数" width="90" align="right">
-            <template #default="{ row }">
-              <span class="num">{{ row.file_total }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="成功 / 跳过 / 失败" width="150" align="right">
-            <template #default="{ row }">
-              <span class="num">{{ countText(row.file_success, row.file_total) }}</span>
-              <span class="muted"> · </span>
-              <span class="num">{{ row.file_skipped }}</span>
-              <span class="muted"> · </span>
-              <span class="num">{{ row.file_failed }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="试运行" width="80">
-            <template #default="{ row }">{{ row.dry_run ? '是' : '否' }}</template>
-          </el-table-column>
-          <el-table-column label="耗时" width="110">
-            <template #default="{ row }">{{ durationText(row.duration_seconds) }}</template>
-          </el-table-column>
-          <el-table-column label="开始时间" width="170">
-            <template #default="{ row }">{{ formatDateTime(row.started_time) }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="260" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" :icon="View" @click="openRecords(row)">明细</el-button>
-              <el-button link type="primary" :icon="View" @click="openLogs(row)">日志</el-button>
-              <el-button link type="primary" :icon="FolderOpened" @click="openLogDir()">日志文件夹</el-button>
-              <el-button link type="primary" :icon="RefreshRight" @click="handleRetry(row)">重跑</el-button>
-            </template>
-          </el-table-column>
+      <el-card v-loading="detailLoading" shadow="never" class="list-card">
+        <div class="list-card__table">
+          <el-table :data="executions" row-key="id" class="upload-history__table">
+            <el-table-column label="编号" prop="id" width="80" />
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <StatusDot :status="row.status" />
+              </template>
+            </el-table-column>
+            <el-table-column label="冲突策略" width="100">
+              <template #default="{ row }">{{ conflictText(row.conflict_policy) }}</template>
+            </el-table-column>
+            <el-table-column label="文件数" width="90" align="right">
+              <template #default="{ row }">
+                <span class="num">{{ row.file_total }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="成功 / 跳过 / 失败" width="150" align="right">
+              <template #default="{ row }">
+                <span class="num">{{ countText(row.file_success, row.file_total) }}</span>
+                <span class="muted"> · </span>
+                <span class="num">{{ row.file_skipped }}</span>
+                <span class="muted"> · </span>
+                <span class="num">{{ row.file_failed }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="试运行" width="80">
+              <template #default="{ row }">{{ row.dry_run ? '是' : '否' }}</template>
+            </el-table-column>
+            <el-table-column label="耗时" width="110">
+              <template #default="{ row }">{{ durationText(row.duration_seconds) }}</template>
+            </el-table-column>
+            <el-table-column label="开始时间" width="170">
+              <template #default="{ row }">{{ formatDateTime(row.started_time) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="260" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" :icon="View" @click="openRecords(row)">明细</el-button>
+                <el-button link type="primary" :icon="View" @click="openLogs(row)">日志</el-button>
+                <el-button link type="primary" :icon="FolderOpened" @click="openLogDir()">日志文件夹</el-button>
+                <el-button link type="primary" :icon="RefreshRight" @click="handleRetry(row)">重跑</el-button>
+              </template>
+            </el-table-column>
 
-          <template #empty>
-            <el-empty description="该任务暂无执行记录" :image-size="80" />
-          </template>
-        </el-table>
+            <template #empty>
+              <el-empty description="该任务暂无执行记录" :image-size="80" />
+            </template>
+          </el-table>
+        </div>
 
-        <div class="pagination">
+        <div class="list-card__pager">
           <el-pagination
             v-model:current-page="detailPage"
             :total="detailTotal"
@@ -387,13 +506,7 @@ defineExpose({ reload: load })
 
 <style scoped lang="scss">
 .upload-history {
-  display: flex;
-  flex-direction: column;
-  gap: var(--up-strm-space-4, 16px);
-
-  &__card {
-    flex-shrink: 0;
-  }
+  gap: var(--up-strm-space-3, 12px);
 
   &__table {
     width: 100%;
@@ -418,13 +531,26 @@ defineExpose({ reload: load })
   }
 }
 
-// 工具栏布局见 styles/global.scss 的 .toolbar 原语
-.toolbar__hint {
-  font-size: var(--up-strm-font-size-sm, 13px);
-  color: var(--el-text-color-secondary);
+// 工具栏布局见 styles/global.scss 的 .toolbar 原语，这里只约束筛选项宽度
+.toolbar {
+  flex: none;
+}
+
+.toolbar__keyword {
+  width: 220px;
+}
+
+.toolbar__date {
+  width: 300px;
+  max-width: 100%;
+}
+
+.toolbar__status {
+  width: 140px;
 }
 
 .detail-header {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--up-strm-space-3, 12px);

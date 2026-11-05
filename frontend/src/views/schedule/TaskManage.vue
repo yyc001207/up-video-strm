@@ -16,6 +16,19 @@ const saving = ref(false)
 const keyword = ref('')
 const selectedIds = ref<number[]>([])
 
+// 客户端分页：数据全量拉取后在前端切片，滚动与分页都收敛在列表卡片内
+const PAGE_SIZES = [10, 20, 50]
+const page = ref(1)
+const pageSize = ref(20)
+const pagedList = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return list.value.slice(start, start + pageSize.value)
+})
+
+function handlePageSizeChange() {
+  page.value = 1
+}
+
 const dialogVisible = ref(false)
 const editingId = ref<number | null>(null)
 const form = reactive({
@@ -57,6 +70,8 @@ async function load() {
       store.fetchConfig()
     ])
     list.value = tasksRes.data.list
+    // 数据变化（搜索/刷新/增删）后回到第一页，避免停留在越界页
+    page.value = 1
   } finally {
     loading.value = false
   }
@@ -404,7 +419,7 @@ defineExpose({ reload: load })
 </script>
 
 <template>
-  <div class="page task-manage">
+  <div class="page page--fill list-page task-manage">
     <!-- 默认运行参数：全局生效，任务未单独设置时使用 -->
     <el-card shadow="never" class="task-manage__params">
       <template #header>
@@ -484,39 +499,53 @@ defineExpose({ reload: load })
       </div>
     </div>
 
-    <el-card shadow="never" class="task-manage__card">
-      <el-table
-        v-loading="loading"
-        :data="list"
-        row-key="id"
-        class="task-manage__table"
-        @selection-change="handleSelectionChange"
-      >
-        <el-table-column type="selection" width="48" />
-        <el-table-column label="编号" prop="id" width="76" />
-        <el-table-column label="任务" min-width="260">
-          <template #default="{ row }">
-            <div class="cell-primary">{{ row.name }}</div>
-            <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="输出目录" prop="output_dir" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="170" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
+    <el-card shadow="never" class="list-card">
+      <div class="list-card__table">
+        <el-table
+          v-loading="loading"
+          :data="pagedList"
+          row-key="id"
+          class="task-manage__table"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="48" />
+          <el-table-column label="编号" prop="id" width="76" />
+          <el-table-column label="任务" min-width="260">
+            <template #default="{ row }">
+              <div class="cell-primary">{{ row.name }}</div>
+              <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="输出目录" prop="output_dir" min-width="200" show-overflow-tooltip />
+          <el-table-column label="操作" width="170" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
+              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
 
-        <template #empty>
-          <el-empty :description="emptyDescription" :image-size="80">
-            <el-button v-if="paramsConfigured" type="primary" :icon="Plus" @click="openCreate">
-              创建第一个任务
-            </el-button>
-          </el-empty>
-        </template>
-      </el-table>
+          <template #empty>
+            <el-empty :description="emptyDescription" :image-size="80">
+              <el-button v-if="paramsConfigured" type="primary" :icon="Plus" @click="openCreate">
+                创建第一个任务
+              </el-button>
+            </el-empty>
+          </template>
+        </el-table>
+      </div>
+
+      <div class="list-card__pager">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="list.length"
+          :page-sizes="PAGE_SIZES"
+          layout="total, sizes, prev, pager, next"
+          background
+          @size-change="handlePageSizeChange"
+        />
+      </div>
     </el-card>
 
     <el-dialog
@@ -680,11 +709,12 @@ defineExpose({ reload: load })
   flex-direction: column;
   gap: var(--up-strm-space-4, 16px);
 
-  &__params {
-    flex-shrink: 0;
+  // 参数卡与工具栏为固定高度区域，不参与收缩；列表卡片由全局 .list-card 撑满剩余空间
+  > .toolbar {
+    flex: none;
   }
 
-  &__card {
+  &__params {
     flex-shrink: 0;
   }
 

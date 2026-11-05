@@ -347,6 +347,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page upload-realtime">
+    <p class="upload-realtime__desc">
+      本页实时显示所选上传执行的日志与 6 阶段进度；批量排队时按队列串行启动并自动切换。可通过日志级别与关键字过滤日志；当前没有运行中的上传时，请到「执行管理」发起执行。
+    </p>
+
     <div class="realtime-toolbar">
       <div class="realtime-toolbar__left">
         <el-select
@@ -453,6 +457,14 @@ onBeforeUnmount(() => {
   gap: var(--up-strm-space-3, 12px);
   min-height: 0;
   height: 100%;
+}
+
+.upload-realtime__desc {
+  flex: none;
+  margin: 0;
+  font-size: var(--up-strm-font-size-xs, 12px);
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
 }
 
 .realtime-toolbar,

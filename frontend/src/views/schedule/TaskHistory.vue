@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { ArrowLeft, FolderOpened, Refresh, View } from '@element-plus/icons-vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { ArrowLeft, FolderOpened, Refresh, Search, View } from '@element-plus/icons-vue'
 
 import { desktopApi } from '@/api/desktop'
 import { openlistApi } from '@/api/openlist'
 import StatusDot from '@/components/StatusDot.vue'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { HistorySummaryItem, OpenListExecution, OpenListLog } from '@/types/openlist'
-import { formatDateTime } from '@/utils/date'
+import { beijingMillis, formatDateTime } from '@/utils/date'
 
 const store = useOpenlistStore()
 
@@ -23,6 +23,24 @@ const detailLoading = ref(false)
 const detailPage = ref(1)
 const detailTotal = ref(0)
 const PAGE_SIZE = 20
+
+// —— 列表筛选与客户端分页（详情页仍走后端分页）——
+type StatusFilter = '' | 'success' | 'fail' | 'cancelled' | 'unexecuted'
+
+const STATUS_OPTIONS: { label: string; value: StatusFilter }[] = [
+  { label: '全部状态', value: '' },
+  { label: '成功', value: 'success' },
+  { label: '失败', value: 'fail' },
+  { label: '已取消', value: 'cancelled' },
+  { label: '未执行', value: 'unexecuted' }
+]
+
+const keyword = ref('')
+const dateRange = ref<[string, string] | null>(null)
+const statusFilter = ref<StatusFilter>('')
+const PAGE_SIZES = [10, 20, 50]
+const page = ref(1)
+const pageSize = ref(PAGE_SIZE)
 
 const logVisible = ref(false)
 const logLoading = ref(false)
@@ -42,12 +60,71 @@ function countText(success: number, total: number): string {
   return total > 0 ? `${success}/${total}` : '—'
 }
 
+/** 该任务最近一次执行的时间戳：优先完成时间，其次开始/创建时间。 */
+function executionMillis(item: HistorySummaryItem): number | null {
+  const exec = item.execution
+  if (!exec) return null
+  return beijingMillis(exec.finished_time ?? exec.started_time ?? exec.created_time)
+}
+
+/** 时间范围边界（北京时间）：开始日 00:00:00 ~ 结束日 23:59:59。 */
+const rangeBounds = computed(() => {
+  const range = dateRange.value
+  if (!range) return null
+  return {
+    start: beijingMillis(`${range[0]} 00:00:00`),
+    end: beijingMillis(`${range[1]} 23:59:59`)
+  }
+})
+
+const filteredList = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  const bounds = rangeBounds.value
+  return list.value.filter(item => {
+    if (kw && !item.task_name.toLowerCase().includes(kw)) return false
+    if (statusFilter.value === 'unexecuted') {
+      if (item.execution) return false
+    } else if (statusFilter.value && item.execution?.status !== statusFilter.value) {
+      return false
+    }
+    if (bounds) {
+      const millis = executionMillis(item)
+      if (millis == null) return false
+      if (bounds.start != null && millis < bounds.start) return false
+      if (bounds.end != null && millis > bounds.end) return false
+    }
+    return true
+  })
+})
+
+const pagedList = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredList.value.slice(start, start + pageSize.value)
+})
+
+const hasFilter = computed(() => Boolean(keyword.value.trim() || dateRange.value || statusFilter.value))
+
+const emptyDescription = computed(() =>
+  hasFilter.value ? '没有匹配的任务历史' : '暂无任务历史（执行任务后才会生成记录）'
+)
+
+// 筛选条件变化后回到第一页，避免停留在越界页
+watch([keyword, dateRange, statusFilter], () => {
+  page.value = 1
+})
+
+function handlePageSizeChange() {
+  page.value = 1
+}
+
 async function load() {
   loading.value = true
   try {
     // 单服务器模式：后端只返回唯一服务器下的历史，无需传服务器参数
     const res = await openlistApi.historySummary()
     list.value = res.data.list
+    // 数据变化后回到第一页，避免停留在越界页
+    page.value = 1
   } finally {
     loading.value = false
   }
@@ -111,65 +188,106 @@ defineExpose({ reload: load })
 </script>
 
 <template>
-  <div class="page task-history">
+  <div class="page task-history" :class="viewMode === 'list' ? 'page--fill list-page' : ''">
     <!-- 列表页面 -->
     <template v-if="viewMode === 'list'">
+      <p class="page-hint">
+        按任务汇总最近一次执行与累计执行次数，点击任务名进入执行记录，可查看执行日志、打开日志文件夹；需要重跑请到「执行管理」重新选择任务执行。列表支持按任务名称、执行时间范围与执行状态筛选。
+      </p>
+
       <div class="toolbar">
+        <div class="toolbar__left">
+          <el-input
+            v-model="keyword"
+            class="toolbar__keyword"
+            placeholder="搜索任务名称"
+            clearable
+            :prefix-icon="Search"
+          />
+          <el-date-picker
+            v-model="dateRange"
+            class="toolbar__date"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            range-separator="至"
+            unlink-panels
+          />
+          <el-select v-model="statusFilter" class="toolbar__status">
+            <el-option v-for="opt in STATUS_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </div>
+
         <div class="toolbar__right">
           <el-button :icon="Refresh" @click="load">刷新</el-button>
         </div>
       </div>
 
-      <el-card shadow="never" class="task-history__card">
-        <el-table v-loading="loading" :data="list" row-key="task_id" class="task-history__table">
-          <el-table-column label="任务" min-width="260">
-            <template #default="{ row }">
-              <div class="cell-primary">
-                <el-link type="primary" :underline="false" @click="openDetail(row)">{{ row.task_name }}</el-link>
-              </div>
-              <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }">
-              <StatusDot v-if="row.execution" :status="row.execution.status" />
-              <span v-else class="muted">—</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="视频" width="96" align="right">
-            <template #default="{ row }">
-              <span class="num">
-                {{ row.execution ? countText(row.execution.video_success_count, row.execution.video_total_count) : '—' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="字幕" width="96" align="right">
-            <template #default="{ row }">
-              <span class="num">
-                {{ row.execution ? countText(row.execution.subtitle_success_count, row.execution.subtitle_total_count) : '—' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column label="耗时" width="110">
-            <template #default="{ row }">
-              {{ row.execution ? durationText(row.execution.duration_seconds) : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="执行时间" width="170">
-            <template #default="{ row }">
-              {{ row.execution ? formatDateTime(row.execution.started_time) : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" :disabled="!row.execution" @click="openDetail(row)">详情</el-button>
-            </template>
-          </el-table-column>
+      <el-card shadow="never" class="list-card">
+        <div class="list-card__table">
+          <el-table v-loading="loading" :data="pagedList" row-key="task_id" class="task-history__table">
+            <el-table-column label="任务" min-width="260">
+              <template #default="{ row }">
+                <div class="cell-primary">
+                  <el-link type="primary" :underline="false" @click="openDetail(row)">{{ row.task_name }}</el-link>
+                </div>
+                <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <StatusDot v-if="row.execution" :status="row.execution.status" />
+                <span v-else class="muted">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="视频" width="96" align="right">
+              <template #default="{ row }">
+                <span class="num">
+                  {{ row.execution ? countText(row.execution.video_success_count, row.execution.video_total_count) : '—' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="字幕" width="96" align="right">
+              <template #default="{ row }">
+                <span class="num">
+                  {{ row.execution ? countText(row.execution.subtitle_success_count, row.execution.subtitle_total_count) : '—' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="耗时" width="110">
+              <template #default="{ row }">
+                {{ row.execution ? durationText(row.execution.duration_seconds) : '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="执行时间" width="170">
+              <template #default="{ row }">
+                {{ row.execution ? formatDateTime(row.execution.started_time) : '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" :disabled="!row.execution" @click="openDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
 
-          <template #empty>
-            <el-empty description="暂无任务历史（执行任务后才会生成记录）" :image-size="80" />
-          </template>
-        </el-table>
+            <template #empty>
+              <el-empty :description="emptyDescription" :image-size="80" />
+            </template>
+          </el-table>
+        </div>
+
+        <div class="list-card__pager">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
+            :total="filteredList.length"
+            :page-sizes="PAGE_SIZES"
+            layout="total, sizes, prev, pager, next"
+            background
+            @size-change="handlePageSizeChange"
+          />
+        </div>
       </el-card>
     </template>
 
@@ -277,6 +395,35 @@ defineExpose({ reload: load })
 }
 
 // 工具栏布局见 styles/global.scss 的 .toolbar 原语
+
+// 列表页顶部功能说明（次要色，遵循页面 hint 风格）
+.page-hint {
+  flex: none;
+  margin: 0;
+  font-size: var(--up-strm-font-size-sm, 13px);
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+
+.toolbar__keyword {
+  width: 200px;
+}
+
+.toolbar__date {
+  width: 280px;
+}
+
+.toolbar__status {
+  width: 140px;
+}
+
+@media (max-width: 720px) {
+  .toolbar__keyword,
+  .toolbar__date,
+  .toolbar__status {
+    width: 100%;
+  }
+}
 
 .detail-header {
   display: flex;

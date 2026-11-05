@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.business.uploader import service
 from app.business.uploader.schema import (
+    UploadBatchDeleteRequest,
     UploadExecutionBatchCreate,
     UploadExecutionCancel,
     UploadExecutionCreate,
@@ -66,6 +67,11 @@ async def preview_rename(data: UploadRenamePreviewRequest, db: AsyncSession = De
     return success_response(data=await service.preview_rename(db, data))
 
 
+@router.post("/rules/batch-delete", summary="批量删除重命名规则")
+async def batch_delete_rename_rules(data: UploadBatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.batch_delete_rename_rules(db, data.ids))
+
+
 @router.put("/rules/{rule_id}", summary="修改重命名规则")
 async def update_rename_rule(rule_id: int, data: UploadRenameRuleUpdate, db: AsyncSession = Depends(get_db)):
     return success_response(data=await service.update_rename_rule(db, rule_id, data))
@@ -89,6 +95,11 @@ async def list_upload_tasks(db: AsyncSession = Depends(get_db)):
 @router.post("/tasks", summary="新增上传任务")
 async def create_upload_task(data: UploadTaskCreate, db: AsyncSession = Depends(get_db)):
     return success_response(data=await service.create_upload_task(db, data))
+
+
+@router.post("/tasks/batch-delete", summary="批量删除上传任务")
+async def batch_delete_upload_tasks(data: UploadBatchDeleteRequest, db: AsyncSession = Depends(get_db)):
+    return success_response(data=await service.batch_delete_upload_tasks(db, data.ids))
 
 
 @router.get("/tasks/{task_id}", summary="上传任务详情")

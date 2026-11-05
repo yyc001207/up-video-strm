@@ -69,6 +69,44 @@ a {
   }
 }
 
+// 列表页骨架：整页不滚动，滚动与分页都收敛在卡片内部。
+// 用法：根节点 .page.page--fill.list-page；内容卡片 .list-card；表格容器 .list-card__table；分页 .list-card__pager。
+.list-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.list-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+
+  > .el-card__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: var(--up-strm-space-4, 16px);
+  }
+}
+
+.list-card__table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.list-card__pager {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--up-strm-space-3, 12px);
+}
+
 // 可访问性：所有交互元素统一 2px 焦点环。
 :focus-visible {
   outline: 2px solid var(--el-color-primary);

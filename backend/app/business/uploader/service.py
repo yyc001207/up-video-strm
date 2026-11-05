@@ -232,6 +232,29 @@ async def delete_rename_rule(db: AsyncSession, rule_id: int) -> dict:
     return {"id": rule_id}
 
 
+async def batch_delete_rename_rules(db: AsyncSession, ids: list[int]) -> dict:
+    """批量删除重命名规则；任一规则仍被上传任务引用时整体拒绝。"""
+    rules = (await db.scalars(select(UploadRenameRule).where(UploadRenameRule.id.in_(ids)))).all()
+    if not rules:
+        raise BadRequestException("未找到要删除的重命名规则")
+    used_ids = set(
+        (
+            await db.scalars(
+                select(UploadTask.rename_rule_id).where(
+                    UploadTask.rename_rule_id.in_([rule.id for rule in rules])
+                )
+            )
+        ).all()
+    )
+    conflicts = [rule.name for rule in rules if rule.id in used_ids]
+    if conflicts:
+        raise BadRequestException(f"规则「{'、'.join(conflicts)}」正被上传任务使用，无法删除")
+    for rule in rules:
+        await db.delete(rule)
+    await db.commit()
+    return {"deleted": len(rules)}
+
+
 async def _resolve_rename_config(
     db: AsyncSession,
     rename_rule_id: Optional[int],
@@ -394,6 +417,17 @@ async def delete_upload_task(db: AsyncSession, task_id: int) -> dict:
     await db.delete(task)
     await db.commit()
     return {"id": task_id}
+
+
+async def batch_delete_upload_tasks(db: AsyncSession, ids: list[int]) -> dict:
+    """批量删除上传任务（任务的历史执行记录与文件明细随级联删除）。"""
+    tasks = (await db.scalars(select(UploadTask).where(UploadTask.id.in_(ids)))).all()
+    if not tasks:
+        raise BadRequestException("未找到要删除的上传任务")
+    for task in tasks:
+        await db.delete(task)
+    await db.commit()
+    return {"deleted": len(tasks)}
 
 
 # ---------------------------------------------------------------------------

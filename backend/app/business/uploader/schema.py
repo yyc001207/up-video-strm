@@ -213,6 +213,12 @@ class UploadFileRecordResponse(BaseModel):
     updated_time: Optional[datetime] = None
 
 
+class UploadBatchDeleteRequest(BaseModel):
+    """批量删除请求：上传任务 / 重命名规则共用。"""
+
+    ids: list[int] = Field(default_factory=list, min_length=1, max_length=500)
+
+
 class UploadExecutionResponse(BaseModel):
     id: int
     task_id: int

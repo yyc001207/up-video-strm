@@ -36,6 +36,8 @@ export const uploaderApi = {
   updateRenameRule: (id: number, data: UploadRenameRuleUpdate) =>
     request.put<unknown, Res<UploadRenameRule>>(`/upload/rules/${id}`, data),
   deleteRenameRule: (id: number) => request.delete<unknown, Res<null>>(`/upload/rules/${id}`),
+  batchDeleteRenameRules: (ids: number[]) =>
+    request.post<unknown, Res<{ deleted: number }>>('/upload/rules/batch-delete', { ids }),
   previewRename: (data: UploadRenamePreviewRequest) =>
     request.post<unknown, Res<UploadRenamePreviewResponse>>('/upload/rules/preview', data),
 
@@ -44,6 +46,8 @@ export const uploaderApi = {
   updateTask: (id: number, data: UploadTaskUpdate) =>
     request.put<unknown, Res<UploadTask>>(`/upload/tasks/${id}`, data),
   deleteTask: (id: number) => request.delete<unknown, Res<null>>(`/upload/tasks/${id}`),
+  batchDeleteTasks: (ids: number[]) =>
+    request.post<unknown, Res<{ deleted: number }>>('/upload/tasks/batch-delete', { ids }),
 
   listRemoteDirs: (params: { parent_id?: number; path?: string }) =>
     request.get<unknown, Res<UploadRemoteDirList>>('/upload/remote/dirs', { params }),

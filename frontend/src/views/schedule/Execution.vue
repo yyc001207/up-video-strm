@@ -12,7 +12,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Refresh, RefreshLeft, Search, VideoPlay } from '@element-plus/icons-vue'
+import { Close, Refresh, RefreshLeft, Search, Select, VideoPlay } from '@element-plus/icons-vue'
 
 import StatusDot from '@/components/StatusDot.vue'
 import { useOpenlistStore } from '@/stores/openlist'
@@ -90,6 +90,28 @@ const totalVideos = computed(() =>
   selectedTasks.value.reduce((sum, task) => sum + (task.last_execution?.video_total_count ?? 0), 0)
 )
 const canStart = computed(() => selectedTaskIds.value.length > 0)
+
+/** 全选仅作用于当前筛选结果里可选的任务：执行中的任务不可重复选择。 */
+const selectableTasks = computed(() => filteredTasks.value.filter(task => !isLocked(task.id)))
+/** 当前可选任务是否已全部选中：空列表时视为未选中，避免按钮误显示「取消全选」。 */
+const allSelectableSelected = computed(
+  () =>
+    selectableTasks.value.length > 0 &&
+    selectableTasks.value.every(task => selectedTaskIds.value.includes(task.id))
+)
+
+/** 全选 / 取消全选（卡片底部右侧按钮）。 */
+function toggleSelectAll(): void {
+  if (starting.value) return
+  if (allSelectableSelected.value) {
+    const selectableIds = new Set(selectableTasks.value.map(task => task.id))
+    selectedTaskIds.value = selectedTaskIds.value.filter(id => !selectableIds.has(id))
+    return
+  }
+  const merged = new Set(selectedTaskIds.value)
+  for (const task of selectableTasks.value) merged.add(task.id)
+  selectedTaskIds.value = [...merged]
+}
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 /** 组件是否已卸载：异步首屏加载完成时避免在卸载后继续启动轮询。 */
@@ -365,6 +387,21 @@ onUnmounted(() => {
                   </span>
                 </div>
               </div>
+
+              <div v-if="store.tasks.length > 0" class="exec-panel__footer">
+                <span class="exec-panel__footer-hint">
+                  可选 {{ selectableTasks.length }} 个 · 已选 {{ selectedTaskIds.length }} 个
+                </span>
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Select"
+                  :disabled="selectableTasks.length === 0 || starting"
+                  @click="toggleSelectAll"
+                >
+                  {{ allSelectableSelected ? '取消全选' : '全选' }}
+                </el-button>
+              </div>
             </template>
             <el-empty
               v-else
@@ -611,6 +648,22 @@ onUnmounted(() => {
 
   &__empty {
     margin: auto 0;
+  }
+
+  &__footer {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--up-strm-space-3);
+    padding-top: var(--up-strm-space-3);
+    border-top: 1px solid var(--el-border-color-lighter);
+  }
+
+  &__footer-hint {
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.5;
   }
 }
 

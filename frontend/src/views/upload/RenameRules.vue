@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { Delete, Edit, Plus, Refresh, View } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { Delete, Edit, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
+import {
+  ElMessage,
+  ElMessageBox,
+  type FormInstance,
+  type FormRules,
+  type TableInstance
+} from 'element-plus'
 
 import { uploaderApi } from '@/api/uploader'
 import type {
@@ -13,6 +19,13 @@ import { formatDateTime } from '@/utils/date'
 
 const loading = ref(false)
 const rules = ref<UploadRenameRule[]>([])
+
+// 列表筛选 / 选择 / 分页（客户端处理）
+const keyword = ref('')
+const tableRef = ref<TableInstance>()
+const selectedIds = ref<number[]>([])
+const page = ref(1)
+const pageSize = ref(20)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
@@ -35,6 +48,46 @@ const preview = reactive({
   start_episode: 13,
   result: null as UploadRenamePreviewResponse | null
 })
+
+/** 规则名称关键字过滤（不区分大小写的包含匹配）。 */
+const filteredRules = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (!kw) {
+    return rules.value
+  }
+  return rules.value.filter(rule => rule.name.toLowerCase().includes(kw))
+})
+
+const pagedRules = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredRules.value.slice(start, start + pageSize.value)
+})
+
+const emptyDescription = computed(() =>
+  keyword.value.trim() ? '没有匹配的重命名规则' : '还没有重命名规则，先创建一个吧'
+)
+
+// 搜索条件或每页条数变化时回到第一页
+watch([keyword, pageSize], () => {
+  page.value = 1
+})
+
+// 数据量变化（删除/刷新）时把页码收敛到最后一页
+watch(filteredRules, value => {
+  const maxPage = Math.max(1, Math.ceil(value.length / pageSize.value))
+  if (page.value > maxPage) {
+    page.value = maxPage
+  }
+})
+
+function handleSelectionChange(rows: UploadRenameRule[]): void {
+  selectedIds.value = rows.map(row => row.id)
+}
+
+function resetSelection(): void {
+  selectedIds.value = []
+  tableRef.value?.clearSelection()
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -107,6 +160,31 @@ async function handleDelete(rule: UploadRenameRule): Promise<void> {
   await load()
 }
 
+/** 批量删除：仍被任务引用的规则后端返回 400，错误信息由请求拦截器直接提示。 */
+async function handleBatchDelete(): Promise<void> {
+  const ids = [...selectedIds.value]
+  if (ids.length === 0) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${ids.length} 个重命名规则？删除后不可恢复。`,
+      '批量删除重命名规则',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    const res = await uploaderApi.batchDeleteRenameRules(ids)
+    ElMessage.success(`已删除 ${res.data.deleted} 个重命名规则`)
+    resetSelection()
+    await load()
+  } catch {
+    /* 错误信息由请求拦截器统一提示（如规则仍被任务引用） */
+  }
+}
+
 async function handlePreview(): Promise<void> {
   const res = await uploaderApi.previewRename({
     filename: preview.filename.trim(),
@@ -121,44 +199,84 @@ onMounted(() => void load())
 </script>
 
 <template>
-  <div class="page upload-rules">
+  <div class="page page--fill list-page upload-rules">
     <div class="toolbar">
       <div class="toolbar__left">
+        <el-input
+          v-model="keyword"
+          class="toolbar__keyword"
+          clearable
+          :prefix-icon="Search"
+          placeholder="搜索规则名称"
+          @keyup.enter="page = 1"
+          @clear="page = 1"
+        />
         <span class="toolbar__hint">模板变量：{season} / {episode} / {ext}，支持 :02 补零</span>
       </div>
       <div class="toolbar__right">
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+        <el-button
+          type="danger"
+          plain
+          :icon="Delete"
+          :disabled="selectedIds.length === 0"
+          @click="handleBatchDelete"
+        >
+          批量删除
+        </el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建规则</el-button>
       </div>
     </div>
 
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="rules" row-key="id" style="width: 100%">
-        <el-table-column label="规则名称" prop="name" min-width="160" />
-        <el-table-column label="命名模板" min-width="240">
-          <template #default="{ row }"><code class="template">{{ row.template }}</code></template>
-        </el-table-column>
-        <el-table-column label="集数正则" min-width="180">
-          <template #default="{ row }">
-            <code v-if="row.episode_pattern" class="template">{{ row.episode_pattern }}</code>
-            <span v-else class="default-pattern">默认规则</span>
+    <el-card shadow="never" class="list-card">
+      <div class="list-card__table">
+        <el-table
+          ref="tableRef"
+          v-loading="loading"
+          :data="pagedRules"
+          row-key="id"
+          style="width: 100%"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="48" />
+          <el-table-column label="规则名称" prop="name" min-width="160" />
+          <el-table-column label="命名模板" min-width="240">
+            <template #default="{ row }"><code class="template">{{ row.template }}</code></template>
+          </el-table-column>
+          <el-table-column label="集数正则" min-width="180">
+            <template #default="{ row }">
+              <code v-if="row.episode_pattern" class="template">{{ row.episode_pattern }}</code>
+              <span v-else class="default-pattern">默认规则</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="更新时间" width="180">
+            <template #default="{ row }">{{ formatDateTime(row.updated_time) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="150" align="right">
+            <template #default="{ row }">
+              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <el-empty :description="emptyDescription">
+              <el-button v-if="!keyword.trim()" type="primary" :icon="Plus" @click="openCreate">
+                新建规则
+              </el-button>
+            </el-empty>
           </template>
-        </el-table-column>
-        <el-table-column label="更新时间" width="180">
-          <template #default="{ row }">{{ formatDateTime(row.updated_time) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="150" align="right">
-          <template #default="{ row }">
-            <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-        <template #empty>
-          <el-empty description="还没有重命名规则，先创建一个吧">
-            <el-button type="primary" :icon="Plus" @click="openCreate">新建规则</el-button>
-          </el-empty>
-        </template>
-      </el-table>
+        </el-table>
+      </div>
+      <div class="list-card__pager">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="filteredRules.length"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          background
+        />
+      </div>
     </el-card>
 
     <el-dialog
@@ -230,6 +348,10 @@ onMounted(() => void load())
   gap: var(--up-strm-space-3);
 
   // 工具栏布局见 styles/global.scss 的 .toolbar 原语
+  .toolbar__keyword {
+    width: 220px;
+  }
+
   .toolbar__hint {
     color: var(--el-text-color-secondary);
     font-size: var(--up-strm-font-size-xs);

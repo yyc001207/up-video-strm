@@ -11,7 +11,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import {
   Close,
   Delete,
@@ -72,10 +72,16 @@ const loading = ref(false)
 const activeLoading = ref(false)
 const starting = ref(false)
 const stoppingId = ref<number | null>(null)
+const activeTableRef = ref<TableInstance>()
+const activeSelectedIds = ref<number[]>([])
+const batchStopping = ref(false)
 const maintaining = ref(false)
 
 const tasks = ref<AutomationTask[]>([])
 const active = ref<AutomationActiveTask[]>([])
+const allActiveSelected = computed(
+  () => active.value.length > 0 && activeSelectedIds.value.length === active.value.length
+)
 const selectedTaskIds = ref<number[]>([])
 const keyword = ref('')
 /** 执行参数：默认取后端默认值；选中任务后同步为该任务当前配置，可修改（写回任务并持续生效）。 */
@@ -251,10 +257,17 @@ async function loadActive(): Promise<void> {
     const res = await automationRunApi.active()
     active.value = res.data ?? []
     lastPhases = new Map(active.value.map(item => [item.task_id, item.phase ?? '']))
+    pruneActiveSelection()
     syncTimer()
   } finally {
     activeLoading.value = false
   }
+}
+
+/** 轮询后清理已不在运行列表中的选中项，避免批量停止命中已停止的任务。 */
+function pruneActiveSelection(): void {
+  const valid = new Set(active.value.map(item => item.task_id))
+  activeSelectedIds.value = activeSelectedIds.value.filter(id => valid.has(id))
 }
 
 /** 轮次结束/任务停止时刷新一次任务行（待校验计数、运行状态），不额外轮询。 */
@@ -274,6 +287,7 @@ async function pollActive(): Promise<void> {
     const next = res.data ?? []
     active.value = next
     lastPhases = new Map(next.map(item => [item.task_id, item.phase ?? '']))
+    pruneActiveSelection()
     await refreshAfterRoundEnd(next, previous)
   } catch {
     /* 拦截器已提示 */
@@ -369,6 +383,65 @@ async function stopTask(taskId: number): Promise<void> {
   } finally {
     stoppingId.value = null
   }
+}
+
+/** 「正在执行」表：选择变化 / 全选 / 取消全选。 */
+function handleActiveSelectionChange(rows: AutomationActiveTask[]): void {
+  activeSelectedIds.value = rows.map(row => row.task_id)
+}
+
+function selectAllActive(): void {
+  for (const row of active.value) {
+    activeTableRef.value?.toggleRowSelection(row, true)
+  }
+}
+
+function clearActiveSelection(): void {
+  activeTableRef.value?.clearSelection()
+  activeSelectedIds.value = []
+}
+
+function onToggleAllActive(value: boolean | string | number): void {
+  if (value === true) selectAllActive()
+  else clearActiveSelection()
+}
+
+/** 批量停止：逐个调用停止接口，全部结束后刷新列表。 */
+async function stopSelected(): Promise<void> {
+  const ids = [...activeSelectedIds.value]
+  if (ids.length === 0) {
+    ElMessage.warning('请先选择要停止的任务')
+    return
+  }
+  if (batchStopping.value) return
+  try {
+    await ElMessageBox.confirm(`确认停止选中的 ${ids.length} 个任务的当前轮次？`, '批量停止', {
+      type: 'warning',
+      confirmButtonText: '批量停止',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  batchStopping.value = true
+  let stopped = 0
+  let failed = 0
+  for (const taskId of ids) {
+    try {
+      await automationRunApi.stop(taskId)
+      stopped += 1
+    } catch {
+      failed += 1
+    }
+  }
+  batchStopping.value = false
+  if (failed === 0) {
+    ElMessage.success(`已请求停止 ${stopped} 个任务`)
+  } else {
+    ElMessage.warning(`已停止 ${stopped} 个，失败 ${failed} 个`)
+  }
+  clearActiveSelection()
+  await load()
 }
 
 /** 重置扫描指纹：下次轮询将重新检测本地目录变化。 */
@@ -712,14 +785,39 @@ onBeforeUnmount(() => {
           </div>
           <el-button link :icon="Refresh" :loading="activeLoading" @click="loadActive">刷新</el-button>
         </header>
+        <div class="exec-running__batch">
+          <el-checkbox
+            :model-value="allActiveSelected"
+            :indeterminate="activeSelectedIds.length > 0 && !allActiveSelected"
+            :disabled="active.length === 0"
+            @change="onToggleAllActive"
+          >
+            全选
+          </el-checkbox>
+          <span class="exec-running__batch-info">已选 {{ activeSelectedIds.length }} / {{ active.length }}</span>
+          <el-button
+            type="danger"
+            plain
+            size="small"
+            :icon="VideoPause"
+            :disabled="activeSelectedIds.length === 0 || batchStopping"
+            :loading="batchStopping"
+            @click="stopSelected"
+          >
+            批量停止
+          </el-button>
+        </div>
         <el-table
+          ref="activeTableRef"
           v-loading="activeLoading"
           :data="active"
           row-key="task_id"
           :max-height="320"
           class="exec-running__table"
           empty-text="暂无正在运行的自动化任务"
+          @selection-change="handleActiveSelectionChange"
         >
+          <el-table-column type="selection" width="48" :reserve-selection="true" />
           <el-table-column label="任务" min-width="180" show-overflow-tooltip>
             <template #default="{ row }">{{ row.task_name || taskName(row.task_id) }}</template>
           </el-table-column>
@@ -1052,6 +1150,23 @@ onBeforeUnmount(() => {
 
   &__num {
     color: var(--el-text-color-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__batch {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--up-strm-space-3);
+    padding: var(--up-strm-space-2) var(--up-strm-space-4);
+    border-bottom: 1px solid var(--el-border-color-lighter);
+    background: var(--el-fill-color-lighter);
+  }
+
+  &__batch-info {
+    margin-right: auto;
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
     font-variant-numeric: tabular-nums;
   }
 

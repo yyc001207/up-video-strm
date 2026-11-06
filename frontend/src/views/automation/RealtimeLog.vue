@@ -75,7 +75,6 @@ const autoScroll = ref(true)
 const levelFilter = ref<FilterLevel>('all')
 const keyword = ref('')
 const opening = ref(false)
-const loadingRun = ref(false)
 
 const roundNo = ref(0)
 const phase = ref('')
@@ -91,6 +90,8 @@ let disposed = false
 
 const currentTask = computed(() => tasks.value.find(item => item.id === taskId.value) ?? null)
 const connectionMeta = computed(() => CONNECTION_META[connectionState.value])
+/** 未连接（无运行中任务可订阅）时：清空日志、禁用筛选控件，并展示「无运行中任务」。 */
+const notConnected = computed(() => connectionState.value === 'disconnected')
 
 const currentStatus = computed<AutomationStatus>(() => finalStatus.value ?? 'running')
 /** StatusDot 只接受 A/B 的四种终态；自动化「部分成功」按失败着色展示。 */
@@ -274,33 +275,10 @@ async function openTask(id: number): Promise<void> {
     connect()
     return
   }
-  await loadLatestRunLogs(id)
+  // 任务未运行：不订阅 WS、不回放历史日志；页面保持「无运行中任务」空态，历史日志请到任务历史查看。
 }
 
-async function loadLatestRunLogs(id: number): Promise<void> {
-  loadingRun.value = true
-  try {
-    const runs = await automationRunApi.listRuns({ task_id: id, page: 1, page_size: 1 })
-    const run = (runs.data ?? [])[0]
-    if (run === undefined) return
-    const logs = await automationRunApi.runLogs(run.id, 0, 2000)
-    if (disposed) return
-    resetLogs()
-    for (const line of logs.data?.lines ?? []) appendLine(line.level, line.message)
-    roundNo.value = run.round_no
-    phase.value = run.phase
-    pendingCount.value = run.pending_file_count
-    checkedCount.value = run.checked_file_count
-    missedCount.value = run.missed_files?.length ?? 0
-    finalStatus.value = run.status === 'running' ? null : (run.status as AutomationStatus)
-    startedAt.value = run.started_time ? beijingMillis(run.started_time) : null
-  } catch {
-    /* 拦截器已提示 */
-  } finally {
-    loadingRun.value = false
-  }
-}
-
+/** 重连：运行中重新订阅 WS；未运行时刷新任务状态并提示「无运行中任务」。 */
 function handleReconnect(): void {
   if (taskId.value === null) return
   const task = tasks.value.find(item => item.id === taskId.value)
@@ -308,9 +286,8 @@ function handleReconnect(): void {
     connect()
     return
   }
-  void loadTasks(true).then(() => {
-    if (taskId.value !== null) void loadLatestRunLogs(taskId.value)
-  })
+  ElMessage.info('当前没有运行中的任务，历史日志请到「任务历史」查看')
+  void loadTasks(true)
 }
 
 function handleClear(): void {
@@ -337,6 +314,11 @@ function handleBackToExecution(): void {
 watch(taskId, id => {
   disconnect()
   if (id !== null) void openTask(id)
+})
+
+/** 断线（含任务不存在/本轮结束）后立即清空日志区域，避免残留上一任务的日志。 */
+watch(connectionState, state => {
+  if (state === 'disconnected') resetLogs()
 })
 
 onMounted(async () => {
@@ -381,7 +363,7 @@ onBeforeUnmount(() => {
           class="realtime-toolbar__selector"
           placeholder="选择自动化任务"
           filterable
-          :disabled="tasks.length === 0"
+          :disabled="tasks.length === 0 || notConnected"
         >
           <el-option
             v-for="task in tasks"
@@ -393,13 +375,12 @@ onBeforeUnmount(() => {
         <el-tag :type="connectionMeta.tone" size="small" disable-transitions>
           {{ connectionMeta.label }}
         </el-tag>
-        <el-tag v-if="loadingRun" type="warning" size="small" disable-transitions>加载中</el-tag>
-        <StatusDot v-if="showStatus" :status="statusDotStatus" />
+        <StatusDot v-if="!notConnected && showStatus" :status="statusDotStatus" />
         <el-tag v-else type="info" size="small" disable-transitions>无运行中任务</el-tag>
       </div>
       <div class="realtime-toolbar__right">
         <el-button :icon="Refresh" @click="handleReconnect">重连</el-button>
-        <el-button :icon="Delete" @click="handleClear">清空</el-button>
+        <el-button :icon="Delete" :disabled="notConnected" @click="handleClear">清空</el-button>
         <el-button :icon="FolderOpened" :loading="opening" @click="handleOpenLogDir">
           打开日志文件夹
         </el-button>
@@ -443,7 +424,7 @@ onBeforeUnmount(() => {
 
     <div class="log-toolbar">
       <div class="log-toolbar__left">
-        <el-select v-model="levelFilter" size="small" class="log-toolbar__level">
+        <el-select v-model="levelFilter" size="small" class="log-toolbar__level" :disabled="notConnected">
           <el-option label="全部级别" value="all" />
           <el-option label="信息" value="info" />
           <el-option label="警告" value="warn" />
@@ -456,6 +437,7 @@ onBeforeUnmount(() => {
           placeholder="筛选关键字"
           clearable
           :prefix-icon="Search"
+          :disabled="notConnected"
         />
         <span class="log-toolbar__count">{{ filteredLines.length }} 行</span>
       </div>

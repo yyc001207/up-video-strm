@@ -5,7 +5,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/schedule/execution'
+      redirect: '/config'
     },
     {
       path: '/schedule',
@@ -117,7 +117,7 @@ const router = createRouter({
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/schedule/execution'
+      redirect: '/config'
     }
   ],
   scrollBehavior() {

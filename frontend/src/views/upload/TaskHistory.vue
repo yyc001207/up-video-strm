@@ -296,6 +296,7 @@ defineExpose({ reload: load })
           </el-select>
         </div>
         <div class="toolbar__right">
+          <el-button :icon="FolderOpened" @click="openLogDir()">日志文件夹</el-button>
           <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         </div>
       </div>

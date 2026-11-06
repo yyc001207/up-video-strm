@@ -57,6 +57,8 @@ const pageSize = ref(20)
 const PAGE_SIZES = [10, 20, 50]
 const taskFilter = ref<number | null>(null)
 const statusFilter = ref<AutomationRunStatus | 'all'>('all')
+/** 时间范围筛选（按运行开始时间，API 以北京时间日期解释起止日）。 */
+const dateRange = ref<[string, string] | null>(null)
 
 const detailVisible = ref(false)
 const detailLoading = ref(false)
@@ -86,7 +88,7 @@ function briefText(brief: AutomationExecutionBrief | null): string {
 }
 
 const emptyDescription = computed(() => {
-  if (taskFilter.value !== null || statusFilter.value !== 'all') return '没有匹配的运行记录'
+  if (taskFilter.value !== null || statusFilter.value !== 'all' || dateRange.value !== null) return '没有匹配的运行记录'
   return '暂无运行记录（启动自动化任务后才会生成记录）'
 })
 
@@ -98,9 +100,12 @@ async function loadTasks() {
 async function load() {
   loading.value = true
   try {
+    const range = dateRange.value
     const res = await automationRunApi.listRuns({
       task_id: taskFilter.value ?? undefined,
       status: statusFilter.value === 'all' ? undefined : statusFilter.value,
+      start_time: range?.[0],
+      end_time: range?.[1],
       page: page.value,
       page_size: pageSize.value,
     })
@@ -201,6 +206,17 @@ defineExpose({ reload: load })
         <el-select v-model="statusFilter" class="toolbar__status" @change="handleFilterChange">
           <el-option v-for="option in STATUS_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
+        <el-date-picker
+          v-model="dateRange"
+          class="toolbar__date"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          unlink-panels
+          @change="handleFilterChange"
+        />
       </div>
       <div class="toolbar__right">
         <el-button :icon="FolderOpened" @click="openLogDir">日志文件夹</el-button>
@@ -463,6 +479,10 @@ defineExpose({ reload: load })
 
 .toolbar__status {
   width: 140px;
+}
+
+.toolbar__date {
+  width: 280px;
 }
 
 .cell-primary {

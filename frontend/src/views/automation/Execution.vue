@@ -1,14 +1,28 @@
 <script setup lang="ts">
 /**
- * 自动化任务 · 执行管理：
- * - 列出全部自动化任务与运行态；仅存在运行中任务且页面可见时每 5s 刷新运行态；
- * - 启动可覆盖本次运行的并发、重试与生成模式（不写回任务配置）；
- * - 运行中的任务展示阶段、轮次与下一轮时间，并可重置指纹、清空待校验文件。
+ * 自动化任务 · 执行管理（/automation/execution）。
+ *
+ * 结构与「任务调度 · 执行管理」保持一致：三张卡片一行工作区
+ * （左「选择任务」、中「执行参数」、右「已选任务」），下方「正在执行」表 5s 轮询。
+ *
+ * 与任务调度的差异仅在业务语义：本页执行的是自动化任务的一轮链路，
+ * 执行参数可覆盖本次运行的上传并发 / 失败重试 / STRM 生成模式（不写回任务配置）；
+ * 启动成功后自动跳转到该任务的实时日志页，便于立即观察链路日志。
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, VideoPlay, VideoPause, Delete, Timer, ArrowRight } from '@element-plus/icons-vue'
+import {
+  Close,
+  Delete,
+  Refresh,
+  RefreshLeft,
+  Search,
+  Select,
+  Timer,
+  VideoPause,
+  VideoPlay
+} from '@element-plus/icons-vue'
 
 import { automationApi, automationRunApi } from '@/api/automation'
 import type {
@@ -18,25 +32,22 @@ import type {
   AutomationTask
 } from '@/types/automation'
 
-const router = useRouter()
+const ROUTE_REALTIME = '/automation/realtime'
+const ROUTE_TASKS = '/automation/tasks'
+const POLL_INTERVAL_MS = 5000
 
-const tasks = ref<AutomationTask[]>([])
-const active = ref<AutomationActiveTask[]>([])
-const loading = ref(false)
-const selectedIds = ref<number[]>([])
-const starting = ref(false)
+/** 生成模式：与任务配置页一致，映射到后端的 openlist_mode。 */
+const MODE_OPTIONS: Array<{ label: string; value: AutomationOpenListMode }> = [
+  { label: '增量', value: 'incremental' },
+  { label: '全量', value: 'full' },
+  { label: '仅 STRM', value: 'strm_only' }
+]
 
-const startDialogVisible = ref(false)
-const startTargets = ref<number[]>([])
-const startForm = reactive<AutomationStartPayload>({
-  upload_concurrency: undefined,
-  upload_retry_times: undefined,
-  openlist_mode: undefined
-})
-
-let timer: ReturnType<typeof setInterval> | null = null
-/** 仅在存在运行中任务时轮询运行态；否则不轮询。 */
-const ACTIVE_POLL_MS = 5000
+const MODE_HINT: Record<AutomationOpenListMode, string> = {
+  incremental: '只处理新增或变更的文件，耗时最短。',
+  full: '忽略已有产物，重新生成全部 STRM 与字幕，耗时最长。',
+  strm_only: '只更新 STRM 文件，不重新下载已存在的字幕。'
+}
 
 const PHASE_LABELS: Record<string, string> = {
   starting: '准备中',
@@ -51,19 +62,161 @@ const PHASE_LABELS: Record<string, string> = {
   done: '已结束'
 }
 
-const MODE_OPTIONS: { value: AutomationOpenListMode; label: string }[] = [
-  { value: 'incremental', label: '增量生成' },
-  { value: 'full', label: '全量生成' },
-  { value: 'strm_only', label: '仅生成 STRM' }
-]
+const router = useRouter()
 
-const activeMap = computed(() => new Map(active.value.map(item => [item.task_id, item])))
-const runningCount = computed(() => active.value.length)
+const loading = ref(false)
+const activeLoading = ref(false)
+const starting = ref(false)
+const stoppingId = ref<number | null>(null)
+const maintaining = ref(false)
 
-/** 轮次结束/任务停止时刷新一次任务行（待校验计数、运行状态），不额外轮询。 */
+const tasks = ref<AutomationTask[]>([])
+const active = ref<AutomationActiveTask[]>([])
+const selectedTaskIds = ref<number[]>([])
+const keyword = ref('')
+const execMode = ref<AutomationOpenListMode>('incremental')
+/** 本次运行参数覆盖：留空表示沿用任务配置。 */
+const concurrency = ref<number | undefined>(undefined)
+const retryTimes = ref<number | undefined>(undefined)
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+/** 轮次结束时刷新一次任务行（待校验 / 运行状态），避免额外轮询任务列表。 */
 const ROUND_END_PHASES = new Set(['interval', 'backoff', 'idle', 'stopped', 'done'])
 let lastPhases = new Map<number, string>()
 
+const activeMap = computed(() => new Map(active.value.map(item => [item.task_id, item])))
+
+/** 单服务器 / 自动化任务列表不分页：直接在前端按关键字筛选。 */
+const filteredTasks = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (!kw) return tasks.value
+  return tasks.value.filter(task => {
+    return (
+      task.name.toLowerCase().includes(kw) ||
+      (task.check_dir || '').toLowerCase().includes(kw) ||
+      (task.upload_task_name || '').toLowerCase().includes(kw) ||
+      (task.openlist_task_name || '').toLowerCase().includes(kw)
+    )
+  })
+})
+
+const selectedTasks = computed(() =>
+  tasks.value.filter(task => selectedTaskIds.value.includes(task.id))
+)
+const canStart = computed(
+  () => selectedTaskIds.value.length > 0 && !starting.value
+)
+/** 已选任务的待校验文件总数（仅展示，便于决定是否优先补偿）。 */
+const pendingTotal = computed(() =>
+  selectedTasks.value.reduce((sum, task) => sum + (task.pending_file_count ?? 0), 0)
+)
+
+/** 全选仅作用于当前筛选结果里可选的任务：运行中的任务不可重复选择。 */
+const selectableTasks = computed(() => filteredTasks.value.filter(task => !isLocked(task.id)))
+const allSelectableSelected = computed(
+  () =>
+    selectableTasks.value.length > 0 &&
+    selectableTasks.value.every(task => selectedTaskIds.value.includes(task.id))
+)
+
+function phaseText(taskId: number): string {
+  const state = activeMap.value.get(taskId)
+  if (state?.phase) return PHASE_LABELS[state.phase] ?? state.phase
+  return '运行中'
+}
+
+function nextRoundText(taskId: number): string {
+  return activeMap.value.get(taskId)?.next_round_at ?? '—'
+}
+
+function taskName(taskId: number): string {
+  return activeMap.value.get(taskId)?.task_name || tasks.value.find(item => item.id === taskId)?.name || `任务 #${taskId}`
+}
+
+function isRunning(task: AutomationTask): boolean {
+  return activeMap.value.has(task.id) || task.is_running
+}
+
+function isSelected(taskId: number): boolean {
+  return selectedTaskIds.value.includes(taskId)
+}
+
+/** 任务是否锁定：执行中不可重复选择；提交过程中锁定全部选择。 */
+function isLocked(taskId: number): boolean {
+  const task = tasks.value.find(item => item.id === taskId)
+  return starting.value || (task !== undefined && isRunning(task))
+}
+
+function toggleTask(task: AutomationTask): void {
+  if (isLocked(task.id)) return
+  const index = selectedTaskIds.value.indexOf(task.id)
+  if (index >= 0) {
+    selectedTaskIds.value.splice(index, 1)
+  } else {
+    selectedTaskIds.value.push(task.id)
+  }
+}
+
+function handleRowKeydown(event: KeyboardEvent, task: AutomationTask): void {
+  if (event.target !== event.currentTarget) return
+  event.preventDefault()
+  toggleTask(task)
+}
+
+function toggleSelectAll(): void {
+  if (starting.value) return
+  if (allSelectableSelected.value) {
+    const selectableIds = new Set(selectableTasks.value.map(task => task.id))
+    selectedTaskIds.value = selectedTaskIds.value.filter(id => !selectableIds.has(id))
+    return
+  }
+  const merged = new Set(selectedTaskIds.value)
+  for (const task of selectableTasks.value) merged.add(task.id)
+  selectedTaskIds.value = [...merged]
+}
+
+function clearSelection(): void {
+  selectedTaskIds.value = []
+}
+
+function removeSelected(taskId: number): void {
+  selectedTaskIds.value = selectedTaskIds.value.filter(id => id !== taskId)
+}
+
+function buildPayload(): AutomationStartPayload {
+  const payload: AutomationStartPayload = {}
+  if (concurrency.value !== undefined) payload.upload_concurrency = concurrency.value
+  if (retryTimes.value !== undefined) payload.upload_retry_times = retryTimes.value
+  if (execMode.value !== undefined) payload.openlist_mode = execMode.value
+  return payload
+}
+
+async function loadTasks(silent = false): Promise<void> {
+  if (!silent) loading.value = true
+  try {
+    const res = await automationApi.listTasks({ page: 1, page_size: 100 })
+    tasks.value = res.data ?? []
+    // 运行中的任务可能被删除：清理已不合法的选中项。
+    const validIds = new Set(tasks.value.map(task => task.id))
+    selectedTaskIds.value = selectedTaskIds.value.filter(id => validIds.has(id))
+  } finally {
+    if (!silent) loading.value = false
+  }
+}
+
+async function loadActive(): Promise<void> {
+  activeLoading.value = true
+  try {
+    const res = await automationRunApi.active()
+    active.value = res.data ?? []
+    lastPhases = new Map(active.value.map(item => [item.task_id, item.phase ?? '']))
+    syncTimer()
+  } finally {
+    activeLoading.value = false
+  }
+}
+
+/** 轮次结束/任务停止时刷新一次任务行（待校验计数、运行状态），不额外轮询。 */
 async function refreshAfterRoundEnd(next: AutomationActiveTask[], previousActive: AutomationActiveTask[]): Promise<void> {
   const finishedRound = next.some(item => {
     const previous = lastPhases.get(item.task_id)
@@ -71,24 +224,6 @@ async function refreshAfterRoundEnd(next: AutomationActiveTask[], previousActive
   })
   const stopped = previousActive.length > 0 && next.length === 0
   if (finishedRound || stopped) await loadTasks(true)
-}
-
-function phaseText(task: AutomationTask): string {
-  const state = activeMap.value.get(task.id)
-  if (state?.phase) return PHASE_LABELS[state.phase] ?? state.phase
-  return task.is_running ? '运行中' : '未运行'
-}
-
-function nextRoundText(task: AutomationTask): string {
-  const state = activeMap.value.get(task.id)
-  return state?.next_round_at ?? '—'
-}
-
-async function loadActive(): Promise<void> {
-  const res = await automationRunApi.active()
-  active.value = res.data ?? []
-  lastPhases = new Map(active.value.map(item => [item.task_id, item.phase ?? '']))
-  syncTimer()
 }
 
 async function pollActive(): Promise<void> {
@@ -99,42 +234,21 @@ async function pollActive(): Promise<void> {
     active.value = next
     lastPhases = new Map(next.map(item => [item.task_id, item.phase ?? '']))
     await refreshAfterRoundEnd(next, previous)
+  } catch {
+    /* 拦截器已提示 */
   } finally {
     syncTimer()
   }
 }
 
-async function loadTasks(silent = false): Promise<void> {
-  if (!silent) loading.value = true
-  try {
-    const res = await automationApi.listTasks({ page: 1, page_size: 100 })
-    tasks.value = res.data ?? []
-  } finally {
-    loading.value = false
-  }
-}
-
-async function load(silent = false): Promise<void> {
-  if (!silent) loading.value = true
-  try {
-    await Promise.all([loadTasks(true), loadActive()])
-  } finally {
-    loading.value = false
-  }
-}
-
-function isRunning(task: AutomationTask): boolean {
-  return activeMap.value.has(task.id) || task.is_running
-}
-
 /** 仅当存在运行中的任务且页面可见时轮询；否则完全停止轮询。 */
 function syncTimer(): void {
   const need = active.value.length > 0 && typeof document !== 'undefined' && !document.hidden
-  if (need && !timer) {
-    timer = setInterval(() => void pollActive(), ACTIVE_POLL_MS)
-  } else if (!need && timer) {
-    clearInterval(timer)
-    timer = null
+  if (need && !pollTimer) {
+    pollTimer = setInterval(() => void pollActive(), POLL_INTERVAL_MS)
+  } else if (!need && pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -146,84 +260,144 @@ function onVisibilityChange(): void {
   }
 }
 
-function openStartDialog(ids: number[]): void {
-  if (!ids.length) {
-    ElMessage.warning('请先选择要启动的任务')
-    return
+async function load(): Promise<void> {
+  try {
+    await Promise.all([loadTasks(), loadActive()])
+  } catch {
+    /* 拦截器已提示 */
   }
-  const running = ids.filter(id => {
-    const task = tasks.value.find(item => item.id === id)
-    return task ? isRunning(task) : false
-  })
-  if (running.length) {
-    ElMessage.warning(`任务 ${running.join('、')} 正在运行，请先停止`)
-    return
-  }
-  startTargets.value = ids
-  startForm.upload_concurrency = undefined
-  startForm.upload_retry_times = undefined
-  startForm.openlist_mode = undefined
-  startDialogVisible.value = true
 }
 
-async function confirmStart(): Promise<void> {
-  const ids = startTargets.value
-  if (!ids.length) return
+async function handleStart(): Promise<void> {
+  if (selectedTaskIds.value.length === 0) {
+    ElMessage.warning('请至少选择一个任务')
+    return
+  }
+  if (starting.value) return
+
+  // 轮询可能发现已选任务被其他入口启动：跳过执行中的任务，避免重复执行。
+  const requestedIds = selectedTaskIds.value.filter(taskId => !isLocked(taskId))
+  const skippedCount = selectedTaskIds.value.length - requestedIds.length
+  if (requestedIds.length === 0) {
+    ElMessage.warning('所选任务均处于运行中，请等待当前轮次结束')
+    return
+  }
+  if (skippedCount > 0) {
+    ElMessage.info(`已跳过 ${skippedCount} 个正在运行的任务`)
+  }
+
   starting.value = true
   try {
-    const payload: AutomationStartPayload = {}
-    if (startForm.upload_concurrency) payload.upload_concurrency = startForm.upload_concurrency
-    if (startForm.upload_retry_times !== undefined) payload.upload_retry_times = startForm.upload_retry_times
-    if (startForm.openlist_mode) payload.openlist_mode = startForm.openlist_mode
-    if (ids.length === 1) {
-      await automationRunApi.start(ids[0], payload)
-      ElMessage.success('已启动')
+    const payload = buildPayload()
+    if (requestedIds.length === 1) {
+      await automationRunApi.start(requestedIds[0], payload)
     } else {
-      const res = await automationRunApi.batchStart(ids, payload)
+      const res = await automationRunApi.batchStart(requestedIds, payload)
       const failed = (res.data ?? []).filter(item => !item.ok)
       if (failed.length) {
-        ElMessage.warning(`已启动 ${ids.length - failed.length} 个，失败 ${failed.length} 个`)
-      } else {
-        ElMessage.success(`已启动 ${ids.length} 个任务`)
+        ElMessage.warning(`已启动 ${requestedIds.length - failed.length} 个，失败 ${failed.length} 个`)
       }
     }
-    startDialogVisible.value = false
-    await load(true)
+    // 启动成功后自动跳转到对应任务的实时日志，便于立即观察本轮链路日志。
+    await router.push({ path: ROUTE_REALTIME, query: { task_id: String(requestedIds[0]) } })
+  } catch {
+    /* 拦截器已提示 */
   } finally {
     starting.value = false
   }
 }
 
-async function stopTask(task: AutomationTask): Promise<void> {
-  await ElMessageBox.confirm(`确定停止自动化任务「${task.name}」？`, '停止运行', { type: 'warning' })
-  await automationRunApi.stop(task.id)
-  ElMessage.success('已请求停止')
-  await load(true)
-}
-
-async function resetFingerprint(task: AutomationTask): Promise<void> {
-  await automationRunApi.resetFingerprint(task.id)
-  ElMessage.success('已重置扫描指纹，下一轮将重新检测变化')
-  await load(true)
-}
-
-async function clearPending(task: AutomationTask): Promise<void> {
-  if (!task.pending_file_count) {
-    ElMessage.info('当前没有待校验文件')
+async function stopTask(taskId: number): Promise<void> {
+  if (stoppingId.value !== null) return
+  try {
+    await ElMessageBox.confirm(`确认停止自动化任务「${taskName(taskId)}」的当前轮次？`, '停止运行', {
+      type: 'warning',
+      confirmButtonText: '停止运行',
+      cancelButtonText: '继续运行'
+    })
+  } catch {
     return
   }
-  await ElMessageBox.confirm(
-    `确定清空「${task.name}」的 ${task.pending_file_count} 个待校验文件？`,
-    '清空待校验',
-    { type: 'warning' }
-  )
-  await automationRunApi.clearPending(task.id)
-  ElMessage.success('已清空待校验文件')
-  await load(true)
+  stoppingId.value = taskId
+  try {
+    await automationRunApi.stop(taskId)
+    ElMessage.success('已请求停止')
+    await load()
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    stoppingId.value = null
+  }
 }
 
-function onSelectionChange(rows: AutomationTask[]): void {
-  selectedIds.value = rows.map(row => row.id)
+/** 重置扫描指纹：下次轮询将重新检测本地目录变化。 */
+async function handleResetFingerprint(): Promise<void> {
+  if (selectedTaskIds.value.length === 0) {
+    ElMessage.warning('请先选择任务')
+    return
+  }
+  if (maintaining.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确认重置 ${selectedTaskIds.value.length} 个任务的扫描指纹？下一轮将重新检测本地目录变化。`,
+      '重置指纹',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  maintaining.value = true
+  try {
+    for (const taskId of selectedTaskIds.value) {
+      await automationRunApi.resetFingerprint(taskId)
+    }
+    ElMessage.success('已重置扫描指纹')
+    await loadTasks(true)
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    maintaining.value = false
+  }
+}
+
+/** 清空待校验：清空选中任务的待校验文件列表。 */
+async function handleClearPending(): Promise<void> {
+  const targets = selectedTasks.value.filter(task => task.pending_file_count > 0)
+  if (targets.length === 0) {
+    ElMessage.info('所选任务当前没有待校验文件')
+    return
+  }
+  if (maintaining.value) return
+  const count = targets.reduce((sum, task) => sum + task.pending_file_count, 0)
+  try {
+    await ElMessageBox.confirm(
+      `确认清空 ${targets.length} 个任务的 ${count} 个待校验文件？清空后不再校验这些文件。`,
+      '清空待校验',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  maintaining.value = true
+  try {
+    for (const task of targets) {
+      await automationRunApi.clearPending(task.id)
+    }
+    ElMessage.success('已清空待校验文件')
+    await loadTasks(true)
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    maintaining.value = false
+  }
+}
+
+function goTaskConfig(): void {
+  void router.push(ROUTE_TASKS)
+}
+
+function openTaskRealtime(taskId: number): void {
+  void router.push({ path: ROUTE_REALTIME, query: { task_id: String(taskId) } })
 }
 
 onMounted(async () => {
@@ -233,126 +407,695 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
-  if (timer) {
-    clearInterval(timer)
-    timer = null
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 })
 </script>
 
 <template>
-  <div class="page page--fill list-page automation-execution">
-    <div class="toolbar">
-      <div class="toolbar__left">
-        <el-button type="primary" :icon="VideoPlay" @click="openStartDialog(selectedIds)">
-          批量启动
-        </el-button>
-        <el-button :icon="Refresh" :loading="loading" @click="load()">刷新</el-button>
-        <span class="toolbar__summary">运行中 {{ runningCount }} 个</span>
-      </div>
-      <div class="toolbar__right">
-        <el-button :icon="ArrowRight" @click="router.push('/automation/realtime')">实时日志</el-button>
-      </div>
-    </div>
+  <div class="page page--fill exec-page">
+    <div class="exec-body">
+      <div class="exec-workspace">
+        <!-- 左栏：选择任务 -->
+        <section v-loading="loading" class="exec-panel exec-panel--tasks">
+          <header class="exec-panel__head">
+            <div class="exec-panel__heading">
+              <h2 class="exec-panel__title">选择任务</h2>
+              <p class="exec-panel__sub">展示全部自动化任务；运行中的任务不可重复选择</p>
+            </div>
+            <span class="exec-panel__count">已选 {{ selectedTaskIds.length }}</span>
+          </header>
 
-    <el-card class="list-card" shadow="never">
-      <el-table
-        v-loading="loading"
-        class="list-card__table"
-        :data="tasks"
-        row-key="id"
-        empty-text="暂无自动化任务，请先在「任务配置」中创建"
-        @selection-change="onSelectionChange"
-      >
-        <el-table-column type="selection" width="44" :selectable="(row: AutomationTask) => !isRunning(row)" />
-        <el-table-column label="任务名称" min-width="160">
-          <template #default="{ row }">
-            <div class="cell-main">{{ row.name }}</div>
-            <div class="cell-sub">{{ row.upload_task_name }} → {{ row.openlist_task_name }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="校验目录" min-width="150" prop="check_dir" show-overflow-tooltip />
-        <el-table-column label="运行状态" width="150">
-          <template #default="{ row }">
-            <el-tag :type="isRunning(row) ? 'success' : 'info'" size="small" effect="plain">
-              {{ phaseText(row) }}
-            </el-tag>
-            <div v-if="isRunning(row)" class="cell-sub">下一轮：{{ nextRoundText(row) }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="待校验" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.pending_file_count" type="warning" size="small">
-              {{ row.pending_file_count }}
-            </el-tag>
-            <span v-else>—</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="轮次" width="90" align="center">
-          <template #default="{ row }">
-            第 {{ row.last_round_no }} 轮
-            <div v-if="row.consecutive_failures" class="cell-sub">连续失败 {{ row.consecutive_failures }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="最近扫描" width="160">
-          <template #default="{ row }">{{ row.scan_time ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="290" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="!isRunning(row)"
-              link
-              type="primary"
-              :icon="VideoPlay"
-              @click="openStartDialog([row.id])"
+          <div class="exec-panel__body">
+            <div class="task-filters">
+              <el-input
+                v-model="keyword"
+                class="task-filters__search"
+                placeholder="搜索任务名称 / 校验目录"
+                clearable
+                :prefix-icon="Search"
+              />
+            </div>
+
+            <el-empty
+              v-if="tasks.length === 0"
+              class="exec-panel__empty"
+              description="暂无自动化任务配置"
+              :image-size="72"
             >
-              启动
-            </el-button>
-            <el-button v-else link type="warning" :icon="VideoPause" @click="stopTask(row)">停止</el-button>
-            <el-button link :icon="Timer" @click="resetFingerprint(row)">重置指纹</el-button>
-            <el-button link :icon="Delete" :disabled="!row.pending_file_count" @click="clearPending(row)">
-              清空待校验
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+              <el-button type="primary" plain @click="goTaskConfig">前往任务配置</el-button>
+            </el-empty>
+            <el-empty
+              v-else-if="filteredTasks.length === 0"
+              class="exec-panel__empty"
+              description="没有匹配的任务"
+              :image-size="72"
+            />
+            <div v-else class="task-list">
+              <div
+                v-for="task in filteredTasks"
+                :key="task.id"
+                class="task-row"
+                :class="{
+                  'is-selected': isSelected(task.id),
+                  'is-running': isRunning(task)
+                }"
+                role="checkbox"
+                :aria-checked="isSelected(task.id)"
+                :aria-disabled="isLocked(task.id)"
+                :aria-label="task.name"
+                tabindex="0"
+                @click="toggleTask(task)"
+                @keydown.enter="handleRowKeydown($event, task)"
+                @keydown.space="handleRowKeydown($event, task)"
+              >
+                <span class="task-row__check" @click.stop>
+                  <el-checkbox
+                    :model-value="isSelected(task.id)"
+                    :disabled="isLocked(task.id)"
+                    @change="toggleTask(task)"
+                  />
+                </span>
+                <span class="task-row__info">
+                  <span class="task-row__name">{{ task.name }}</span>
+                  <span class="task-row__path" :title="task.check_dir">{{ task.check_dir }}</span>
+                </span>
+                <span class="task-row__meta">
+                  <span class="task-row__count">待校验 {{ task.pending_file_count }}</span>
+                  <el-tag v-if="isRunning(task)" type="success" size="small" effect="light">
+                    {{ phaseText(task.id) }}
+                  </el-tag>
+                </span>
+              </div>
+            </div>
 
-    <el-dialog v-model="startDialogVisible" title="启动自动化任务" width="460px">
-      <div class="form-tip">
-        启动后立即执行一轮（跳过指纹检查），以下参数仅本次运行生效，不写回任务配置。
+            <div v-if="tasks.length > 0" class="exec-panel__footer">
+              <span class="exec-panel__footer-hint">
+                可选 {{ selectableTasks.length }} 个 · 已选 {{ selectedTaskIds.length }} 个
+              </span>
+              <el-button
+                link
+                type="primary"
+                :icon="Select"
+                :disabled="selectableTasks.length === 0 || starting"
+                @click="toggleSelectAll"
+              >
+                {{ allSelectableSelected ? '取消全选' : '全选' }}
+              </el-button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 中栏：执行参数 -->
+        <aside class="exec-panel exec-panel--params">
+          <header class="exec-panel__head">
+            <div class="exec-panel__heading">
+              <h2 class="exec-panel__title">执行参数</h2>
+              <p class="exec-panel__sub">参数仅本次运行生效，不写回任务配置</p>
+            </div>
+          </header>
+
+          <div class="exec-panel__body">
+            <div class="param-block">
+              <span class="param-block__label">生成模式</span>
+              <el-segmented v-model="execMode" :options="MODE_OPTIONS" :disabled="starting" block />
+              <p class="param-block__hint">{{ MODE_HINT[execMode] }}</p>
+            </div>
+
+            <div class="param-block">
+              <span class="param-block__label">上传并发</span>
+              <el-input-number
+                v-model="concurrency"
+                :min="1"
+                :max="8"
+                :disabled="starting"
+                placeholder="使用任务配置"
+                controls-position="right"
+              />
+            </div>
+
+            <div class="param-block">
+              <span class="param-block__label">失败重试</span>
+              <el-input-number
+                v-model="retryTimes"
+                :min="0"
+                :max="10"
+                :disabled="starting"
+                placeholder="使用任务配置"
+                controls-position="right"
+              />
+            </div>
+
+            <p class="param-note">
+              启动后立即执行一轮（跳过指纹检查）；进入实时日志页后随时可查看链路日志。
+            </p>
+          </div>
+        </aside>
+
+        <!-- 右栏：已选任务 -->
+        <section class="exec-panel exec-panel--selected">
+          <header class="exec-panel__head">
+            <div class="exec-panel__heading">
+              <h2 class="exec-panel__title">已选任务</h2>
+              <p class="exec-panel__sub">确认选中项后启动，参数应用到全部任务</p>
+            </div>
+            <span class="exec-panel__count">{{ selectedTaskIds.length }}</span>
+          </header>
+
+          <div class="exec-panel__body">
+            <el-empty
+              v-if="selectedTasks.length === 0"
+              class="exec-panel__empty"
+              description="在左侧勾选要启动的自动化任务"
+              :image-size="64"
+            />
+            <div v-else class="selected-list">
+              <div v-for="task in selectedTasks" :key="task.id" class="selected-row">
+                <span class="selected-row__info">
+                  <span class="selected-row__name">{{ task.name }}</span>
+                  <span class="selected-row__path" :title="task.check_dir">{{ task.check_dir }}</span>
+                </span>
+                <el-button
+                  link
+                  :icon="Close"
+                  :disabled="starting"
+                  aria-label="移除该任务"
+                  @click="removeSelected(task.id)"
+                />
+              </div>
+            </div>
+
+            <div class="selected-summary" title="待校验为空表示本次没有上次未校验成功的文件">
+              已选 <strong class="selected-summary__num">{{ selectedTaskIds.length }}</strong> 个任务 ·
+              待校验 <strong class="selected-summary__num">{{ pendingTotal }}</strong> 个文件
+            </div>
+
+            <div class="selected-ops">
+              <el-button
+                link
+                :icon="Timer"
+                :disabled="selectedTaskIds.length === 0 || maintaining"
+                @click="handleResetFingerprint"
+              >
+                重置指纹
+              </el-button>
+              <el-button
+                link
+                :icon="Delete"
+                :disabled="selectedTaskIds.length === 0 || maintaining"
+                @click="handleClearPending"
+              >
+                清空待校验
+              </el-button>
+            </div>
+
+            <div class="selected-actions">
+              <el-button
+                :icon="RefreshLeft"
+                :disabled="selectedTaskIds.length === 0 || starting"
+                @click="clearSelection"
+              >
+                清空选择
+              </el-button>
+              <el-button
+                type="primary"
+                :icon="VideoPlay"
+                :loading="starting"
+                :disabled="!canStart"
+                @click="handleStart"
+              >
+                启动任务
+              </el-button>
+            </div>
+          </div>
+        </section>
       </div>
-      <el-form label-width="120px" class="start-form">
-        <el-form-item label="上传并发">
-          <el-input-number v-model="startForm.upload_concurrency" :min="1" :max="8" placeholder="使用任务配置" />
-        </el-form-item>
-        <el-form-item label="失败重试">
-          <el-input-number v-model="startForm.upload_retry_times" :min="0" :max="10" placeholder="使用任务配置" />
-        </el-form-item>
-        <el-form-item label="生成模式">
-          <el-select v-model="startForm.openlist_mode" clearable placeholder="使用任务配置" style="width: 100%">
-            <el-option v-for="item in MODE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="startDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="starting" @click="confirmStart">
-          启动 {{ startTargets.length > 1 ? `${startTargets.length} 个任务` : '' }}
-        </el-button>
-      </template>
-    </el-dialog>
+
+      <!-- 正在执行 -->
+      <section class="exec-running">
+        <header class="exec-running__head">
+          <div class="exec-running__heading">
+            <h2 class="exec-running__title">正在执行</h2>
+            <span class="exec-running__count">{{ active.length }}</span>
+          </div>
+          <el-button link :icon="Refresh" :loading="activeLoading" @click="loadActive">刷新</el-button>
+        </header>
+        <el-table
+          v-loading="activeLoading"
+          :data="active"
+          row-key="task_id"
+          :max-height="320"
+          class="exec-running__table"
+          empty-text="暂无正在运行的自动化任务"
+        >
+          <el-table-column label="任务" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.task_name || taskName(row.task_id) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="180">
+            <template #default="{ row }">
+              <el-tag type="success" size="small" effect="light">{{ phaseText(row.task_id) }}</el-tag>
+              <div class="exec-running__sub">下一轮：{{ nextRoundText(row.task_id) }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="轮次" width="90" align="right">
+            <template #default="{ row }">
+              <span class="exec-running__num">{{ row.round_no ?? '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="开始时间" width="172">
+            <template #default="{ row }">{{ row.started_time ?? '—' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="180" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="openTaskRealtime(row.task_id)">查看日志</el-button>
+              <el-button
+                link
+                type="danger"
+                :icon="VideoPause"
+                :loading="stoppingId === row.task_id"
+                @click="stopTask(row.task_id)"
+              >
+                停止
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </section>
+    </div>
   </div>
 </template>
 
-<style scoped>
-.toolbar__summary {
-  margin-left: 12px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+<style scoped lang="scss">
+.exec-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--up-strm-space-4);
+  min-height: 0;
+  padding-bottom: var(--up-strm-space-4);
+  overflow-y: auto;
 }
 
-.start-form {
-  margin-top: 16px;
+.exec-workspace {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr) minmax(280px, 1fr);
+  gap: var(--up-strm-space-4);
+  align-items: stretch;
+  height: clamp(380px, 52vh, 560px);
+  min-height: 380px;
+}
+
+// 面板通用骨架
+.exec-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--up-strm-radius-lg);
+  box-shadow: var(--up-strm-shadow-sm);
+
+  &__head {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--up-strm-space-3);
+    padding: var(--up-strm-space-4);
+    border-bottom: 1px solid var(--el-border-color-lighter);
+  }
+
+  &__heading {
+    min-width: 0;
+  }
+
+  &__title {
+    margin: 0;
+    color: var(--el-text-color-primary);
+    font-size: var(--up-strm-font-size-lg);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  &__sub {
+    margin: var(--up-strm-space-1) 0 0;
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.5;
+  }
+
+  &__count {
+    flex: none;
+    padding: 0 var(--up-strm-space-2);
+    border-radius: var(--up-strm-radius-lg);
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
+    font-size: var(--up-strm-font-size-xs);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+  }
+
+  &__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--up-strm-space-3);
+    min-height: 0;
+    padding: var(--up-strm-space-4);
+  }
+
+  &__empty {
+    margin: auto 0;
+  }
+
+  &__footer {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--up-strm-space-3);
+    padding-top: var(--up-strm-space-3);
+    border-top: 1px solid var(--el-border-color-lighter);
+  }
+
+  &__footer-hint {
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.5;
+  }
+}
+
+// 任务搜索
+.task-filters {
+  display: flex;
+  flex: none;
+  gap: var(--up-strm-space-2);
+
+  &__search {
+    flex: 1;
+    min-width: 160px;
+  }
+}
+
+// 任务复选列表
+.task-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--up-strm-space-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--up-strm-space-1);
+}
+
+.task-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--up-strm-space-3);
+  padding: var(--up-strm-space-3);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--up-strm-radius-md);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    background: var(--el-fill-color-light);
+  }
+
+  &.is-selected {
+    background: var(--el-color-primary-light-9);
+    border-color: var(--el-color-primary-light-5);
+  }
+
+  &.is-running {
+    background: var(--el-fill-color-light);
+    cursor: not-allowed;
+  }
+
+  &__check {
+    display: flex;
+    flex: none;
+    align-items: center;
+  }
+
+  &__info {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--up-strm-space-1);
+    min-width: 0;
+  }
+
+  &__name {
+    overflow: hidden;
+    color: var(--el-text-color-primary);
+    font-size: var(--up-strm-font-size-base);
+    font-weight: 500;
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__path {
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__meta {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--up-strm-space-2);
+  }
+
+  &__count {
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+}
+
+// 执行参数
+.exec-panel--params {
+  .param-block {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: var(--up-strm-space-2);
+
+    &__label {
+      color: var(--el-text-color-regular);
+      font-size: var(--up-strm-font-size-sm);
+      font-weight: 600;
+    }
+
+    &__hint {
+      margin: 0;
+      color: var(--el-text-color-secondary);
+      font-size: var(--up-strm-font-size-xs);
+      line-height: 1.6;
+    }
+  }
+
+  .param-note {
+    margin: auto 0 0;
+    padding-top: var(--up-strm-space-3);
+    border-top: 1px solid var(--el-border-color-lighter);
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.6;
+  }
+}
+
+// 正在执行
+.exec-running {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--up-strm-radius-lg);
+  box-shadow: var(--up-strm-shadow-sm);
+
+  &__head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--up-strm-space-3);
+    padding: var(--up-strm-space-3) var(--up-strm-space-4);
+    border-bottom: 1px solid var(--el-border-color-lighter);
+  }
+
+  &__heading {
+    display: flex;
+    align-items: center;
+    gap: var(--up-strm-space-2);
+  }
+
+  &__title {
+    margin: 0;
+    color: var(--el-text-color-primary);
+    font-size: var(--up-strm-font-size-lg);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  &__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 var(--up-strm-space-1);
+    border-radius: var(--up-strm-radius-sm);
+    background: var(--el-color-warning-light-9);
+    color: var(--el-color-warning);
+    font-size: var(--up-strm-font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__num {
+    color: var(--el-text-color-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__sub {
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.5;
+  }
+
+  &__table {
+    :deep(th.el-table__cell) {
+      height: 40px;
+      padding: 0 var(--up-strm-space-3);
+      background: var(--el-fill-color-light);
+      color: var(--el-text-color-secondary);
+      font-size: var(--up-strm-font-size-xs);
+      font-weight: 600;
+    }
+
+    :deep(td.el-table__cell) {
+      height: 40px;
+      padding: 0 var(--up-strm-space-3);
+      color: var(--el-text-color-regular);
+      font-size: var(--up-strm-font-size-base);
+    }
+  }
+}
+
+// 已选任务卡片
+.exec-panel--selected {
+  .selected-list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--up-strm-space-2);
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: var(--up-strm-space-1);
+  }
+
+  .selected-row {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--up-strm-space-2);
+    padding: var(--up-strm-space-2) var(--up-strm-space-3);
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: var(--up-strm-radius-md);
+    background: var(--el-fill-color-lighter);
+  }
+
+  .selected-row__info {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .selected-row__name {
+    overflow: hidden;
+    color: var(--el-text-color-primary);
+    font-size: var(--up-strm-font-size-sm);
+    font-weight: 500;
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selected-row__path {
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: var(--up-strm-font-size-xs);
+    line-height: 1.5;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selected-summary {
+    flex: none;
+    padding-top: var(--up-strm-space-3);
+    border-top: 1px solid var(--el-border-color-lighter);
+    color: var(--el-text-color-regular);
+    font-size: var(--up-strm-font-size-sm);
+    line-height: 1.5;
+  }
+
+  .selected-summary__num {
+    color: var(--el-text-color-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .selected-ops {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--up-strm-space-2);
+  }
+
+  .selected-actions {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    gap: var(--up-strm-space-2);
+  }
+}
+
+@media (max-width: 1280px) {
+  .exec-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 0;
+  }
+
+  .exec-panel {
+    height: auto;
+    min-height: 320px;
+  }
+
+  .task-list {
+    max-height: min(40vh, 320px);
+  }
+
+  .exec-panel--selected .selected-list {
+    max-height: 240px;
+  }
 }
 </style>

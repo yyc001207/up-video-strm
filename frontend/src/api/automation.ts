@@ -52,8 +52,14 @@ export const automationRunApi = {
     request.post<unknown, Res<AutomationTask>>(`/automation/tasks/${id}/pending/clear`, {
       remote_names: remoteNames
     }),
-  listRuns: (params: { task_id?: number; status?: string; page?: number; page_size?: number }) =>
-    request.get<unknown, Res<AutomationRun[]>>('/automation/runs', { params }),
+  listRuns: (params: {
+    task_id?: number
+    status?: string
+    start_time?: string
+    end_time?: string
+    page?: number
+    page_size?: number
+  }) => request.get<unknown, Res<AutomationRun[]>>('/automation/runs', { params }),
   getRun: (id: number) => request.get<unknown, Res<AutomationRun>>(`/automation/runs/${id}`),
   runLogs: (id: number, offset = 0, limit = 200) =>
     request.get<unknown, Res<AutomationRunLogResult>>(`/automation/runs/${id}/logs`, {

@@ -1,5 +1,6 @@
 """自动化任务路由：``/api/automation/*``（模块 C 配置、执行管理与运行历史）。"""
 
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
@@ -167,11 +168,21 @@ async def clear_pending(
 async def list_runs(
     task_id: Optional[int] = None,
     status: Optional[str] = None,
+    start_time: Optional[date] = None,
+    end_time: Optional[date] = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    items, total = await service.list_runs(db, task_id=task_id, status=status, page=page, page_size=page_size)
+    items, total = await service.list_runs(
+        db,
+        task_id=task_id,
+        status=status,
+        start_time=start_time,
+        end_time=end_time,
+        page=page,
+        page_size=page_size,
+    )
     return success_response(data=items, total=total)
 
 

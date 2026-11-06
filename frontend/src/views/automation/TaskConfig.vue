@@ -498,6 +498,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+// 与列表页一致：页面级纵向间距由页面自身承担（.page--fill 基础样式不含 gap）。
+.automation-tasks {
+  gap: var(--up-strm-space-4);
+}
+
 .check-dir-row {
   display: flex;
   gap: 8px;

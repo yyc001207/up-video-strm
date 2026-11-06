@@ -161,17 +161,6 @@ watchEffect(() => {
   document.title = title === 'up-video-strm 控制台' ? title : `${title} - up-video-strm`
 })
 
-/** 顶栏状态胶囊三态：连接失败（30s 内失败）优先于运行中，其余为空闲。 */
-type CapsuleState = 'error' | 'busy' | 'idle'
-const capsuleState = computed<CapsuleState>(() => {
-  if (runningStore.isConnectFailed()) return 'error'
-  return runningStore.total > 0 ? 'busy' : 'idle'
-})
-const capsuleText = computed(() => {
-  if (capsuleState.value === 'error') return '连接失败'
-  if (capsuleState.value === 'busy') return `运行中 ${runningStore.total}`
-  return '空闲'
-})
 const showOfflineAlert = computed(() => runningStore.offline && !offlineDismissed.value)
 
 /** 导航徽标值：任务调度、上传管理与自动化任务分别取各自模块的运行数。 */
@@ -205,17 +194,6 @@ function goModule(module: NavModule) {
 
 function isActive(path: string): boolean {
   return route.path === path
-}
-
-/** 按运行来源分流：调度优先，其次上传；都空闲时维持跳任务调度实时日志。 */
-function goRealtime() {
-  if (runningStore.scheduleCount > 0) {
-    router.push('/schedule/realtime')
-  } else if (runningStore.uploadCount > 0) {
-    router.push('/upload/realtime')
-  } else {
-    router.push('/schedule/realtime')
-  }
 }
 
 async function refreshRunning() {
@@ -331,18 +309,6 @@ onBeforeUnmount(() => {
         <div class="app-topbar__heading">
           <h1 class="app-topbar__title">{{ pageTitle }}</h1>
           <p v-if="pageDescription" class="app-topbar__desc">{{ pageDescription }}</p>
-        </div>
-        <div class="app-topbar__actions">
-          <button
-            class="run-capsule"
-            :class="`run-capsule--${capsuleState}`"
-            type="button"
-            :aria-label="`运行状态：${capsuleText}`"
-            @click="goRealtime"
-          >
-            <span class="run-capsule__dot" />
-            <span>{{ capsuleText }}</span>
-          </button>
         </div>
       </header>
 
@@ -632,57 +598,6 @@ onBeforeUnmount(() => {
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.app-topbar__actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: var(--up-strm-space-3);
-}
-
-.run-capsule {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--up-strm-space-2);
-  height: 32px;
-  padding: 0 var(--up-strm-space-3);
-  border: 1px solid var(--el-border-color);
-  border-radius: 16px;
-  background: var(--el-bg-color);
-  color: var(--el-text-color-secondary);
-  font-size: var(--up-strm-font-size-xs);
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--el-color-primary);
-    color: var(--el-color-primary);
-  }
-
-  &__dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--el-color-info);
-  }
-
-  &--busy {
-    border-color: var(--el-color-warning-light-5);
-    color: var(--el-text-color-primary);
-
-    .run-capsule__dot {
-      background: var(--el-color-warning);
-    }
-  }
-
-  &--error {
-    border-color: var(--el-color-danger-light-5);
-    color: var(--el-color-danger);
-
-    .run-capsule__dot {
-      background: var(--el-color-danger);
-    }
-  }
 }
 
 .app-offline {

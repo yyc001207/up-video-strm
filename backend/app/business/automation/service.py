@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -514,14 +515,23 @@ async def list_runs(
     db: AsyncSession,
     task_id: Optional[int] = None,
     status: Optional[str] = None,
+    start_time: Optional[date] = None,
+    end_time: Optional[date] = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[dict[str, Any]], int]:
+    """运行历史列表；``start_time`` / ``end_time`` 为北京时间日期（含首尾两天）。"""
     stmt = select(AutomationRun)
     if task_id is not None:
         stmt = stmt.where(AutomationRun.task_id == task_id)
     if status:
         stmt = stmt.where(AutomationRun.status == status)
+    # 运行记录以 started_time 为准；尚未开始（running 前）的轮次按 created_time 兜底。
+    run_time = func.coalesce(AutomationRun.started_time, AutomationRun.created_time)
+    if start_time is not None:
+        stmt = stmt.where(run_time >= datetime.combine(start_time, time.min))
+    if end_time is not None:
+        stmt = stmt.where(run_time < datetime.combine(end_time + timedelta(days=1), time.min))
     total = await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = (
         await db.scalars(

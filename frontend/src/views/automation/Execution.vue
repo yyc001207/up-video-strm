@@ -9,7 +9,7 @@
  * 执行参数为 5 项时间参数（写入所选任务配置并持续生效）；
  * 启动成功后自动跳转到该任务的实时日志页，便于立即观察链路日志。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -34,6 +34,24 @@ import type {
 const ROUTE_REALTIME = '/automation/realtime'
 const ROUTE_TASKS = '/automation/tasks'
 const POLL_INTERVAL_MS = 5000
+
+/** 执行参数缺省值（与后端 AutomationTask 默认值一致）。 */
+const DEFAULT_RUN_PARAMS = {
+  wait_interval_seconds: 15,
+  openlist_wait_timeout: 600,
+  idle_wait_timeout: 600,
+  stage_timeout: 3600,
+  interval_seconds: 60
+}
+
+/** 执行参数与任务字段的映射，选中任务时同步展示任务当前配置。 */
+const RUN_PARAM_FIELDS = [
+  'wait_interval_seconds',
+  'openlist_wait_timeout',
+  'idle_wait_timeout',
+  'stage_timeout',
+  'interval_seconds'
+] as const
 
 const PHASE_LABELS: Record<string, string> = {
   starting: '准备中',
@@ -60,12 +78,14 @@ const tasks = ref<AutomationTask[]>([])
 const active = ref<AutomationActiveTask[]>([])
 const selectedTaskIds = ref<number[]>([])
 const keyword = ref('')
-/** 执行参数：填写后写入所选任务配置并持续生效，留空沿用任务当前值。 */
-const waitIntervalSeconds = ref<number | undefined>(undefined)
-const openlistWaitTimeout = ref<number | undefined>(undefined)
-const idleWaitTimeout = ref<number | undefined>(undefined)
-const stageTimeout = ref<number | undefined>(undefined)
-const intervalSeconds = ref<number | undefined>(undefined)
+/** 执行参数：默认取后端默认值；选中任务后同步为该任务当前配置，可修改（写回任务并持续生效）。 */
+const waitIntervalSeconds = ref<number | undefined>(DEFAULT_RUN_PARAMS.wait_interval_seconds)
+const openlistWaitTimeout = ref<number | undefined>(DEFAULT_RUN_PARAMS.openlist_wait_timeout)
+const idleWaitTimeout = ref<number | undefined>(DEFAULT_RUN_PARAMS.idle_wait_timeout)
+const stageTimeout = ref<number | undefined>(DEFAULT_RUN_PARAMS.stage_timeout)
+const intervalSeconds = ref<number | undefined>(DEFAULT_RUN_PARAMS.interval_seconds)
+/** 多选任务且各任务参数不一致时置空并提示，留空表示不修改该任务的对应参数。 */
+const mixedRunParams = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 /** 轮次结束时刷新一次任务行（待校验 / 运行状态），避免额外轮询任务列表。 */
@@ -180,6 +200,37 @@ function buildPayload(): AutomationStartPayload {
   if (intervalSeconds.value !== undefined) payload.interval_seconds = intervalSeconds.value
   return payload
 }
+
+/** 选中任务变化时同步执行参数：单选取该任务当前值；多选取共同值，取值不一致则置空（不修改）。 */
+function syncRunParams(): void {
+  const list = selectedTasks.value
+  if (list.length === 0) {
+    waitIntervalSeconds.value = DEFAULT_RUN_PARAMS.wait_interval_seconds
+    openlistWaitTimeout.value = DEFAULT_RUN_PARAMS.openlist_wait_timeout
+    idleWaitTimeout.value = DEFAULT_RUN_PARAMS.idle_wait_timeout
+    stageTimeout.value = DEFAULT_RUN_PARAMS.stage_timeout
+    intervalSeconds.value = DEFAULT_RUN_PARAMS.interval_seconds
+    mixedRunParams.value = false
+    return
+  }
+  const common = (field: (typeof RUN_PARAM_FIELDS)[number]): number | undefined => {
+    const first = list[0]?.[field]
+    return list.every(task => task[field] === first) ? first : undefined
+  }
+  waitIntervalSeconds.value = common('wait_interval_seconds')
+  openlistWaitTimeout.value = common('openlist_wait_timeout')
+  idleWaitTimeout.value = common('idle_wait_timeout')
+  stageTimeout.value = common('stage_timeout')
+  intervalSeconds.value = common('interval_seconds')
+  mixedRunParams.value = RUN_PARAM_FIELDS.some(field => common(field) === undefined)
+}
+
+watch(selectedTasks, syncRunParams)
+
+/** 参数输入框占位文案：多选取值不一致时提示留空含义。 */
+const paramPlaceholder = computed(() =>
+  mixedRunParams.value ? '多任务取值不同，留空不修改' : '请填写'
+)
 
 async function loadTasks(silent = false): Promise<void> {
   if (!silent) loading.value = true
@@ -521,7 +572,7 @@ onBeforeUnmount(() => {
           <header class="exec-panel__head">
             <div class="exec-panel__heading">
               <h2 class="exec-panel__title">执行参数</h2>
-              <p class="exec-panel__sub">填写后写入所选任务配置并持续生效；留空沿用任务当前值</p>
+              <p class="exec-panel__sub">默认取所选任务的当前配置；修改后写回任务并持续生效</p>
             </div>
           </header>
 
@@ -533,7 +584,7 @@ onBeforeUnmount(() => {
                 :min="5"
                 :max="120"
                 :disabled="starting"
-                placeholder="沿用任务配置"
+                :placeholder="paramPlaceholder"
                 controls-position="right"
               />
             </div>
@@ -545,7 +596,7 @@ onBeforeUnmount(() => {
                 :min="60"
                 :max="3600"
                 :disabled="starting"
-                placeholder="沿用任务配置"
+                :placeholder="paramPlaceholder"
                 controls-position="right"
               />
             </div>
@@ -557,7 +608,7 @@ onBeforeUnmount(() => {
                 :min="60"
                 :max="3600"
                 :disabled="starting"
-                placeholder="沿用任务配置"
+                :placeholder="paramPlaceholder"
                 controls-position="right"
               />
             </div>
@@ -569,7 +620,7 @@ onBeforeUnmount(() => {
                 :min="60"
                 :max="7200"
                 :disabled="starting"
-                placeholder="沿用任务配置"
+                :placeholder="paramPlaceholder"
                 controls-position="right"
               />
             </div>
@@ -581,7 +632,7 @@ onBeforeUnmount(() => {
                 :min="10"
                 :max="3600"
                 :disabled="starting"
-                placeholder="沿用任务配置"
+                :placeholder="paramPlaceholder"
                 controls-position="right"
               />
             </div>
@@ -919,7 +970,12 @@ onBeforeUnmount(() => {
     display: flex;
     flex: none;
     flex-direction: column;
+    align-items: flex-start;
     gap: var(--up-strm-space-2);
+
+    :deep(.el-input-number) {
+      width: 180px;
+    }
 
     &__label {
       color: var(--el-text-color-regular);

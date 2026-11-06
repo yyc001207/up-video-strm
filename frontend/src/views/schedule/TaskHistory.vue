@@ -348,7 +348,7 @@ defineExpose({ reload: load })
           <el-table-column label="执行时间" width="170">
             <template #default="{ row }">{{ formatDateTime(row.started_time) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" :icon="View" @click="openLogs(row)">日志</el-button>
               <el-button link type="primary" :icon="FolderOpened" @click="openLogDir()">日志文件夹</el-button>

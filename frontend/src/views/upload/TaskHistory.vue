@@ -7,12 +7,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { desktopApi } from '@/api/desktop'
 import { uploaderApi } from '@/api/uploader'
 import StatusDot from '@/components/StatusDot.vue'
-import type {
-  UploadConflictPolicy,
-  UploadExecution,
-  UploadFileRecord,
-  UploadHistorySummaryItem
-} from '@/types/uploader'
+import type { UploadConflictPolicy, UploadExecution, UploadFileRecord, UploadHistorySummaryItem } from '@/types/uploader'
 import { beijingMillis, formatDateTime } from '@/utils/date'
 
 const router = useRouter()
@@ -20,7 +15,7 @@ const router = useRouter()
 const CONFLICT_LABELS: Record<UploadConflictPolicy, string> = {
   skip: '跳过',
   overwrite: '覆盖',
-  suffix: '追加后缀'
+  suffix: '追加后缀',
 }
 
 const RECORD_STATUS_LABELS: Record<string, string> = {
@@ -28,7 +23,7 @@ const RECORD_STATUS_LABELS: Record<string, string> = {
   uploading: '上传中',
   success: '成功',
   skipped: '跳过',
-  failed: '失败'
+  failed: '失败',
 }
 
 const list = ref<UploadHistorySummaryItem[]>([])
@@ -42,7 +37,7 @@ const STATUS_FILTER_OPTIONS: { label: string; value: HistoryStatusFilter }[] = [
   { label: '成功', value: 'success' },
   { label: '失败', value: 'fail' },
   { label: '已取消', value: 'cancelled' },
-  { label: '未执行', value: 'none' }
+  { label: '未执行', value: 'none' },
 ]
 
 // 列表筛选与客户端分页（详情页仍走后端分页）
@@ -140,13 +135,9 @@ const pagedList = computed(() => {
   return filteredList.value.slice(start, start + pageSize.value)
 })
 
-const hasFilters = computed(
-  () => keyword.value.trim() !== '' || statusFilter.value !== 'all' || dateRange.value !== null
-)
+const hasFilters = computed(() => keyword.value.trim() !== '' || statusFilter.value !== 'all' || dateRange.value !== null)
 
-const emptyDescription = computed(() =>
-  hasFilters.value ? '没有匹配的上传历史' : '暂无上传历史（执行上传任务后才会生成记录）'
-)
+const emptyDescription = computed(() => (hasFilters.value ? '没有匹配的上传历史' : '暂无上传历史（执行上传任务后才会生成记录）'))
 
 // 筛选条件或每页条数变化时回到第一页
 watch([keyword, statusFilter, dateRange, pageSize], () => {
@@ -250,7 +241,7 @@ async function handleRetry(row: UploadExecution) {
     await ElMessageBox.confirm(
       `将按原参数（冲突策略：${CONFLICT_LABELS[row.conflict_policy]}、并发 ${row.concurrency}、重试 ${row.retry_times} 次）重新创建并启动执行，是否继续？`,
       '重新执行',
-      { type: 'warning', confirmButtonText: '重新执行', cancelButtonText: '取消' }
+      { type: 'warning', confirmButtonText: '重新执行', cancelButtonText: '取消' },
     )
   } catch {
     return
@@ -261,8 +252,8 @@ async function handleRetry(row: UploadExecution) {
   await router.push({
     name: 'UploadRealtime',
     query: {
-      execs: JSON.stringify([{ executionId: created.id, taskId: created.task_id, taskName: created.task_name }])
-    }
+      execs: JSON.stringify([{ executionId: created.id, taskId: created.task_id, taskName: created.task_name }]),
+    },
   })
 }
 
@@ -301,12 +292,7 @@ defineExpose({ reload: load })
             unlink-panels
           />
           <el-select v-model="statusFilter" class="toolbar__status" placeholder="任务状态">
-            <el-option
-              v-for="option in STATUS_FILTER_OPTIONS"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+            <el-option v-for="option in STATUS_FILTER_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
           </el-select>
         </div>
         <div class="toolbar__right">
@@ -396,31 +382,27 @@ defineExpose({ reload: load })
         <div class="list-card__table">
           <el-table :data="executions" row-key="id" class="upload-history__table">
             <el-table-column label="编号" prop="id" width="80" />
-            <el-table-column label="状态" width="110">
+            <el-table-column label="状态">
               <template #default="{ row }">
                 <StatusDot :status="row.status" />
               </template>
             </el-table-column>
-            <el-table-column label="触发方式" width="150" show-overflow-tooltip>
+            <el-table-column label="触发方式" show-overflow-tooltip>
               <template #default="{ row }">
-                <el-tag
-                  :type="row.trigger_source === 'automation' ? 'warning' : 'info'"
-                  size="small"
-                  effect="plain"
-                >
+                <el-tag :type="row.trigger_source === 'automation' ? 'warning' : 'info'" size="small" effect="plain">
                   {{ triggerText(row) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="冲突策略" width="100">
+            <el-table-column label="冲突策略">
               <template #default="{ row }">{{ conflictText(row.conflict_policy) }}</template>
             </el-table-column>
-            <el-table-column label="文件数" width="90" align="right">
+            <el-table-column label="文件数" align="right">
               <template #default="{ row }">
                 <span class="num">{{ row.file_total }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="成功 / 跳过 / 失败" width="150" align="right">
+            <el-table-column label="成功 / 跳过 / 失败" width="200" align="right">
               <template #default="{ row }">
                 <span class="num">{{ countText(row.file_success, row.file_total) }}</span>
                 <span class="muted"> · </span>
@@ -429,16 +411,16 @@ defineExpose({ reload: load })
                 <span class="num">{{ row.file_failed }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="试运行" width="80">
+            <el-table-column label="试运行">
               <template #default="{ row }">{{ row.dry_run ? '是' : '否' }}</template>
             </el-table-column>
-            <el-table-column label="耗时" width="110">
+            <el-table-column label="耗时">
               <template #default="{ row }">{{ durationText(row.duration_seconds) }}</template>
             </el-table-column>
-            <el-table-column label="开始时间" width="170">
+            <el-table-column label="开始时间">
               <template #default="{ row }">{{ formatDateTime(row.started_time) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="260" fixed="right">
+            <el-table-column label="操作" width="400" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" :icon="View" @click="openRecords(row)">明细</el-button>
                 <el-button link type="primary" :icon="View" @click="openLogs(row)">日志</el-button>
@@ -466,12 +448,7 @@ defineExpose({ reload: load })
     </template>
 
     <!-- 文件粒度明细 -->
-    <el-drawer
-      v-model="recordsVisible"
-      :title="`文件明细 #${recordsExecutionId ?? ''}`"
-      size="720px"
-      destroy-on-close
-    >
+    <el-drawer v-model="recordsVisible" :title="`文件明细 #${recordsExecutionId ?? ''}`" size="720px" destroy-on-close>
       <div v-loading="recordsLoading" class="upload-history__records">
         <el-table :data="records" row-key="id" class="upload-history__table">
           <el-table-column label="本地文件" min-width="200" show-overflow-tooltip>
@@ -516,9 +493,7 @@ defineExpose({ reload: load })
     <el-drawer v-model="logVisible" :title="`执行日志 #${logExecution?.id ?? ''}`" size="640px" destroy-on-close>
       <div v-loading="logLoading" class="upload-history__log">
         <pre v-if="logs.length" class="upload-history__log-pre">{{
-          logs
-            .map(l => `[${formatDateTime(l.created_time)}] [${l.log_level.toUpperCase()}] ${l.content}`)
-            .join('\n')
+          logs.map(l => `[${formatDateTime(l.created_time)}] [${l.log_level.toUpperCase()}] ${l.content}`).join('\n')
         }}</pre>
         <el-empty v-else description="暂无日志" />
       </div>

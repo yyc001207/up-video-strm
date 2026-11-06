@@ -222,10 +222,6 @@ async function clearPending(task: AutomationTask): Promise<void> {
   await load(true)
 }
 
-function openLogs(task: AutomationTask): void {
-  router.push({ path: '/automation/realtime', query: { task_id: String(task.id) } })
-}
-
 function onSelectionChange(rows: AutomationTask[]): void {
   selectedIds.value = rows.map(row => row.id)
 }
@@ -317,7 +313,6 @@ onBeforeUnmount(() => {
             <el-button link :icon="Delete" :disabled="!row.pending_file_count" @click="clearPending(row)">
               清空待校验
             </el-button>
-            <el-button link @click="openLogs(row)">日志</el-button>
           </template>
         </el-table-column>
       </el-table>

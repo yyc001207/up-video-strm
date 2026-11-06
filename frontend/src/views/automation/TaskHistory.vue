@@ -6,12 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { desktopApi } from '@/api/desktop'
 import { automationApi, automationRunApi } from '@/api/automation'
-import type {
-  AutomationExecutionBrief,
-  AutomationRun,
-  AutomationRunStatus,
-  AutomationTask
-} from '@/types/automation'
+import type { AutomationExecutionBrief, AutomationRun, AutomationRunStatus, AutomationTask } from '@/types/automation'
 
 const router = useRouter()
 
@@ -21,7 +16,7 @@ const STATUS_OPTIONS: { label: string; value: AutomationRunStatus | 'all' }[] = 
   { label: '成功', value: 'success' },
   { label: '部分成功', value: 'partial' },
   { label: '失败', value: 'fail' },
-  { label: '已取消', value: 'cancelled' }
+  { label: '已取消', value: 'cancelled' },
 ]
 
 const STATUS_LABELS: Record<AutomationRunStatus, string> = {
@@ -29,7 +24,7 @@ const STATUS_LABELS: Record<AutomationRunStatus, string> = {
   success: '成功',
   partial: '部分成功',
   fail: '失败',
-  cancelled: '已取消'
+  cancelled: '已取消',
 }
 
 const STATUS_TAG_TYPES: Record<AutomationRunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
@@ -37,7 +32,7 @@ const STATUS_TAG_TYPES: Record<AutomationRunStatus, 'success' | 'warning' | 'dan
   success: 'success',
   partial: 'warning',
   fail: 'danger',
-  cancelled: 'info'
+  cancelled: 'info',
 }
 
 const PHASE_LABELS: Record<string, string> = {
@@ -50,7 +45,7 @@ const PHASE_LABELS: Record<string, string> = {
   backoff: '失败退避',
   idle: '空闲等待',
   stopped: '已停止',
-  done: '本轮完成'
+  done: '本轮完成',
 }
 
 const tasks = ref<AutomationTask[]>([])
@@ -107,7 +102,7 @@ async function load() {
       task_id: taskFilter.value ?? undefined,
       status: statusFilter.value === 'all' ? undefined : statusFilter.value,
       page: page.value,
-      page_size: pageSize.value
+      page_size: pageSize.value,
     })
     list.value = res.data
     total.value = res.total ?? 0
@@ -174,7 +169,7 @@ async function handleRetryFailed(row: AutomationRun) {
         ? `将把 ${missedCount} 个缺失文件写回任务的待校验列表，下一轮优先补偿，是否继续？`
         : '将把任务当前待校验列表保留并触发下一轮补偿，是否继续？',
       '重试失败文件',
-      { type: 'warning', confirmButtonText: '写回待校验', cancelButtonText: '取消' }
+      { type: 'warning', confirmButtonText: '写回待校验', cancelButtonText: '取消' },
     )
   } catch {
     return
@@ -200,23 +195,11 @@ defineExpose({ reload: load })
 
     <div class="toolbar">
       <div class="toolbar__left">
-        <el-select
-          v-model="taskFilter"
-          class="toolbar__task"
-          clearable
-          filterable
-          placeholder="全部任务"
-          @change="handleFilterChange"
-        >
+        <el-select v-model="taskFilter" class="toolbar__task" clearable filterable placeholder="全部任务" @change="handleFilterChange">
           <el-option v-for="task in tasks" :key="task.id" :label="task.name" :value="task.id" />
         </el-select>
         <el-select v-model="statusFilter" class="toolbar__status" @change="handleFilterChange">
-          <el-option
-            v-for="option in STATUS_OPTIONS"
-            :key="option.value"
-            :label="option.label"
-            :value="option.value"
-          />
+          <el-option v-for="option in STATUS_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
       </div>
       <div class="toolbar__right">
@@ -231,9 +214,7 @@ defineExpose({ reload: load })
           <el-table-column label="任务 / 轮次" min-width="220">
             <template #default="{ row }">
               <div class="cell-primary">{{ row.task_name }}</div>
-              <div class="cell-secondary">
-                第 {{ row.round_no }} 轮 · 编号 #{{ row.id }}
-              </div>
+              <div class="cell-secondary">第 {{ row.round_no }} 轮 · 编号 #{{ row.id }}</div>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="110">
@@ -277,10 +258,9 @@ defineExpose({ reload: load })
           <el-table-column label="结束时间" width="170">
             <template #default="{ row }">{{ row.finished_time ?? '—' }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="230" fixed="right">
+          <el-table-column label="操作" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" :icon="View" @click="openDetail(row)">详情</el-button>
-              <el-button link type="primary" :icon="View" @click="openLogs(row)">日志</el-button>
               <el-button
                 v-if="row.status === 'fail' || row.status === 'partial' || row.missed_files.length"
                 link
@@ -346,13 +326,7 @@ defineExpose({ reload: load })
           <div v-if="detail.missed_files.length" class="automation-history__section">
             <div class="automation-history__section-title">缺失文件（{{ detail.missed_files.length }}）</div>
             <div class="automation-history__tags">
-              <el-tag
-                v-for="name in detail.missed_files"
-                :key="name"
-                size="small"
-                type="warning"
-                effect="plain"
-              >
+              <el-tag v-for="name in detail.missed_files" :key="name" size="small" type="warning" effect="plain">
                 {{ name }}
               </el-tag>
             </div>

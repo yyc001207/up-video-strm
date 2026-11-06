@@ -1,4 +1,4 @@
-/** 自动化任务接口封装（模块 C：任务配置 CRUD / 绑定选项 / 校验目录检测）。 */
+/** 自动追更接口封装（模块 C：任务 CRUD / 绑定选项 / 校验目录检测）。 */
 
 import request from './index'
 import type { Res } from '@/types/openlist'
@@ -34,7 +34,7 @@ export const automationApi = {
     request.post<unknown, Res<AutomationCheckDirResult>>('/automation/tasks/check-dir', data)
 }
 
-// ---------- 执行管理 / 运行历史（阶段③） ----------
+// ---------- 开始执行 / 运行历史（阶段③） ----------
 
 export const automationRunApi = {
   start: (id: number, data?: AutomationStartPayload) =>

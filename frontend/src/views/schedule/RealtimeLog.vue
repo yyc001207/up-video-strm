@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 实时日志（/schedule/realtime）
+ * 运行详情（/schedule/realtime）
  *
  * 三段式布局：顶部进度摘要（状态 / 连接状态 / 视频与字幕进度 / 耗时）、
  * 日志工具条（级别过滤 / 关键字 / 清屏 / 下载）、可复用日志终端（LogViewer）。
@@ -39,7 +39,7 @@ interface LogLine {
   message: string
 }
 
-/** 路由 query 中的执行项（由「执行管理」页跳转时传入）。 */
+/** 路由 query 中的执行项（由「开始执行」页跳转时传入）。 */
 interface QueryExecution {
   executionId: number
   taskId: number | null
@@ -267,8 +267,8 @@ const filteredLines = computed<LogLine[]>(() => {
 })
 
 const emptyText = computed(() => {
-  if (selectedExecutionId.value === null) return '请从「执行管理」页启动任务，或在顶部选择执行记录'
-  if (finalStatus.value !== null) return '该执行已结束，可前往「任务历史」查看完整日志'
+  if (selectedExecutionId.value === null) return '请从「开始执行」页启动任务，或在顶部选择执行记录'
+  if (finalStatus.value !== null) return '该执行已结束，可前往「运行记录」查看完整日志'
   if (connectionState.value === 'connected') return '等待日志输出…'
   return '暂无日志'
 })
@@ -366,7 +366,7 @@ function handleStatusFrame(frame: WsStatusFrame): void {
     /* 请求拦截器已提示 */
   })
   ElMessage.info(
-    frame.status === 'success' ? '任务执行完成，可前往「任务历史」查看日志' : '任务执行已结束，可前往「任务历史」查看日志'
+    frame.status === 'success' ? '任务执行完成，可前往「运行记录」查看日志' : '任务执行已结束，可前往「运行记录」查看日志'
   )
 }
 
@@ -400,7 +400,7 @@ function handleSocketClose(): void {
   socket.value = null
   connectionState.value = 'disconnected'
   if (finalStatus.value === null && selectedExecutionId.value !== null) {
-    ElMessage.warning('实时日志连接已断开，可点击「重新连接」')
+    ElMessage.warning('运行详情连接已断开，可点击「重新连接」')
   }
 }
 
@@ -467,7 +467,7 @@ async function showFinishedDetail(executionId: number, resetLogs: boolean): Prom
   } catch {
     /* 请求拦截器已提示，保留当前可见状态 */
   }
-  ElMessage.info('该执行已结束，可前往「任务历史」查看日志')
+  ElMessage.info('该执行已结束，可前往「运行记录」查看日志')
 }
 
 /** 初始进入页面：可启动或仍在运行的执行直接连接；已结束的执行展示最终状态。 */
@@ -497,7 +497,7 @@ async function handleExecutionChange(executionId: number): Promise<void> {
   )
   const launch = needLaunch(target)
   if (!launch && target.running === undefined) {
-    ElMessage.info('该执行已结束，可前往「任务历史」查看日志')
+    ElMessage.info('该执行已结束，可前往「运行记录」查看日志')
     removeBatchItem(executionId)
     return
   }
@@ -606,7 +606,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="page realtime-page">
     <p class="realtime-page__desc">
-      本页实时显示所选任务执行的日志与进度；批量排队时按队列串行启动并自动切换。可通过日志级别与关键字过滤日志；当前没有运行中的执行时，请到「执行管理」发起执行。
+      本页实时显示所选任务执行的日志与进度；批量排队时按队列串行启动并自动切换。可通过日志级别与关键字过滤日志；当前没有运行中的执行时，请到「开始执行」发起执行。
     </p>
 
     <div class="realtime-toolbar">
@@ -694,7 +694,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="log-toolbar__right">
         <el-button v-if="selectedExecutionId !== null" size="small" @click="handleBackToExecution">
-          返回执行管理
+          返回开始执行
         </el-button>
       </div>
     </div>

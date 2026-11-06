@@ -1,4 +1,4 @@
-/** OpenList 任务调度相关类型定义（与后端 openlist 模块字段保持一致）。 */
+/** OpenList STRM 生成相关类型定义（与后端 openlist 模块字段保持一致）。 */
 
 /** 后端统一响应包装：code===200 时 data 为业务数据。 */
 export interface Res<T = unknown> {
@@ -88,7 +88,7 @@ export interface OpenListExecution {
   created_time: string | null
   error_code?: string | null
   error_message?: string | null
-  /** 触发来源：manual 手动 / automation 自动化任务触发 */
+  /** 触发来源：manual 手动 / automation 自动追更触发 */
   trigger_source?: string | null
   trigger_ref?: string | null
   trigger_name?: string | null

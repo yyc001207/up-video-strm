@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * 上传管理 · 执行管理（/upload/execution）。
+ * 云盘上传 · 开始执行（/upload/execution）。
  *
- * 与任务调度执行管理保持同一套结构与样式：三张卡片一行工作区
+ * 与STRM 生成开始执行保持同一套结构与样式：三张卡片一行工作区
  * （左「选择任务」、中「执行参数」、右「已选任务」），下方「正在执行」表 5s 轮询。
  *
- * 执行时序：本页只调用 batchCreateExecutions 落库，随后带参跳转实时日志页，
- * 由实时日志页在 WebSocket 连接成功后再逐个启动（排队串行），确保完整记录日志。
+ * 执行时序：本页只调用 batchCreateExecutions 落库，随后带参跳转运行详情页，
+ * 由运行详情页在 WebSocket 连接成功后再逐个启动（排队串行），确保完整记录日志。
  * 差异点：上传模块的执行参数为「同名冲突 / 并发上传 / 失败重试 / 试运行」。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -116,7 +116,7 @@ function progressText(row: UploadExecution): string {
   return row.file_total > 0 ? `${row.file_success}/${row.file_total}` : '—'
 }
 
-/** 触发方式：自动化任务触发时展示任务名，其余为手动。 */
+/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
 function triggerText(row: UploadExecution): string {
   if (row.trigger_source !== 'automation') return '手动'
   return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
           <header class="exec-panel__head">
             <div class="exec-panel__heading">
               <h2 class="exec-panel__title">选择任务</h2>
-              <p class="exec-panel__sub">展示全部上传任务配置，可搜索任务名称或目录</p>
+              <p class="exec-panel__sub">展示全部上传任务，可搜索任务名称或目录</p>
             </div>
             <span class="exec-panel__count">已选 {{ selectedIds.length }}</span>
           </header>
@@ -273,10 +273,10 @@ onBeforeUnmount(() => {
             <el-empty
               v-if="tasks.length === 0"
               class="exec-panel__empty"
-              description="还没有上传任务，先到「任务配置」创建"
+              description="还没有上传任务，先到「任务」创建"
               :image-size="72"
             >
-              <el-button type="primary" plain @click="goTasks">前往任务配置</el-button>
+              <el-button type="primary" plain @click="goTasks">前往任务</el-button>
             </el-empty>
             <el-empty
               v-else-if="filteredTasks.length === 0"
@@ -386,7 +386,7 @@ onBeforeUnmount(() => {
             </div>
 
             <p class="param-note">
-              执行记录创建后会跳转到实时日志页，日志连接成功后才开始逐个执行，确保完整记录本次执行日志。
+              执行记录创建后会跳转到运行详情页，日志连接成功后才开始逐个执行，确保完整记录本次执行日志。
             </p>
           </div>
         </aside>
@@ -474,7 +474,7 @@ onBeforeUnmount(() => {
               <StatusDot :status="(row.status as UploadExecutionStatus)" />
             </template>
           </el-table-column>
-          <el-table-column label="触发方式" width="150" show-overflow-tooltip>
+          <el-table-column label="谁启动的" width="150" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tag
                 :type="row.trigger_source === 'automation' ? 'warning' : 'info'"
@@ -535,7 +535,7 @@ onBeforeUnmount(() => {
   min-height: 380px;
 }
 
-// 面板通用骨架（与任务调度执行管理保持一致）
+// 面板通用骨架（与STRM 生成开始执行保持一致）
 .exec-panel {
   display: flex;
   flex-direction: column;

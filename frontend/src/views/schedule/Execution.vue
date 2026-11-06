@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * 任务调度 · 执行管理（/schedule/execution）。
+ * STRM 生成 · 开始执行（/schedule/execution）。
  *
  * 三张卡片一行工作区：左「选择任务」（搜索 + 复选列表）、中「执行参数」（分段模式）、
  * 右「已选任务」（已选清单 + 清空/执行操作）；下方「正在执行」表 5s 轮询。
  *
- * 单服务器模式：任务列表直接展示全部任务配置，不再按服务器筛选，也不再传服务器参数。
- * 执行时序保持不变：本页只调用 batchCreateExecution 落库，随后带参跳转实时日志页，
- * 由实时日志页在 WebSocket 连接成功后再调用 startExecution（避免漏日志）。
+ * 单服务器模式：任务列表直接展示全部任务，不再按服务器筛选，也不再传服务器参数。
+ * 执行时序保持不变：本页只调用 batchCreateExecution 落库，随后带参跳转运行详情页，
+ * 由运行详情页在 WebSocket 连接成功后再调用 startExecution（避免漏日志）。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -28,7 +28,7 @@ interface ModeFlags {
   strm_only: boolean
 }
 
-/** 跳转实时日志页的单个执行入参（与实时日志页约定一致）。 */
+/** 跳转运行详情页的单个执行入参（与运行详情页约定一致）。 */
 interface LaunchNavItem {
   executionId: number
   taskId: number
@@ -70,7 +70,7 @@ const selectedTaskIds = ref<number[]>([])
 const keyword = ref('')
 const execMode = ref<ExecutionMode>('incremental')
 
-/** 单服务器模式：任务列表直接展示全部任务配置，不再按服务器筛选。 */
+/** 单服务器模式：任务列表直接展示全部任务，不再按服务器筛选。 */
 const filteredTasks = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return store.tasks
@@ -160,7 +160,7 @@ function countText(success: number, total: number): string {
   return total > 0 ? `${success}/${total}` : '—'
 }
 
-/** 触发方式：自动化任务触发时展示任务名，其余为手动。 */
+/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
 function triggerText(row: { trigger_source?: string | null; trigger_name?: string | null }): string {
   if (row.trigger_source !== 'automation') return '手动'
   return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
@@ -216,7 +216,7 @@ async function handleStart(): Promise<void> {
   const flags = MODE_FLAGS[execMode.value]
   starting.value = true
   try {
-    // 仅创建执行记录（落库，不启动后台），启动由实时日志页在日志连接成功后触发
+    // 仅创建执行记录（落库，不启动后台），启动由运行详情页在日志连接成功后触发
     const executions = await store.batchCreateExecution(
       requestedIds.map(taskId => ({
         task_id: taskId,
@@ -320,7 +320,7 @@ onUnmounted(() => {
           <header class="exec-panel__head">
             <div class="exec-panel__heading">
               <h2 class="exec-panel__title">选择任务</h2>
-              <p class="exec-panel__sub">展示全部任务配置；执行中的任务不可重复选择</p>
+              <p class="exec-panel__sub">展示全部任务；执行中的任务不可重复选择</p>
             </div>
             <span class="exec-panel__count">已选 {{ selectedTaskIds.length }}</span>
           </header>
@@ -340,10 +340,10 @@ onUnmounted(() => {
               <el-empty
                 v-if="store.tasks.length === 0"
                 class="exec-panel__empty"
-                description="暂无任务配置"
+                description="暂无任务"
                 :image-size="72"
               >
-                <el-button type="primary" plain @click="goTasks">前往任务配置</el-button>
+                <el-button type="primary" plain @click="goTasks">前往任务</el-button>
               </el-empty>
               <el-empty
                 v-else-if="filteredTasks.length === 0"
@@ -415,7 +415,7 @@ onUnmounted(() => {
               description="暂无可用服务器配置"
               :image-size="72"
             >
-              <el-button type="primary" plain @click="goConfig">前往全局配置</el-button>
+              <el-button type="primary" plain @click="goConfig">前往连接与格式</el-button>
             </el-empty>
           </div>
         </section>
@@ -442,7 +442,7 @@ onUnmounted(() => {
             </div>
 
             <p class="param-note">
-              执行记录创建后会跳转到实时日志页，日志连接成功后才开始执行，确保完整记录本次执行日志。
+              执行记录创建后会跳转到运行详情页，日志连接成功后才开始执行，确保完整记录本次执行日志。
             </p>
           </div>
         </aside>
@@ -532,7 +532,7 @@ onUnmounted(() => {
               <StatusDot :status="row.status" />
             </template>
           </el-table-column>
-          <el-table-column label="触发方式" width="150" show-overflow-tooltip>
+          <el-table-column label="谁启动的" width="150" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tag
                 :type="row.trigger_source === 'automation' ? 'warning' : 'info'"

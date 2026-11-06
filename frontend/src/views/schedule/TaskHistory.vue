@@ -60,7 +60,7 @@ function countText(success: number, total: number): string {
   return total > 0 ? `${success}/${total}` : '—'
 }
 
-/** 触发方式：自动化任务触发时展示任务名，其余为手动。 */
+/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
 function triggerText(row: OpenListExecution): string {
   if (row.trigger_source !== 'automation') return '手动'
   return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
@@ -111,7 +111,7 @@ const pagedList = computed(() => {
 const hasFilter = computed(() => Boolean(keyword.value.trim() || dateRange.value || statusFilter.value))
 
 const emptyDescription = computed(() =>
-  hasFilter.value ? '没有匹配的任务历史' : '暂无任务历史（执行任务后才会生成记录）'
+  hasFilter.value ? '没有匹配的运行记录' : '暂无运行记录（执行任务后才会生成记录）'
 )
 
 // 筛选条件变化后回到第一页，避免停留在越界页
@@ -198,7 +198,7 @@ defineExpose({ reload: load })
     <!-- 列表页面 -->
     <template v-if="viewMode === 'list'">
       <p class="page-hint">
-        按任务汇总最近一次执行与累计执行次数，点击任务名进入执行记录，可查看执行日志、打开日志文件夹；需要重跑请到「执行管理」重新选择任务执行。列表支持按任务名称、执行时间范围与执行状态筛选。
+        按任务汇总最近一次执行与累计执行次数，点击任务名进入执行记录，可查看执行日志、打开日志文件夹；需要重跑请到「开始执行」重新选择任务执行。列表支持按任务名称、执行时间范围与执行状态筛选。
       </p>
 
       <div class="toolbar">
@@ -322,7 +322,7 @@ defineExpose({ reload: load })
               <StatusDot :status="row.status" />
             </template>
           </el-table-column>
-          <el-table-column label="触发方式" width="150" show-overflow-tooltip>
+          <el-table-column label="谁启动的" width="150" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tag
                 :type="row.trigger_source === 'automation' ? 'warning' : 'info'"

@@ -1,4 +1,4 @@
-/** OpenList 状态：全局配置、服务器、预设、任务、执行与实时日志连接。 */
+/** OpenList 状态：连接与格式、服务器、预设、任务、执行与运行详情连接。 */
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'

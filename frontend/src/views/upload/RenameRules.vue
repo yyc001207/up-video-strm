@@ -64,7 +64,7 @@ const pagedRules = computed(() => {
 })
 
 const emptyDescription = computed(() =>
-  keyword.value.trim() ? '没有匹配的重命名规则' : '还没有重命名规则，先创建一个吧'
+  keyword.value.trim() ? '没有匹配的命名规则' : '还没有命名规则，先创建一个吧'
 )
 
 // 搜索条件或每页条数变化时回到第一页
@@ -133,10 +133,10 @@ async function handleSave(): Promise<void> {
     }
     if (editingId.value === null) {
       await uploaderApi.createRenameRule(payload)
-      ElMessage.success('重命名规则已创建')
+      ElMessage.success('命名规则已创建')
     } else {
       await uploaderApi.updateRenameRule(editingId.value, payload)
-      ElMessage.success('重命名规则已保存')
+      ElMessage.success('命名规则已保存')
     }
     dialogVisible.value = false
     await load()
@@ -148,15 +148,15 @@ async function handleSave(): Promise<void> {
 async function handleDelete(rule: UploadRenameRule): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      `将删除重命名规则「${rule.name}」，使用该规则的任务需先改用其他规则。该操作不可恢复。`,
-      '删除重命名规则',
+      `将删除命名规则「${rule.name}」，使用该规则的任务需先改用其他规则。该操作不可恢复。`,
+      '删除命名规则',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
   } catch {
     return
   }
   await uploaderApi.deleteRenameRule(rule.id)
-  ElMessage.success('重命名规则已删除')
+  ElMessage.success('命名规则已删除')
   await load()
 }
 
@@ -168,8 +168,8 @@ async function handleBatchDelete(): Promise<void> {
   }
   try {
     await ElMessageBox.confirm(
-      `确定删除选中的 ${ids.length} 个重命名规则？删除后不可恢复。`,
-      '批量删除重命名规则',
+      `确定删除选中的 ${ids.length} 个命名规则？删除后不可恢复。`,
+      '批量删除命名规则',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
   } catch {
@@ -177,7 +177,7 @@ async function handleBatchDelete(): Promise<void> {
   }
   try {
     const res = await uploaderApi.batchDeleteRenameRules(ids)
-    ElMessage.success(`已删除 ${res.data.deleted} 个重命名规则`)
+    ElMessage.success(`已删除 ${res.data.deleted} 个命名规则`)
     resetSelection()
     await load()
   } catch {
@@ -281,7 +281,7 @@ onMounted(() => void load())
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editingId === null ? '新建重命名规则' : '编辑重命名规则'"
+      :title="editingId === null ? '新建命名规则' : '编辑命名规则'"
       width="560px"
     >
       <el-form ref="formRef" :model="form" :rules="formRules" label-position="top">

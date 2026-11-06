@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * 自动化任务 · 执行管理（/automation/execution）。
+ * 自动追更 · 开始执行（/automation/execution）。
  *
- * 结构与「任务调度 · 执行管理」保持一致：三张卡片一行工作区
+ * 结构与「STRM 生成 · 开始执行」保持一致：三张卡片一行工作区
  * （左「选择任务」、中「执行参数」、右「已选任务」），下方「正在执行」表 5s 轮询。
  *
- * 与任务调度的差异仅在业务语义：本页执行的是自动化任务的一轮链路，
- * 执行参数为 5 项时间参数（写入所选任务配置并持续生效）；
- * 启动成功后自动跳转到该任务的实时日志页，便于立即观察链路日志。
+ * 与STRM 生成的差异仅在业务语义：本页执行的是自动追更的一轮链路，
+ * 执行参数为 5 项时间参数（写入所选任务并持续生效）；
+ * 启动成功后自动跳转到该任务的运行详情页，便于立即观察链路日志。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -100,7 +100,7 @@ let lastPhases = new Map<number, string>()
 
 const activeMap = computed(() => new Map(active.value.map(item => [item.task_id, item])))
 
-/** 单服务器 / 自动化任务列表不分页：直接在前端按关键字筛选。 */
+/** 单服务器 / 自动追更列表不分页：直接在前端按关键字筛选。 */
 const filteredTasks = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return tasks.value
@@ -353,7 +353,7 @@ async function handleStart(): Promise<void> {
         ElMessage.warning(`已启动 ${requestedIds.length - failed.length} 个，失败 ${failed.length} 个`)
       }
     }
-    // 启动成功后自动跳转到对应任务的实时日志，便于立即观察本轮链路日志。
+    // 启动成功后自动跳转到对应任务的运行详情，便于立即观察本轮链路日志。
     await router.push({ path: ROUTE_REALTIME, query: { task_id: String(requestedIds[0]) } })
   } catch {
     /* 拦截器已提示 */
@@ -365,7 +365,7 @@ async function handleStart(): Promise<void> {
 async function stopTask(taskId: number): Promise<void> {
   if (stoppingId.value !== null) return
   try {
-    await ElMessageBox.confirm(`确认停止自动化任务「${taskName(taskId)}」的当前轮次？`, '停止运行', {
+    await ElMessageBox.confirm(`确认停止自动追更「${taskName(taskId)}」的当前轮次？`, '停止运行', {
       type: 'warning',
       confirmButtonText: '停止运行',
       cancelButtonText: '继续运行'
@@ -537,7 +537,7 @@ onBeforeUnmount(() => {
           <header class="exec-panel__head">
             <div class="exec-panel__heading">
               <h2 class="exec-panel__title">选择任务</h2>
-              <p class="exec-panel__sub">展示全部自动化任务；运行中的任务不可重复选择</p>
+              <p class="exec-panel__sub">展示全部自动追更；运行中的任务不可重复选择</p>
             </div>
             <span class="exec-panel__count">已选 {{ selectedTaskIds.length }}</span>
           </header>
@@ -556,10 +556,10 @@ onBeforeUnmount(() => {
             <el-empty
               v-if="tasks.length === 0"
               class="exec-panel__empty"
-              description="暂无自动化任务配置"
+              description="还没有自动追更任务"
               :image-size="72"
             >
-              <el-button type="primary" plain @click="goTaskConfig">前往任务配置</el-button>
+              <el-button type="primary" plain @click="goTaskConfig">前往任务</el-button>
             </el-empty>
             <el-empty
               v-else-if="filteredTasks.length === 0"
@@ -711,7 +711,7 @@ onBeforeUnmount(() => {
             </div>
 
             <p class="param-note">
-              启动后立即执行一轮（跳过指纹检查）；进入实时日志页后随时可查看链路日志。
+              启动后立即执行一轮（跳过指纹检查）；进入运行详情页后随时可查看链路日志。
             </p>
           </div>
         </aside>
@@ -730,7 +730,7 @@ onBeforeUnmount(() => {
             <el-empty
               v-if="selectedTasks.length === 0"
               class="exec-panel__empty"
-              description="在左侧勾选要启动的自动化任务"
+              description="在左侧勾选要启动的自动追更"
               :image-size="64"
             />
             <div v-else class="selected-list">
@@ -814,7 +814,7 @@ onBeforeUnmount(() => {
           row-key="task_id"
           :max-height="320"
           class="exec-running__table"
-          empty-text="暂无正在运行的自动化任务"
+          empty-text="暂无正在运行的自动追更"
           @selection-change="handleActiveSelectionChange"
         >
           <el-table-column type="selection" width="48" :reserve-selection="true" />

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, FolderAdd, FolderOpened, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Delete, FolderAdd, Plus, Refresh, Search } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
+import BulkBar from '@/components/BulkBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import TaskItem from '@/components/TaskItem.vue'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListTask } from '@/types/openlist'
 import DirTreePanel from './components/DirTreePanel.vue'
@@ -39,33 +42,31 @@ const form = reactive({
   pause_time: '' as string
 })
 
-/** 是否已配置默认运行参数：首访空态据此分层引导。 */
-const paramsConfigured = computed(() => store.config !== null)
+/** 空状态文案：有搜索条件时区分「无匹配」；否则引导创建。 */
+const emptyDescription = computed(() =>
+  keyword.value.trim() ? '没有匹配的任务' : '还没有任务'
+)
 
-/** 空状态文案：有搜索条件时区分「无匹配」；首访未配置参数时引导先配置。 */
-const emptyDescription = computed(() => {
-  if (keyword.value.trim()) return '没有匹配的任务配置'
-  if (!paramsConfigured.value) return '先完成默认运行参数，再创建任务'
-  return '暂无任务配置'
-})
+// 列表视图偏好：卡片为默认，表格供批量核对时切换（记忆在 localStorage）
+const VIEW_KEY = 'up-video-strm-task-view'
+const VIEW_OPTIONS = [
+  { label: '卡片', value: 'card' },
+  { label: '表格', value: 'table' }
+]
+const viewMode = ref<'card' | 'table'>(localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'card')
+watch(viewMode, value => localStorage.setItem(VIEW_KEY, value))
 
-// 默认运行参数（全局生效；其余运行参数已从全局配置页迁入本页）
-const paramsDrawerVisible = ref(false)
-const savingParams = ref(false)
-const paramsForm = reactive({
-  max_concurrent: 1,
-  pause_count: 50,
-  pause_time: '0,3,5',
-  disable_ssl_verify: false,
-  output_dir_prefix: '',
-  output_root: '',
-  openlist_remote_prefix: ''
-})
+/** 卡片模式下点勾选框切换选中（表格模式由 selection-change 维护）。 */
+function toggleSelect(id: number) {
+  const index = selectedIds.value.indexOf(id)
+  if (index >= 0) selectedIds.value.splice(index, 1)
+  else selectedIds.value.push(id)
+}
 
 async function load() {
   loading.value = true
   try {
-    // 任务与全局配置并行加载：配置用于取服务器信息与前缀
+    // 任务与连接与格式并行加载：配置用于取服务器信息与前缀
     const [tasksRes] = await Promise.all([
       openlistApi.listTasks(keyword.value || undefined),
       store.fetchConfig()
@@ -113,7 +114,7 @@ async function handleSave() {
   }
   saving.value = true
   try {
-    // 限流字段：留空表示使用全局配置（不提交 / 置 null）
+    // 限流字段：留空表示使用连接与格式（不提交 / 置 null）
     const payload = {
       name: form.name.trim(),
       output_dir: form.output_dir.trim(),
@@ -188,7 +189,7 @@ async function handleCopy(row: OpenListTask) {
   dialogVisible.value = true
 }
 
-// ---------- 快速添加（按目录批量生成任务配置） ----------
+// ---------- 快速添加（按目录批量生成任务） ----------
 
 const quickDialogVisible = ref(false)
 const quickParentDir = ref('')
@@ -234,7 +235,7 @@ function deriveQuickOutputDir(parentDir: string, path: string, withParent: boole
   return prefix ? `${prefix}/${base}` : `/${base}`
 }
 
-/** 勾选目录 → 将创建的任务配置预览（可包含父级目录本身）。 */
+/** 勾选目录 → 将创建的任务预览（可包含父级目录本身）。 */
 const quickIncludeParent = ref(false)
 /** 输出目录是否带父级目录（默认不带，以一级子目录开头）。 */
 const quickWithParent = ref(false)
@@ -245,7 +246,7 @@ const quickPreview = computed(() => {
     process_path: `/${path.replace(/^\/+/, '')}`,
     output_dir: deriveQuickOutputDir(quickParentDir.value, path, quickWithParent.value)
   }))
-  // 勾选「包含父级目录」时，把父级目录本身也作为一条任务配置（置顶）
+  // 勾选「包含父级目录」时，把父级目录本身也作为一条任务（置顶）
   // 输出目录默认留空，用单个斜杠 / 表示（父级作为根，输出收敛到 output/ 下）
   if (quickIncludeParent.value && quickParentDir.value) {
     const parentPath = quickParentDir.value
@@ -286,7 +287,7 @@ function removeQuickPreview(path: string) {
   quickSelected.value = quickSelected.value.filter(p => p !== path)
 }
 
-/** 批量创建任务配置：勾选几个目录就创建几条。 */
+/** 批量创建任务：勾选几个目录就创建几条。 */
 async function handleQuickAdd() {
   if (quickPreview.value.length === 0) {
     ElMessage.warning('请先在目录树中勾选目录')
@@ -299,14 +300,14 @@ async function handleQuickAdd() {
         name: item.name,
         process_path: item.process_path,
         output_dir: item.output_dir,
-        // 限流字段：留空表示使用全局配置（不提交）
+        // 限流字段：留空表示使用连接与格式（不提交）
         ...(quickPauseCount.value != null ? { pause_count: quickPauseCount.value } : {}),
         ...(quickPauseTime.value.trim() ? { pause_time: quickPauseTime.value.trim() } : {})
       }
       return payload
     })
     await Promise.all(payloads.map(p => openlistApi.createTask(p)))
-    ElMessage.success(`已添加 ${payloads.length} 条任务配置`)
+    ElMessage.success(`已添加 ${payloads.length} 条任务`)
     quickDialogVisible.value = false
     quickSelected.value = []
     await Promise.all([load(), store.fetchTasks()])
@@ -338,7 +339,7 @@ function parseParentDirs(text: string): string[] {
 async function handleQuickAddParentDir() {
   const serverId = store.server?.id
   if (serverId == null) {
-    ElMessage.warning('请先在全局配置中新增服务器')
+    ElMessage.warning('请先在连接与格式中新增服务器')
     return
   }
   const newDirs = parseParentDirs(quickNewDirs.value)
@@ -361,59 +362,6 @@ async function handleQuickAddParentDir() {
   }
 }
 
-function openParams() {
-  // 首次未配置时也允许打开抽屉：字段回落到默认值，保存后即完成配置
-  const current = store.config
-  paramsForm.max_concurrent = current?.max_concurrent || 1
-  paramsForm.pause_count = current?.pause_count || 50
-  paramsForm.pause_time = current?.pause_time || '0,3,5'
-  paramsForm.disable_ssl_verify = current?.disable_ssl_verify ?? false
-  paramsForm.output_dir_prefix = current?.output_dir_prefix ?? ''
-  paramsForm.output_root = current?.output_root ?? ''
-  paramsForm.openlist_remote_prefix = current?.openlist_remote_prefix ?? ''
-  paramsDrawerVisible.value = true
-}
-
-/** 桌面版唤起系统文件夹选择框；浏览器版没有该能力，提示手动填写。 */
-async function pickOutputRoot() {
-  const bridge = (window as unknown as {
-    pywebview?: { api?: { pick_directory?: (startDir?: string) => Promise<string> } }
-  }).pywebview
-  if (!bridge?.api?.pick_directory) {
-    ElMessage.warning('当前不是桌面版，请手动填写路径')
-    return
-  }
-  try {
-    const picked = await bridge.api.pick_directory(paramsForm.output_root.trim() || '')
-    if (picked) paramsForm.output_root = picked
-  } catch {
-    ElMessage.error('打开文件夹选择框失败')
-  }
-}
-
-/** 保存默认运行参数（只提交本页字段，视频/字幕格式保持不变）。 */
-async function handleSaveParams() {
-  savingParams.value = true
-  try {
-    await openlistApi.updateConfig({
-      max_concurrent: paramsForm.max_concurrent,
-      pause_count: paramsForm.pause_count,
-      pause_time: paramsForm.pause_time.trim(),
-      disable_ssl_verify: paramsForm.disable_ssl_verify,
-      output_dir_prefix: paramsForm.output_dir_prefix.trim(),
-      output_root: paramsForm.output_root.trim(),
-      openlist_remote_prefix: paramsForm.openlist_remote_prefix.trim()
-    })
-    ElMessage.success('默认运行参数已保存')
-    paramsDrawerVisible.value = false
-    await store.fetchConfig()
-  } catch {
-    /* 拦截器提示 */
-  } finally {
-    savingParams.value = false
-  }
-}
-
 onMounted(async () => {
   await load()
 })
@@ -423,56 +371,6 @@ defineExpose({ reload: load })
 
 <template>
   <div class="page page--fill list-page task-manage">
-    <!-- 默认运行参数：全局生效，任务未单独设置时使用 -->
-    <el-card shadow="never" class="task-manage__params">
-      <template #header>
-        <div class="params-header">
-          <div class="params-header__left">
-            <span class="card-title">默认运行参数</span>
-            <span class="params-header__hint">全局生效，任务未单独设置时使用</span>
-          </div>
-          <el-button :icon="Edit" :disabled="!store.config" @click="openParams">编辑</el-button>
-        </div>
-      </template>
-      <dl v-if="store.config" class="params-grid">
-        <div class="params-grid__item">
-          <dt>最大并发</dt>
-          <dd>{{ store.config.max_concurrent || 1 }} 个任务</dd>
-        </div>
-        <div class="params-grid__item">
-          <dt>限流间隔</dt>
-          <dd>每 {{ store.config.pause_count || 50 }} 个文件暂停一次</dd>
-        </div>
-        <div class="params-grid__item">
-          <dt>限流暂停时间</dt>
-          <dd>{{ store.config.pause_time || '0,3,5' }} 秒</dd>
-        </div>
-        <div class="params-grid__item">
-          <dt>SSL 校验</dt>
-          <dd>
-            <el-tag :type="store.config.disable_ssl_verify ? 'warning' : 'success'" effect="light" size="small">
-              {{ store.config.disable_ssl_verify ? '不校验' : '校验证书' }}
-            </el-tag>
-          </dd>
-        </div>
-        <div class="params-grid__item">
-          <dt>输出目录前缀</dt>
-          <dd>{{ store.config.output_dir_prefix || '—' }}</dd>
-        </div>
-        <div class="params-grid__item">
-          <dt>输出根目录</dt>
-          <dd>{{ store.config.output_root || '默认（程序目录下 output）' }}</dd>
-        </div>
-        <div class="params-grid__item">
-          <dt>OpenList 远程目录前缀</dt>
-          <dd>{{ store.config.openlist_remote_prefix || '—' }}</dd>
-        </div>
-      </dl>
-      <el-empty v-else description="暂无运行参数" :image-size="60">
-        <el-button type="primary" :icon="Edit" @click="openParams">配置默认参数</el-button>
-      </el-empty>
-    </el-card>
-
     <!-- 工具栏：左侧搜索/筛选，右侧动作（主次分明） -->
     <div class="toolbar">
       <div class="toolbar__left">
@@ -491,16 +389,8 @@ defineExpose({ reload: load })
       </div>
 
       <div class="toolbar__right">
+        <el-segmented v-model="viewMode" :options="VIEW_OPTIONS" size="small" />
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-        <el-button
-          type="danger"
-          plain
-          :icon="Delete"
-          :disabled="selectedIds.length === 0"
-          @click="handleBatchDelete"
-        >
-          批量删除{{ selectedIds.length > 0 ? `（${selectedIds.length}）` : '' }}
-        </el-button>
         <el-button :icon="FolderAdd" @click="openQuickAdd">快速添加</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
       </div>
@@ -508,7 +398,34 @@ defineExpose({ reload: load })
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
+        <div v-if="viewMode === 'card'" v-loading="loading" class="task-list">
+          <TaskItem
+            v-for="row in pagedList"
+            :key="row.id"
+            :name="row.name"
+            :path="row.process_path || '—'"
+            :meta="`输出到 ${row.output_dir}`"
+            :selected="selectedIds.includes(row.id)"
+            selectable
+            @toggle="toggleSelect(row.id)"
+            @activate="openEdit(row)"
+          >
+            <template #actions>
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
+              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </TaskItem>
+          <EmptyState
+            v-if="!loading && pagedList.length === 0"
+            :title="emptyDescription"
+            :action-text="keyword.trim() ? '' : '创建第一个任务'"
+            compact
+            @action="openCreate"
+          />
+        </div>
         <el-table
+          v-else
           v-loading="loading"
           :data="pagedList"
           row-key="id"
@@ -533,14 +450,14 @@ defineExpose({ reload: load })
           </el-table-column>
 
           <template #empty>
-            <el-empty :description="emptyDescription" :image-size="80">
-              <el-button v-if="paramsConfigured" type="primary" :icon="Plus" @click="openCreate">
-                创建第一个任务
-              </el-button>
-            </el-empty>
+            <EmptyState :title="emptyDescription" compact @action="openCreate" />
           </template>
         </el-table>
       </div>
+
+      <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="selectedIds = []">
+        <el-button type="danger" plain :icon="Delete" @click="handleBatchDelete">删除</el-button>
+      </BulkBar>
 
       <div class="list-card__pager">
         <el-pagination
@@ -573,7 +490,7 @@ defineExpose({ reload: load })
         </el-form-item>
         <el-form-item label="限流间隔">
           <el-input-number v-model="form.pause_count" :min="1" :max="100000" placeholder="用全局" class="pause-count" />
-          <div class="remark">留空则使用全局配置；每隔 N 个文件暂停一次</div>
+          <div class="remark">留空则使用连接与格式；每隔 N 个文件暂停一次</div>
         </el-form-item>
         <el-form-item label="限流暂停">
           <el-input v-model="form.pause_time" placeholder="用全局，如 0,3,5" maxlength="512" />
@@ -586,10 +503,10 @@ defineExpose({ reload: load })
       </template>
     </el-dialog>
 
-    <!-- 快速添加：按目录批量生成任务配置（抽屉，便于上下滚动） -->
+    <!-- 快速添加：按目录批量生成任务（抽屉，便于上下滚动） -->
     <el-drawer
       v-model="quickDialogVisible"
-      title="快速添加任务配置（按目录）"
+      title="快速添加任务（按目录）"
       size="800px"
       destroy-on-close
     >
@@ -601,7 +518,7 @@ defineExpose({ reload: load })
             </el-select>
             <el-button :icon="Plus" plain @click="openQuickAddParentDir">新增</el-button>
           </div>
-          <span v-if="!store.server" class="remark">请先在「全局配置」新增服务器</span>
+          <span v-if="!store.server" class="remark">请先在「连接与格式」新增服务器</span>
           <span v-else-if="!quickParentOptions.length" class="remark">
             当前服务器未配置父级目录，可点击「新增」快速添加
           </span>
@@ -610,7 +527,7 @@ defineExpose({ reload: load })
           <DirTreePanel v-model="quickSelected" :server-id="store.server?.id ?? null" :parent-dir="quickParentDir" />
           <div class="include-parent">
             <el-checkbox v-model="quickIncludeParent" :disabled="!quickParentDir">
-              同时把父级目录「{{ quickParentDir || '—' }}」本身作为一条任务配置
+              同时把父级目录「{{ quickParentDir || '—' }}」本身作为一条任务
             </el-checkbox>
           </div>
           <div class="include-parent">
@@ -618,11 +535,11 @@ defineExpose({ reload: load })
               输出目录带父级目录（选中以父级目录开头，如 /emby/电视剧；不选以一级子目录开头，如 /电视剧）
             </el-checkbox>
           </div>
-          <div class="remark">勾选目录后点击下方「添加任务配置」，每个目录生成一条任务配置</div>
+          <div class="remark">勾选目录后点击下方「添加任务」，每个目录生成一条任务</div>
         </el-form-item>
         <el-form-item label="限流间隔">
           <el-input-number v-model="quickPauseCount" :min="1" :max="100000" placeholder="用全局" class="pause-count" />
-          <div class="remark">留空则使用全局配置；每隔 N 个文件暂停一次</div>
+          <div class="remark">留空则使用连接与格式；每隔 N 个文件暂停一次</div>
         </el-form-item>
         <el-form-item label="限流暂停">
           <el-input v-model="quickPauseTime" placeholder="用全局，如 0,3,5" maxlength="512" />
@@ -645,7 +562,7 @@ defineExpose({ reload: load })
         <div class="drawer-footer">
           <el-button @click="quickDialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="quickCreating" :disabled="quickPreview.length === 0" @click="handleQuickAdd">
-            添加 {{ quickPreview.length }} 条任务配置
+            添加 {{ quickPreview.length }} 条任务
           </el-button>
         </div>
       </template>
@@ -669,48 +586,6 @@ defineExpose({ reload: load })
         <el-button type="primary" :loading="quickParentSaving" @click="handleQuickAddParentDir">保存</el-button>
       </template>
     </el-dialog>
-    <!-- 编辑默认运行参数 -->
-    <el-drawer v-model="paramsDrawerVisible" title="编辑默认运行参数" size="520px" destroy-on-close>
-      <el-form label-width="130px">
-        <el-form-item label="同时执行任务个数">
-          <el-input-number v-model="paramsForm.max_concurrent" :min="1" :max="100" />
-          <div class="remark">限制同时运行的任务数量，超出排队等待</div>
-        </el-form-item>
-        <el-form-item label="限流间隔文件数">
-          <el-input-number v-model="paramsForm.pause_count" :min="1" :max="100000" />
-          <div class="remark">每隔 N 个文件限流暂停一次</div>
-        </el-form-item>
-        <el-form-item label="限流暂停时间">
-          <el-input v-model="paramsForm.pause_time" placeholder="0,3,5" maxlength="512" />
-          <div class="remark">秒，逗号分隔；随机暂停其中一项；填 0 表示不限流</div>
-        </el-form-item>
-        <el-form-item label="禁用 SSL 验证">
-          <el-switch v-model="paramsForm.disable_ssl_verify" />
-          <div class="remark">默认关闭（校验证书）；内网自签名 HTTPS 时开启可禁用验证</div>
-        </el-form-item>
-        <el-form-item label="输出目录前缀">
-          <el-input v-model="paramsForm.output_dir_prefix" placeholder="如：/volume1/media（默认空）" maxlength="128" />
-          <div class="remark">快速添加任务配置时拼接到输出目录前，默认空则不拼接</div>
-        </el-form-item>
-        <el-form-item label="输出根目录">
-          <div class="path-row">
-            <el-input v-model="paramsForm.output_root" placeholder="留空=程序目录下 output；如 D:\Media\strm" maxlength="512" />
-            <el-button :icon="FolderOpened" @click="pickOutputRoot">选择</el-button>
-          </div>
-          <div class="remark">任务输出目录以 / 开头时相对此目录生成；留空时相对程序目录下的 output 生成</div>
-        </el-form-item>
-        <el-form-item label="OpenList 远程目录前缀">
-          <el-input v-model="paramsForm.openlist_remote_prefix" placeholder="如：/volume1/media（默认空）" maxlength="256" />
-          <div class="remark">自动化任务比对云端文件时拼接在任务输出目录前；留空表示从根目录直接匹配</div>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="drawer-footer">
-          <el-button @click="paramsDrawerVisible = false">取消</el-button>
-          <el-button type="primary" :loading="savingParams" @click="handleSaveParams">保存</el-button>
-        </div>
-      </template>
-    </el-drawer>
   </div>
 </template>
 
@@ -720,13 +595,9 @@ defineExpose({ reload: load })
   flex-direction: column;
   gap: var(--up-strm-space-4, 16px);
 
-  // 参数卡与工具栏为固定高度区域，不参与收缩；列表卡片由全局 .list-card 撑满剩余空间
+  // 工具栏为固定高度区域，不参与收缩；列表卡片由全局 .list-card 撑满剩余空间
   > .toolbar {
     flex: none;
-  }
-
-  &__params {
-    flex-shrink: 0;
   }
 
   &__table {
@@ -734,64 +605,16 @@ defineExpose({ reload: load })
   }
 }
 
-.params-header {
+// 卡片列表：行间 2px，选中后底部批量条占位显示
+.task-list {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--up-strm-space-3, 12px);
-
-  &__left {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--up-strm-space-2, 8px);
-  }
-
-  &__hint {
-    font-size: var(--up-strm-font-size-xs, 12px);
-    color: var(--el-text-color-secondary);
-  }
+  flex-direction: column;
+  gap: var(--up-strm-space-2);
+  min-height: 120px;
 }
 
-.card-title {
-  font-size: var(--up-strm-font-size-lg, 16px);
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-}
-
-.params-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--up-strm-space-3, 12px) var(--up-strm-space-5, 24px);
-  margin: 0;
-
-  &__item {
-    dt {
-      font-size: var(--up-strm-font-size-xs, 12px);
-      color: var(--el-text-color-secondary);
-      line-height: 1.5;
-    }
-
-    dd {
-      margin: 2px 0 0;
-      font-size: var(--up-strm-font-size-sm, 13px);
-      color: var(--el-text-color-primary);
-      line-height: 1.5;
-      word-break: break-all;
-    }
-  }
-}
-
-.path-row {
-  display: flex;
-  align-items: center;
-  gap: var(--up-strm-space-2, 8px);
-  width: 100%;
-
-  :deep(.el-input) {
-    flex: 1;
-  }
+.task-bulk {
+  margin-top: var(--up-strm-space-3);
 }
 
 // 工具栏布局见 styles/global.scss 的 .toolbar 原语

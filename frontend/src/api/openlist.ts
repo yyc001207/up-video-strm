@@ -1,4 +1,4 @@
-/** OpenList 任务调度接口封装。 */
+/** OpenList STRM 生成接口封装。 */
 
 import request from './index'
 import type {
@@ -41,11 +41,11 @@ export interface BatchExecutionParams {
 }
 
 export const openlistApi = {
-  /** 读取全局配置（token 不返回明文）。 */
+  /** 读取连接与格式（token 不返回明文）。 */
   getConfig(): Promise<Res<OpenListConfig>> {
     return request.get('/openlist/config')
   },
-  /** 保存全局配置（视频/字幕格式 + 并发度）。 */
+  /** 保存连接与格式（视频/字幕格式 + 并发度）。 */
   updateConfig(data: Partial<OpenListConfig>): Promise<Res<OpenListConfig>> {
     return request.post('/openlist/config', data)
   },
@@ -152,7 +152,7 @@ export const openlistApi = {
     return request.get(`/openlist/executions/${id}`, config)
   },
 
-  /** 任务历史：每个任务最近一次执行。 */
+  /** 运行记录：每个任务最近一次执行。 */
   historySummary(): Promise<Res<{ list: HistorySummaryItem[] }>> {
     return request.get('/openlist/history')
   },

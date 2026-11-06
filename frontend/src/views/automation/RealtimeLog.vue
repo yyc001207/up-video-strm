@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * 自动化任务 · 实时日志（/automation/realtime）。
+ * 自动追更 · 运行详情（/automation/realtime）。
  *
- * 布局与「任务调度 · 实时日志」保持一致：顶部进度摘要（轮次 / 待校验 / 已校验 /
- * 缺失 / 状态 / 用时 / 当前任务）、日志工具条（级别过滤 / 关键字 / 行数 / 返回执行管理）、
+ * 布局与「STRM 生成 · 运行详情」保持一致：顶部进度摘要（轮次 / 待校验 / 已校验 /
+ * 缺失 / 状态 / 用时 / 当前任务）、日志工具条（级别过滤 / 关键字 / 行数 / 返回开始执行）、
  * 可复用日志终端（LogViewer）。
  *
  * 数据来源：按任务维度订阅 WS（automation:{task_id}），帧类型 log / progress / status，
@@ -40,7 +40,7 @@ const CONNECTION_META: Record<WsState, { label: string; tone: 'info' | 'success'
   disconnected: { label: '未连接', tone: 'danger' }
 }
 
-/** 阶段文案：与执行管理页保持一致。 */
+/** 阶段文案：与开始执行页保持一致。 */
 const PHASE_LABELS: Record<string, string> = {
   starting: '准备中',
   waiting_idle: '等待 A/B 空闲',
@@ -135,11 +135,11 @@ const filteredLines = computed<LogLine[]>(() => {
 })
 
 const emptyText = computed(() => {
-  if (taskId.value === null) return '请选择要查看的自动化任务'
-  if (connectionState.value === 'connecting') return '正在连接实时日志…'
-  if (finalStatus.value !== null) return '本轮已结束，可前往「任务历史」查看完整日志'
+  if (taskId.value === null) return '请选择要查看的自动追更'
+  if (connectionState.value === 'connecting') return '正在连接运行详情…'
+  if (finalStatus.value !== null) return '本轮已结束，可前往「运行记录」查看完整日志'
   if (currentTask.value?.is_running) return '等待任务输出日志…'
-  return '任务当前未运行，可前往「任务历史」查看最近一轮日志'
+  return '任务当前未运行，可前往「运行记录」查看最近一轮日志'
 })
 
 function resetLogs(): void {
@@ -183,7 +183,7 @@ function onFrame(frame: AutomationWsFrame): void {
     return
   }
   ElNotification({
-    title: '自动化任务异常终止',
+    title: '自动追更异常终止',
     message: frame.message,
     type: 'error',
     duration: 0
@@ -199,7 +199,7 @@ function handleRoundEnd(status: AutomationStatus): void {
   disconnect()
   void loadTasks(true)
   ElMessage.info(
-    status === 'success' ? '本轮执行完成，可前往「任务历史」查看日志' : '本轮执行已结束，可前往「任务历史」查看日志'
+    status === 'success' ? '本轮执行完成，可前往「运行记录」查看日志' : '本轮执行已结束，可前往「运行记录」查看日志'
   )
 }
 
@@ -225,7 +225,7 @@ function connect(): void {
       socket.value = null
       connectionState.value = 'disconnected'
       if (finalStatus.value === null && taskId.value !== null) {
-        ElMessage.warning('实时日志连接已断开，可点击「重新连接」')
+        ElMessage.warning('运行详情连接已断开，可点击「重新连接」')
       }
     },
     onError: () => {
@@ -275,7 +275,7 @@ async function openTask(id: number): Promise<void> {
     connect()
     return
   }
-  // 任务未运行：不订阅 WS、不回放历史日志；页面保持「无运行中任务」空态，历史日志请到任务历史查看。
+  // 任务未运行：不订阅 WS、不回放历史日志；页面保持「无运行中任务」空态，历史日志请到运行记录查看。
 }
 
 /** 重连：运行中重新订阅 WS；未运行时刷新任务状态并提示「无运行中任务」。 */
@@ -286,7 +286,7 @@ function handleReconnect(): void {
     connect()
     return
   }
-  ElMessage.info('当前没有运行中的任务，历史日志请到「任务历史」查看')
+  ElMessage.info('当前没有运行中的任务，历史日志请到「运行记录」查看')
   void loadTasks(true)
 }
 
@@ -353,7 +353,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="page realtime-page">
     <p class="realtime-page__desc">
-      本页实时显示所选自动化任务每一轮链路的日志与阶段；启动任务后会自动跳转到本页。可通过日志级别与关键字过滤日志；本轮结束后可前往「任务历史」查看完整记录。
+      本页实时显示所选自动追更每一轮链路的日志与阶段；启动任务后会自动跳转到本页。可通过日志级别与关键字过滤日志；本轮结束后可前往「运行记录」查看完整记录。
     </p>
 
     <div class="realtime-toolbar">
@@ -361,7 +361,7 @@ onBeforeUnmount(() => {
         <el-select
           v-model="taskId"
           class="realtime-toolbar__selector"
-          placeholder="选择自动化任务"
+          placeholder="选择自动追更"
           filterable
           :disabled="tasks.length === 0 || notConnected"
         >
@@ -443,7 +443,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="log-toolbar__right">
         <el-button v-if="taskId !== null" size="small" @click="handleBackToExecution">
-          返回执行管理
+          返回开始执行
         </el-button>
       </div>
     </div>

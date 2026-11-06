@@ -90,7 +90,7 @@ const router = createRouter({
       path: '/automation/tasks',
       name: 'AutomationTasks',
       component: () => import('@/views/automation/TaskConfig.vue'),
-      meta: { title: '任务配置', description: '维护自动追更：上传任务 + STRM 任务串联' }
+      meta: { title: '任务', description: '维护自动追更：上传任务 + STRM 任务串联' }
     },
     {
       path: '/automation/execution',

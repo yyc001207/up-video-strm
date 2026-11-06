@@ -9,6 +9,7 @@ import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListConfig, OpenListServer } from '@/types/openlist'
 import type { UploadPlatformConfig } from '@/types/uploader'
 import { formatDateTime } from '@/utils/date'
+import GenerationSettings from './components/GenerationSettings.vue'
 
 const store = useOpenlistStore()
 
@@ -299,11 +300,11 @@ async function handleSavePan123() {
   }
 }
 
-/** 删除（清空）123 云盘凭据：需二次确认，删除后上传管理不可用。 */
+/** 删除（清空）123 云盘凭据：需二次确认，删除后云盘上传不可用。 */
 async function handleClearPan123() {
   try {
     await ElMessageBox.confirm(
-      '确认删除 123 云盘配置？删除后上传管理将无法上传，需要重新填写 Client ID / Client Secret。',
+      '确认删除 123 云盘配置？删除后云盘上传将无法上传，需要重新填写 Client ID / Client Secret。',
       '删除 123 云盘配置',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
     )
@@ -426,7 +427,7 @@ defineExpose({ reload: load })
         </el-card>
       </el-col>
 
-      <!-- 右 4 栏：视频/字幕格式（其余运行参数已迁至任务配置页） -->
+      <!-- 右 4 栏：视频/字幕格式（生成设置见下方独立卡片） -->
       <el-col :xs="24" :lg="8">
         <el-card shadow="never" class="global-config__card">
           <template #header>
@@ -451,7 +452,14 @@ defineExpose({ reload: load })
       </el-col>
     </el-row>
 
-    <!-- 123 云盘：上传管理模块的凭据配置（全局唯一，密钥仅脱敏回显；展示卡片 + 编辑弹框） -->
+    <!-- 生成设置：原任务页「默认运行参数」，全局生效 -->
+    <el-row :gutter="16" class="global-config__row">
+      <el-col :span="24">
+        <GenerationSettings />
+      </el-col>
+    </el-row>
+
+    <!-- 123 云盘：云盘上传模块的凭据配置（全局唯一，密钥仅脱敏回显；展示卡片 + 编辑弹框） -->
     <el-card shadow="never" class="global-config__card pan123-card">
       <template #header>
         <div class="card-header">

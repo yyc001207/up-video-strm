@@ -1,4 +1,4 @@
-/** 上传管理（123 云盘）相关类型。 */
+/** 云盘上传（123 云盘）相关类型。 */
 
 /** 123 云盘开放平台凭据与 Token 状态。 */
 export interface UploadPlatformConfig {
@@ -23,7 +23,7 @@ export interface UploadTestConnectionRequest {
   client_secret?: string
 }
 
-/** 重命名规则：`{season}`/`{episode}`/`{ext}` 模板；可附带自定义集数提取正则。 */
+/** 命名规则：`{season}`/`{episode}`/`{ext}` 模板；可附带自定义集数提取正则。 */
 export interface UploadRenameRule {
   id: number
   name: string
@@ -137,7 +137,7 @@ export interface UploadExecution {
   created_time: string | null
   error_code?: string | null
   error_message?: string | null
-  /** 触发来源：manual 手动 / automation 自动化任务触发 */
+  /** 触发来源：manual 手动 / automation 自动追更触发 */
   trigger_source?: string | null
   trigger_ref?: string | null
   trigger_name?: string | null
@@ -176,7 +176,7 @@ export interface UploadFileRecord {
   updated_time: string | null
 }
 
-/** 实时日志帧（与后端 WS 推送保持一致）。 */
+/** 运行详情帧（与后端 WS 推送保持一致）。 */
 export interface UploadWsLogFrame {
   type: 'log'
   level: string

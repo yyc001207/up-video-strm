@@ -13,24 +13,43 @@
         />
       </div>
       <div class="toolbar__right">
+        <el-segmented v-model="viewMode" :options="VIEW_OPTIONS" size="small" />
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-        <el-button
-          type="danger"
-          plain
-          :icon="Delete"
-          :disabled="selectedIds.length === 0"
-          @click="handleBatchDelete"
-        >
-          批量删除
-        </el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
       </div>
     </div>
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
+        <div v-if="viewMode === 'card'" v-loading="loading" class="task-list">
+          <TaskItem
+            v-for="row in tasks"
+            :key="row.id"
+            :name="row.name"
+            :path="row.check_dir"
+            :meta="`上传 ${row.upload_task_name || `#${row.upload_task_id}`} → STRM ${row.openlist_task_name || `#${row.openlist_task_id}`} · 第 ${row.last_round_no} 轮 · ${row.scan_time || '尚未扫描'}`"
+            :status="row.is_running ? 'running' : row.pending_file_count > 0 ? 'pending' : 'never'"
+            :status-count="row.pending_file_count > 0 ? row.pending_file_count : undefined"
+            :selected="selectedIds.includes(row.id)"
+            selectable
+            @toggle="toggleSelect(row.id)"
+            @activate="openEdit(row)"
+          >
+            <template #actions>
+              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </TaskItem>
+          <EmptyState
+            v-if="!loading && tasks.length === 0"
+            :title="emptyDescription"
+            :action-text="keyword.trim() ? '' : '创建第一个自动追更'"
+            compact
+            @action="openCreate"
+          />
+        </div>
         <el-table
-          ref="tableRef"
+          v-else
           v-loading="loading"
           :data="tasks"
           row-key="id"
@@ -78,14 +97,13 @@
             </template>
           </el-table-column>
           <template #empty>
-            <el-empty :description="emptyDescription">
-              <el-button v-if="!keyword.trim()" type="primary" :icon="Plus" @click="openCreate">
-                创建第一个自动化任务
-              </el-button>
-            </el-empty>
+            <EmptyState :title="emptyDescription" compact @action="openCreate" />
           </template>
         </el-table>
       </div>
+      <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="selectedIds = []">
+        <el-button type="danger" plain :icon="Delete" @click="handleBatchDelete">删除</el-button>
+      </BulkBar>
       <div class="list-card__pager">
         <el-pagination
           v-model:current-page="page"
@@ -212,7 +230,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Delete, Edit, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
   ElMessage,
@@ -222,6 +240,9 @@ import {
 } from 'element-plus'
 
 import { automationApi } from '@/api/automation'
+import BulkBar from '@/components/BulkBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import TaskItem from '@/components/TaskItem.vue'
 import type {
   AutomationCheckDirResult,
   AutomationOpenListMode,
@@ -239,6 +260,22 @@ const page = ref(1)
 const pageSize = ref(20)
 const selectedIds = ref<number[]>([])
 
+// 列表视图偏好：卡片为默认，表格供批量核对时切换（记忆在 localStorage）
+const VIEW_KEY = 'up-video-strm-automation-task-view'
+const VIEW_OPTIONS = [
+  { label: '卡片', value: 'card' },
+  { label: '表格', value: 'table' }
+]
+const viewMode = ref<'card' | 'table'>(localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'card')
+watch(viewMode, value => localStorage.setItem(VIEW_KEY, value))
+
+/** 卡片模式下点勾选框切换选中（表格模式由 selection-change 维护）。 */
+function toggleSelect(id: number): void {
+  const index = selectedIds.value.indexOf(id)
+  if (index >= 0) selectedIds.value.splice(index, 1)
+  else selectedIds.value.push(id)
+}
+
 const drawerVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
@@ -252,9 +289,9 @@ const checking = ref(false)
 const checkResult = ref<AutomationCheckDirResult | null>(null)
 
 const emptyDescription = computed(() =>
-  keyword.value.trim() ? '没有匹配的自动化任务' : '暂无自动化任务，创建后将串联「上传」与「STRM 生成」'
+  keyword.value.trim() ? '没有匹配的自动追更' : '暂无自动追更，创建后将串联「上传」与「STRM 生成」'
 )
-const drawerTitle = computed(() => (editingId.value ? '编辑自动化任务' : '新建自动化任务'))
+const drawerTitle = computed(() => (editingId.value ? '编辑自动追更' : '新建自动追更'))
 const expectedCheckDir = computed(() => {
   const option = uploadOptions.value.find(item => item.id === form.upload_task_id)
   return option?.derived_check_dir ?? ''
@@ -406,7 +443,7 @@ async function handleSave(): Promise<void> {
 
 async function handleDelete(task: AutomationTask): Promise<void> {
   try {
-    await ElMessageBox.confirm(`确认删除自动化任务「${task.name}」？`, '删除确认', {
+    await ElMessageBox.confirm(`确认删除自动追更「${task.name}」？`, '删除确认', {
       type: 'warning'
     })
   } catch {
@@ -424,7 +461,7 @@ function handleSelectionChange(rows: AutomationTask[]): void {
 async function handleBatchDelete(): Promise<void> {
   if (selectedIds.value.length === 0) return
   try {
-    await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个自动化任务？`, '批量删除', {
+    await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个自动追更？`, '批量删除', {
       type: 'warning'
     })
   } catch {
@@ -450,6 +487,18 @@ onBeforeUnmount(() => {
 // 与列表页一致：页面级纵向间距由页面自身承担（.page--fill 基础样式不含 gap）。
 .automation-tasks {
   gap: var(--up-strm-space-4);
+}
+
+// 卡片列表：行间 2px；批量条选中后占位显示
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--up-strm-space-2);
+  min-height: 120px;
+}
+
+.task-bulk {
+  margin-top: var(--up-strm-space-3);
 }
 
 .check-dir-row {

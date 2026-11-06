@@ -48,7 +48,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const PAGE_SIZES = [10, 20, 50]
 
-/** 视图切换：列表 ↔ 详情（同任务调度历史，详情作为页面而非抽屉）。 */
+/** 视图切换：列表 ↔ 详情（同STRM 生成历史，详情作为页面而非抽屉）。 */
 const viewMode = ref<'list' | 'detail'>('list')
 const detailTaskId = ref<number | null>(null)
 const detailTaskName = ref('')
@@ -93,7 +93,7 @@ function conflictText(policy: string): string {
   return CONFLICT_LABELS[policy as UploadConflictPolicy] ?? policy
 }
 
-/** 触发方式：自动化任务触发时展示任务名，其余为手动。 */
+/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
 function triggerText(row: UploadExecution): string {
   if (row.trigger_source !== 'automation') return '手动'
   return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
@@ -235,7 +235,7 @@ function openLogDir() {
   })
 }
 
-/** 以原执行的固化参数重跑：新建执行记录后跳转实时日志，由 WS 连接后启动。 */
+/** 以原执行的固化参数重跑：新建执行记录后跳转运行详情，由 WS 连接后启动。 */
 async function handleRetry(row: UploadExecution) {
   try {
     await ElMessageBox.confirm(
@@ -248,7 +248,7 @@ async function handleRetry(row: UploadExecution) {
   }
   const res = await uploaderApi.retryExecution(row.id)
   const created = res.data
-  ElMessage.success('已创建新的执行记录，正在跳转实时日志')
+  ElMessage.success('已创建新的执行记录，正在跳转运行详情')
   await router.push({
     name: 'UploadRealtime',
     query: {
@@ -388,7 +388,7 @@ defineExpose({ reload: load })
                 <StatusDot :status="row.status" />
               </template>
             </el-table-column>
-            <el-table-column label="触发方式" show-overflow-tooltip>
+            <el-table-column label="谁启动的" show-overflow-tooltip>
               <template #default="{ row }">
                 <el-tag :type="row.trigger_source === 'automation' ? 'warning' : 'info'" size="small" effect="plain">
                   {{ triggerText(row) }}

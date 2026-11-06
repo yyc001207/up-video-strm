@@ -1,8 +1,8 @@
-/** 自动化任务（模块 C）类型定义：任务配置、绑定选项与目录检测。 */
+/** 自动追更（模块 C）类型定义：任务、绑定选项与目录检测。 */
 
 export type AutomationOpenListMode = 'incremental' | 'full' | 'strm_only'
 
-/** 自动化任务（列表 / 详情）。时间字段由后端按北京时间格式化为字符串。 */
+/** 自动追更（列表 / 详情）。时间字段由后端按北京时间格式化为字符串。 */
 export interface AutomationTask {
   id: number
   name: string
@@ -77,11 +77,11 @@ export interface AutomationCheckDirResult {
   message: string
 }
 
-// ---------- 执行管理 / 运行历史 / 实时日志（阶段③） ----------
+// ---------- 开始执行 / 运行历史 / 运行详情（阶段③） ----------
 
 export type AutomationRunStatus = 'running' | 'success' | 'partial' | 'fail' | 'cancelled'
 
-/** 自动化任务一轮运行记录。 */
+/** 自动追更一轮运行记录。 */
 export interface AutomationRun {
   id: number
   task_id: number
@@ -123,7 +123,7 @@ export interface AutomationExecutionBrief {
   file_failed?: number
 }
 
-/** 运行中的自动化任务（进程内运行态快照）。 */
+/** 运行中的自动追更（进程内运行态快照）。 */
 export interface AutomationActiveTask {
   task_id: number
   task_name: string | null
@@ -135,7 +135,7 @@ export interface AutomationActiveTask {
   started_time: string | null
 }
 
-/** 执行管理页的执行参数：写入所选任务配置并持续生效，留空沿用任务当前值。 */
+/** 开始执行页的执行参数：写入所选任务并持续生效，留空沿用任务当前值。 */
 export interface AutomationStartPayload {
   wait_interval_seconds?: number
   openlist_wait_timeout?: number
@@ -161,7 +161,7 @@ export interface AutomationRunLogResult {
   lines: AutomationRunLogLine[]
 }
 
-/** 自动化任务 WS 帧：日志 / 进度 / 状态 / 异常通知。 */
+/** 自动追更 WS 帧：日志 / 进度 / 状态 / 异常通知。 */
 export type AutomationWsFrame =
   | { type: 'log'; level: string; message: string; ts: string }
   | { type: 'progress'; data: Record<string, unknown> }

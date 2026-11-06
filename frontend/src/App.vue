@@ -7,6 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'
+import CommandPalette from '@/components/CommandPalette.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import TopBar from '@/components/TopBar.vue'
 import { RUNNING_POLL_MS, useRunningStore } from '@/stores/running'
@@ -18,6 +19,7 @@ const runningStore = useRunningStore()
 
 const collapsed = ref(readCollapsed())
 const offlineDismissed = ref(false)
+const paletteOpen = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const isToday = computed(() => route.path === '/')
@@ -56,8 +58,21 @@ async function refreshRunning(): Promise<void> {
   }
 }
 
+/** 全局快捷键：Ctrl/Cmd + K 打开命令面板，Esc 关闭。 */
+function handleGlobalKeydown(event: KeyboardEvent): void {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    paletteOpen.value = !paletteOpen.value
+    return
+  }
+  if (event.key === 'Escape' && paletteOpen.value) {
+    paletteOpen.value = false
+  }
+}
+
 onMounted(() => {
   void refreshRunning()
+  document.addEventListener('keydown', handleGlobalKeydown)
   pollTimer = setInterval(() => {
     if (document.hidden) return
     void refreshRunning()
@@ -65,6 +80,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', handleGlobalKeydown)
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
@@ -75,9 +91,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="app-shell" :class="{ 'is-collapsed': collapsed }">
     <AppSidebar :collapsed="collapsed" @toggle="toggleCollapsed" />
+    <CommandPalette v-model="paletteOpen" />
 
     <div class="app-main">
-      <TopBar />
+      <TopBar @open-search="paletteOpen = true" />
 
       <div v-if="showOfflineAlert" class="app-offline" role="status">
         <span class="app-offline__dot" />

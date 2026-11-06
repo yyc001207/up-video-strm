@@ -89,7 +89,7 @@ function briefText(brief: AutomationExecutionBrief | null): string {
 
 const emptyDescription = computed(() => {
   if (taskFilter.value !== null || statusFilter.value !== 'all' || dateRange.value !== null) return '没有匹配的运行记录'
-  return '暂无运行记录（启动自动化任务后才会生成记录）'
+  return '暂无运行记录（启动自动追更后才会生成记录）'
 })
 
 async function loadTasks() {
@@ -195,7 +195,7 @@ defineExpose({ reload: load })
 <template>
   <div class="page page--fill list-page automation-history">
     <p class="page-hint">
-      按轮次记录自动化任务的执行结果：可查看阶段、新增/待校验/已校验文件数、缺失文件与错误信息，支持回放该轮日志、打开日志文件夹以及把缺失文件写回待校验。
+      按轮次记录自动追更的执行结果：可查看阶段、新增/待校验/已校验文件数、缺失文件与错误信息，支持回放该轮日志、打开日志文件夹以及把缺失文件写回待校验。
     </p>
 
     <div class="toolbar">
@@ -372,7 +372,7 @@ defineExpose({ reload: load })
 
           <div class="automation-history__actions">
             <el-button :icon="View" @click="openLogs(detail)">查看日志</el-button>
-            <el-button :icon="View" @click="openRealtime(detail)">打开实时日志</el-button>
+            <el-button :icon="View" @click="openRealtime(detail)">打开运行详情</el-button>
             <el-button
               v-if="detail.status === 'fail' || detail.status === 'partial' || detail.missed_files.length"
               type="primary"

@@ -1,4 +1,4 @@
-/** 上传管理接口封装：123 云盘凭据、重命名规则、上传任务、执行与实时日志。 */
+/** 云盘上传接口封装：123 云盘凭据、命名规则、上传任务、执行与运行详情。 */
 
 import request from './index'
 import type { Res } from '@/types/openlist'

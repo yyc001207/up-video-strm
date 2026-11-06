@@ -10,6 +10,7 @@ import { useRunningStore } from '@/stores/running'
 
 const route = useRoute()
 const running = useRunningStore()
+const emit = defineEmits<{ (e: 'open-search'): void }>()
 const drawerOpen = ref(false)
 const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
@@ -76,9 +77,15 @@ const progressText = computed(() =>
         <span>{{ offline ? '离线' : '已连接' }}</span>
       </span>
 
-      <button class="top-bar__search" type="button" title="搜索（即将开放）" disabled>
+      <button
+        class="top-bar__search"
+        type="button"
+        title="搜索页面（Ctrl + K）"
+        @click="emit('open-search')"
+      >
         <el-icon :size="15"><Search /></el-icon>
         <span class="top-bar__search-hint">搜索</span>
+        <kbd class="top-bar__search-kbd">Ctrl K</kbd>
       </button>
 
       <ThemeToggle />
@@ -201,14 +208,28 @@ const progressText = computed(() =>
   align-items: center;
   gap: 6px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 8px 0 10px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 999px;
   background: transparent;
   color: var(--el-text-color-secondary);
   font-size: var(--up-strm-font-size-xs);
-  cursor: not-allowed;
-  opacity: 0.7;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--up-primary-500);
+    color: var(--up-primary-600);
+  }
+}
+
+.top-bar__search-kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-placeholder);
+  font-family: var(--up-strm-font-mono);
+  font-size: 10px;
 }
 
 @keyframes capsule-breathe {

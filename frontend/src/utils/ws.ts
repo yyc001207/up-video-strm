@@ -1,4 +1,4 @@
-/** WebSocket 封装：连接/断开执行实时日志流（本地部署，无鉴权）。 */
+/** WebSocket 封装：连接/断开执行运行详情流（本地部署，无鉴权）。 */
 
 import type { WsFrame } from '@/types/openlist'
 import type { UploadWsFrame } from '@/types/uploader'
@@ -66,12 +66,12 @@ export function connectWs(executionId: number, options: WsOptions): WebSocket {
   return openSocket<WsFrame>(buildWsUrl(executionId), options)
 }
 
-/** 上传管理模块的实时日志连接（不同路由前缀）。 */
+/** 云盘上传模块的运行详情连接（不同路由前缀）。 */
 export function connectUploadWs(executionId: number, options: UploadWsOptions): WebSocket {
   return openSocket<UploadWsFrame>(buildWsUrl(executionId, 'upload'), options)
 }
 
-/** 自动化任务模块的实时日志连接（按任务维度，非执行维度）。 */
+/** 自动追更模块的运行详情连接（按任务维度，非执行维度）。 */
 export function connectAutomationWs(taskId: number, options: AutomationWsOptions): WebSocket {
   return openSocket<AutomationWsFrame>(buildWsUrl(taskId, 'automation'), options)
 }

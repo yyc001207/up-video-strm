@@ -66,7 +66,7 @@ const GROUPS: NavGroup[] = [
     label: '自动追更',
     icon: MagicStick,
     pages: [
-      { path: '/automation/tasks', label: '任务配置' },
+      { path: '/automation/tasks', label: '任务' },
       { path: '/automation/execution', label: '开始执行', badge: 'automation' },
       { path: '/automation/realtime', label: '运行详情' },
       { path: '/automation/history', label: '运行记录' }

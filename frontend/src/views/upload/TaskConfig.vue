@@ -10,6 +10,9 @@ import {
 } from 'element-plus'
 
 import { uploaderApi } from '@/api/uploader'
+import BulkBar from '@/components/BulkBar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import TaskItem from '@/components/TaskItem.vue'
 import type { UploadRenameRule, UploadTask, UploadTaskCreate } from '@/types/uploader'
 
 import RemoteDirPanel from './components/RemoteDirPanel.vue'
@@ -24,6 +27,22 @@ const tableRef = ref<TableInstance>()
 const selectedIds = ref<number[]>([])
 const page = ref(1)
 const pageSize = ref(20)
+
+// 列表视图偏好：卡片为默认，表格供批量核对时切换（记忆在 localStorage）
+const VIEW_KEY = 'up-video-strm-upload-task-view'
+const VIEW_OPTIONS = [
+  { label: '卡片', value: 'card' },
+  { label: '表格', value: 'table' }
+]
+const viewMode = ref<'card' | 'table'>(localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'card')
+watch(viewMode, value => localStorage.setItem(VIEW_KEY, value))
+
+/** 卡片模式下点勾选框切换选中（表格模式由 selection-change 维护）。 */
+function toggleSelect(id: number): void {
+  const index = selectedIds.value.indexOf(id)
+  if (index >= 0) selectedIds.value.splice(index, 1)
+  else selectedIds.value.push(id)
+}
 
 const drawerVisible = ref(false)
 const saving = ref(false)
@@ -254,23 +273,41 @@ onMounted(() => void load())
         />
       </div>
       <div class="toolbar__right">
+        <el-segmented v-model="viewMode" :options="VIEW_OPTIONS" size="small" />
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-        <el-button
-          type="danger"
-          plain
-          :icon="Delete"
-          :disabled="selectedIds.length === 0"
-          @click="handleBatchDelete"
-        >
-          批量删除
-        </el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
       </div>
     </div>
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
+        <div v-if="viewMode === 'card'" v-loading="loading" class="task-list">
+          <TaskItem
+            v-for="row in pagedTasks"
+            :key="row.id"
+            :name="row.name"
+            :path="row.local_dir"
+            :meta="`云端 ${row.remote_dir} · S${String(row.season).padStart(2, '0')} · 起始第 ${row.start_episode} 集 · ${row.rename_rule_name || '默认规则'}`"
+            :selected="selectedIds.includes(row.id)"
+            selectable
+            @toggle="toggleSelect(row.id)"
+            @activate="openEdit(row)"
+          >
+            <template #actions>
+              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </TaskItem>
+          <EmptyState
+            v-if="!loading && pagedTasks.length === 0"
+            :title="emptyDescription"
+            :action-text="keyword.trim() ? '' : '创建第一个任务'"
+            compact
+            @action="openCreate"
+          />
+        </div>
         <el-table
+          v-else
           ref="tableRef"
           v-loading="loading"
           :data="pagedTasks"
@@ -300,14 +337,13 @@ onMounted(() => void load())
             </template>
           </el-table-column>
           <template #empty>
-            <el-empty :description="emptyDescription">
-              <el-button v-if="!keyword.trim()" type="primary" :icon="Plus" @click="openCreate">
-                创建第一个任务
-              </el-button>
-            </el-empty>
+            <EmptyState :title="emptyDescription" compact @action="openCreate" />
           </template>
         </el-table>
       </div>
+      <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="resetSelection">
+        <el-button type="danger" plain :icon="Delete" @click="handleBatchDelete">删除</el-button>
+      </BulkBar>
       <div class="list-card__pager">
         <el-pagination
           v-model:current-page="page"
@@ -388,6 +424,18 @@ onMounted(() => void load())
   display: flex;
   flex-direction: column;
   gap: var(--up-strm-space-3);
+
+  // 卡片列表：行间 2px；批量条选中后占位显示
+  .task-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--up-strm-space-2);
+    min-height: 120px;
+  }
+
+  .task-bulk {
+    margin-top: var(--up-strm-space-3);
+  }
 
   // 工具栏布局见 styles/global.scss 的 .toolbar 原语
   .toolbar__keyword {

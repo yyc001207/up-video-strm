@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 上传管理 · 实时日志：
+ * 云盘上传 · 运行详情：
  * - 通过 WS 连接当前执行，连接成功后由本页调用「启动执行」（避免启动后漏掉开头日志）；
  * - 支持批量排队：一个执行结束后自动连下一个；
  * - 日志只写文件并由 WS 实时推送，本页可切换到任意执行回放最近日志。
@@ -132,9 +132,9 @@ const canReconnect = computed(
 )
 
 const emptyText = computed(() => {
-  if (!hasTargets.value) return '当前没有执行中的上传，请到执行管理发起执行'
+  if (!hasTargets.value) return '当前没有执行中的上传，请到开始执行发起执行'
   if (selectedExecutionId.value === null) return '请选择左侧执行记录'
-  if (connectionState.value === 'connecting') return '正在连接实时日志…'
+  if (connectionState.value === 'connecting') return '正在连接运行详情…'
   if (currentStatus.value !== 'running') return '执行已结束，日志已回放完毕'
   return '等待执行开始输出日志…'
 })
@@ -330,7 +330,7 @@ async function init(): Promise<void> {
 }
 
 onMounted(() => {
-  void init().catch(error => ElMessage.error((error as Error).message || '实时日志初始化失败'))
+  void init().catch(error => ElMessage.error((error as Error).message || '运行详情初始化失败'))
   clockTimer = setInterval(() => {
     now.value = Date.now()
   }, 1000)
@@ -345,7 +345,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="page upload-realtime">
     <p class="upload-realtime__desc">
-      本页实时显示所选上传执行的日志与 6 阶段进度；批量排队时按队列串行启动并自动切换。可通过日志级别与关键字过滤日志；当前没有运行中的上传时，请到「执行管理」发起执行。
+      本页实时显示所选上传执行的日志与 6 阶段进度；批量排队时按队列串行启动并自动切换。可通过日志级别与关键字过滤日志；当前没有运行中的上传时，请到「开始执行」发起执行。
     </p>
 
     <div class="realtime-toolbar">
@@ -431,7 +431,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="log-toolbar__right">
         <el-button v-if="selectedExecutionId" size="small" @click="router.push('/upload/execution')">
-          返回执行管理
+          返回开始执行
         </el-button>
       </div>
     </div>

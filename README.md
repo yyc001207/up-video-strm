@@ -96,7 +96,7 @@ npm run preview                   # 本地预览构建产物
 | [CHANGELOG.md](CHANGELOG.md) | 版本演进记录：各版本的级别、变更要点与版本判定依据 |
 | [docs/design/upload-module-plan.md](docs/design/upload-module-plan.md) | 上传管理模块设计计划：信息架构、数据模型、执行流水线、123 云盘对接与测试约束 |
 | [docs/design/automation-module-plan.md](docs/design/automation-module-plan.md) | 自动化任务模块设计计划：四模块平级、B→OpenList 校验→A 链路、等待机制与触发来源 |
-| [docs/design/ui-next-plan.md](docs/design/ui-next-plan.md) | 全新界面设计方案（Next UI，未实施）：信息架构、壳层与导航、设计令牌、组件契约、页面蓝图与落地路线 |
+| [docs/design/ui-next-plan.md](docs/design/ui-next-plan.md) | 全新界面设计方案（Next UI · 暖调媒体方向，未实施）：暖紫视觉语言、单列导航、卡片化列表、悬浮任务球与落地路线 |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 

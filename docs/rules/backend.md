@@ -45,7 +45,7 @@ backend/
 
 | 文件 | 职责 |
 |------|------|
-| [service.py](../../backend/app/business/uploader/service.py) | 123 云盘凭据（DPAPI 加密存储、Token 缓存与续期）、重命名规则、上传任务、执行记录/历史/日志读取、配置 seed |
+| [service.py](../../backend/app/business/uploader/service.py) | 123 云盘凭据（DPAPI 加密存储、Token 缓存与续期；凭据真正变化才清空缓存、并发刷新加锁、测试连接复用缓存令牌）、重命名规则、上传任务、执行记录/历史/日志读取、配置 seed |
 | [pan123_client.py](../../backend/app/business/uploader/pan123_client.py) | 123 云盘开放平台客户端（token、文件列表/查重、目录解析、秒传/分片上传、异步结果、删除；`get_file_id` 兼容 `fileID`/`fileId`） |
 | [scanner.py](../../backend/app/business/uploader/scanner.py) | 本地目录扫描与视频过滤（扩展名来自全局「视频格式」）、MD5 计算 |
 | [rename_engine.py](../../backend/app/business/uploader/rename_engine.py) | 集数解析（`第03集`/`S01E03`/`EP03`/`[03]`/`03 - 标题`，排除分辨率与哈希数字）+ 可选自定义集数正则（`episode_pattern`，第 1 个分组为集号）+ 模板渲染（`{season}`/`{episode}`/`{ext}`） |

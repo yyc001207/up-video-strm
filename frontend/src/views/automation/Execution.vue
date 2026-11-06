@@ -6,7 +6,7 @@
  * （左「选择任务」、中「执行参数」、右「已选任务」），下方「正在执行」表 5s 轮询。
  *
  * 与任务调度的差异仅在业务语义：本页执行的是自动化任务的一轮链路，
- * 执行参数可覆盖本次运行的上传并发 / 失败重试 / STRM 生成模式（不写回任务配置）；
+ * 执行参数为 5 项时间参数（写入所选任务配置并持续生效）；
  * 启动成功后自动跳转到该任务的实时日志页，便于立即观察链路日志。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -27,7 +27,6 @@ import {
 import { automationApi, automationRunApi } from '@/api/automation'
 import type {
   AutomationActiveTask,
-  AutomationOpenListMode,
   AutomationStartPayload,
   AutomationTask
 } from '@/types/automation'
@@ -35,19 +34,6 @@ import type {
 const ROUTE_REALTIME = '/automation/realtime'
 const ROUTE_TASKS = '/automation/tasks'
 const POLL_INTERVAL_MS = 5000
-
-/** 生成模式：与任务配置页一致，映射到后端的 openlist_mode。 */
-const MODE_OPTIONS: Array<{ label: string; value: AutomationOpenListMode }> = [
-  { label: '增量', value: 'incremental' },
-  { label: '全量', value: 'full' },
-  { label: '仅 STRM', value: 'strm_only' }
-]
-
-const MODE_HINT: Record<AutomationOpenListMode, string> = {
-  incremental: '只处理新增或变更的文件，耗时最短。',
-  full: '忽略已有产物，重新生成全部 STRM 与字幕，耗时最长。',
-  strm_only: '只更新 STRM 文件，不重新下载已存在的字幕。'
-}
 
 const PHASE_LABELS: Record<string, string> = {
   starting: '准备中',
@@ -74,10 +60,12 @@ const tasks = ref<AutomationTask[]>([])
 const active = ref<AutomationActiveTask[]>([])
 const selectedTaskIds = ref<number[]>([])
 const keyword = ref('')
-const execMode = ref<AutomationOpenListMode>('incremental')
-/** 本次运行参数覆盖：留空表示沿用任务配置。 */
-const concurrency = ref<number | undefined>(undefined)
-const retryTimes = ref<number | undefined>(undefined)
+/** 执行参数：填写后写入所选任务配置并持续生效，留空沿用任务当前值。 */
+const waitIntervalSeconds = ref<number | undefined>(undefined)
+const openlistWaitTimeout = ref<number | undefined>(undefined)
+const idleWaitTimeout = ref<number | undefined>(undefined)
+const stageTimeout = ref<number | undefined>(undefined)
+const intervalSeconds = ref<number | undefined>(undefined)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 /** 轮次结束时刷新一次任务行（待校验 / 运行状态），避免额外轮询任务列表。 */
@@ -185,9 +173,11 @@ function removeSelected(taskId: number): void {
 
 function buildPayload(): AutomationStartPayload {
   const payload: AutomationStartPayload = {}
-  if (concurrency.value !== undefined) payload.upload_concurrency = concurrency.value
-  if (retryTimes.value !== undefined) payload.upload_retry_times = retryTimes.value
-  if (execMode.value !== undefined) payload.openlist_mode = execMode.value
+  if (waitIntervalSeconds.value !== undefined) payload.wait_interval_seconds = waitIntervalSeconds.value
+  if (openlistWaitTimeout.value !== undefined) payload.openlist_wait_timeout = openlistWaitTimeout.value
+  if (idleWaitTimeout.value !== undefined) payload.idle_wait_timeout = idleWaitTimeout.value
+  if (stageTimeout.value !== undefined) payload.stage_timeout = stageTimeout.value
+  if (intervalSeconds.value !== undefined) payload.interval_seconds = intervalSeconds.value
   return payload
 }
 
@@ -495,15 +485,33 @@ onBeforeUnmount(() => {
               <span class="exec-panel__footer-hint">
                 可选 {{ selectableTasks.length }} 个 · 已选 {{ selectedTaskIds.length }} 个
               </span>
-              <el-button
-                link
-                type="primary"
-                :icon="Select"
-                :disabled="selectableTasks.length === 0 || starting"
-                @click="toggleSelectAll"
-              >
-                {{ allSelectableSelected ? '取消全选' : '全选' }}
-              </el-button>
+              <div class="exec-panel__footer-ops">
+                <el-button
+                  link
+                  :icon="Timer"
+                  :disabled="selectedTaskIds.length === 0 || maintaining"
+                  @click="handleResetFingerprint"
+                >
+                  重置指纹
+                </el-button>
+                <el-button
+                  link
+                  :icon="Delete"
+                  :disabled="selectedTaskIds.length === 0 || maintaining"
+                  @click="handleClearPending"
+                >
+                  清空待校验
+                </el-button>
+                <el-button
+                  link
+                  type="primary"
+                  :icon="Select"
+                  :disabled="selectableTasks.length === 0 || starting"
+                  @click="toggleSelectAll"
+                >
+                  {{ allSelectableSelected ? '取消全选' : '全选' }}
+                </el-button>
+              </div>
             </div>
           </div>
         </section>
@@ -513,37 +521,67 @@ onBeforeUnmount(() => {
           <header class="exec-panel__head">
             <div class="exec-panel__heading">
               <h2 class="exec-panel__title">执行参数</h2>
-              <p class="exec-panel__sub">参数仅本次运行生效，不写回任务配置</p>
+              <p class="exec-panel__sub">填写后写入所选任务配置并持续生效；留空沿用任务当前值</p>
             </div>
           </header>
 
           <div class="exec-panel__body">
             <div class="param-block">
-              <span class="param-block__label">生成模式</span>
-              <el-segmented v-model="execMode" :options="MODE_OPTIONS" :disabled="starting" block />
-              <p class="param-block__hint">{{ MODE_HINT[execMode] }}</p>
-            </div>
-
-            <div class="param-block">
-              <span class="param-block__label">上传并发</span>
+              <span class="param-block__label">可见性轮询间隔（秒）</span>
               <el-input-number
-                v-model="concurrency"
-                :min="1"
-                :max="8"
+                v-model="waitIntervalSeconds"
+                :min="5"
+                :max="120"
                 :disabled="starting"
-                placeholder="使用任务配置"
+                placeholder="沿用任务配置"
                 controls-position="right"
               />
             </div>
 
             <div class="param-block">
-              <span class="param-block__label">失败重试</span>
+              <span class="param-block__label">可见性等待超时（秒）</span>
               <el-input-number
-                v-model="retryTimes"
-                :min="0"
-                :max="10"
+                v-model="openlistWaitTimeout"
+                :min="60"
+                :max="3600"
                 :disabled="starting"
-                placeholder="使用任务配置"
+                placeholder="沿用任务配置"
+                controls-position="right"
+              />
+            </div>
+
+            <div class="param-block">
+              <span class="param-block__label">空闲等待超时（秒）</span>
+              <el-input-number
+                v-model="idleWaitTimeout"
+                :min="60"
+                :max="3600"
+                :disabled="starting"
+                placeholder="沿用任务配置"
+                controls-position="right"
+              />
+            </div>
+
+            <div class="param-block">
+              <span class="param-block__label">阶段超时（秒）</span>
+              <el-input-number
+                v-model="stageTimeout"
+                :min="60"
+                :max="7200"
+                :disabled="starting"
+                placeholder="沿用任务配置"
+                controls-position="right"
+              />
+            </div>
+
+            <div class="param-block">
+              <span class="param-block__label">轮次间隔（秒）</span>
+              <el-input-number
+                v-model="intervalSeconds"
+                :min="10"
+                :max="3600"
+                :disabled="starting"
+                placeholder="沿用任务配置"
                 controls-position="right"
               />
             </div>
@@ -590,25 +628,6 @@ onBeforeUnmount(() => {
             <div class="selected-summary" title="待校验为空表示本次没有上次未校验成功的文件">
               已选 <strong class="selected-summary__num">{{ selectedTaskIds.length }}</strong> 个任务 ·
               待校验 <strong class="selected-summary__num">{{ pendingTotal }}</strong> 个文件
-            </div>
-
-            <div class="selected-ops">
-              <el-button
-                link
-                :icon="Timer"
-                :disabled="selectedTaskIds.length === 0 || maintaining"
-                @click="handleResetFingerprint"
-              >
-                重置指纹
-              </el-button>
-              <el-button
-                link
-                :icon="Delete"
-                :disabled="selectedTaskIds.length === 0 || maintaining"
-                @click="handleClearPending"
-              >
-                清空待校验
-              </el-button>
             </div>
 
             <div class="selected-actions">
@@ -787,6 +806,13 @@ onBeforeUnmount(() => {
     color: var(--el-text-color-secondary);
     font-size: var(--up-strm-font-size-xs);
     line-height: 1.5;
+  }
+
+  &__footer-ops {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--up-strm-space-1);
   }
 }
 
@@ -1061,13 +1087,6 @@ onBeforeUnmount(() => {
     color: var(--el-text-color-primary);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-  }
-
-  .selected-ops {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: var(--up-strm-space-2);
   }
 
   .selected-actions {

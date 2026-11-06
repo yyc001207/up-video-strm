@@ -44,16 +44,16 @@
               <div class="cell-sub">{{ row.check_dir }}</div>
             </template>
           </el-table-column>
-          <el-table-column label="上传任务（B）" min-width="150">
+          <el-table-column label="上传任务" min-width="150">
             <template #default="{ row }">{{ row.upload_task_name || `#${row.upload_task_id}` }}</template>
           </el-table-column>
-          <el-table-column label="STRM 任务（A）" min-width="150">
+          <el-table-column label="STRM 任务" min-width="150">
             <template #default="{ row }">{{ row.openlist_task_name || `#${row.openlist_task_id}` }}</template>
           </el-table-column>
           <el-table-column label="运行参数" min-width="150">
             <template #default="{ row }">
               <div class="cell-main">并发 {{ row.upload_concurrency }} · 重试 {{ row.upload_retry_times }}</div>
-              <div class="cell-sub">{{ modeLabel(row.openlist_mode) }} · 间隔 {{ row.interval_seconds }}s</div>
+              <div class="cell-sub">{{ modeLabel(row.openlist_mode) }}</div>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="110">
@@ -106,7 +106,7 @@
           <el-input v-model="form.name" placeholder="例如：某剧 自动上传 + 生成" maxlength="128" />
         </el-form-item>
 
-        <el-form-item label="上传任务（B）" prop="upload_task_id">
+        <el-form-item label="上传任务" prop="upload_task_id">
           <el-select
             v-model="form.upload_task_id"
             filterable
@@ -131,7 +131,7 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="STRM 任务（A）" prop="openlist_task_id">
+        <el-form-item label="STRM 任务" prop="openlist_task_id">
           <el-select
             v-model="form.openlist_task_id"
             filterable
@@ -200,48 +200,6 @@
             <el-option label="仅生成 STRM" value="strm_only" />
           </el-select>
         </el-form-item>
-        <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="可见性轮询间隔（秒）" prop="wait_interval_seconds">
-              <el-input-number
-                v-model="form.wait_interval_seconds"
-                :min="5"
-                :max="120"
-                controls-position="right"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="可见性等待超时（秒）" prop="openlist_wait_timeout">
-              <el-input-number
-                v-model="form.openlist_wait_timeout"
-                :min="60"
-                :max="3600"
-                controls-position="right"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="空闲等待超时（秒）" prop="idle_wait_timeout">
-              <el-input-number
-                v-model="form.idle_wait_timeout"
-                :min="60"
-                :max="3600"
-                controls-position="right"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="阶段超时（秒）" prop="stage_timeout">
-              <el-input-number v-model="form.stage_timeout" :min="60" :max="7200" controls-position="right" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="轮次间隔（秒）" prop="interval_seconds">
-          <el-input-number v-model="form.interval_seconds" :min="10" :max="3600" controls-position="right" />
-        </el-form-item>
       </el-form>
       <template #footer>
         <div class="drawer-footer">
@@ -306,17 +264,12 @@ const checkResultClass = computed(() => (checkResult.value?.consistent ? 'is-ok'
 function createDefaultForm(): AutomationTaskPayload {
   return {
     name: '',
-    upload_task_id: 0,
-    openlist_task_id: 0,
+    upload_task_id: null,
+    openlist_task_id: null,
     check_dir: '',
     upload_concurrency: 2,
     upload_retry_times: 3,
-    openlist_mode: 'incremental',
-    wait_interval_seconds: 15,
-    openlist_wait_timeout: 600,
-    idle_wait_timeout: 600,
-    stage_timeout: 3600,
-    interval_seconds: 60
+    openlist_mode: 'incremental'
   }
 }
 
@@ -396,12 +349,7 @@ async function openEdit(task: AutomationTask): Promise<void> {
     check_dir: task.check_dir,
     upload_concurrency: task.upload_concurrency,
     upload_retry_times: task.upload_retry_times,
-    openlist_mode: task.openlist_mode,
-    wait_interval_seconds: task.wait_interval_seconds,
-    openlist_wait_timeout: task.openlist_wait_timeout,
-    idle_wait_timeout: task.idle_wait_timeout,
-    stage_timeout: task.stage_timeout,
-    interval_seconds: task.interval_seconds
+    openlist_mode: task.openlist_mode
   } satisfies AutomationTaskPayload)
   await loadOptions(task.id)
   drawerVisible.value = true
@@ -417,7 +365,7 @@ function handleUploadTaskChange(): void {
 }
 
 async function handleCheckDir(): Promise<void> {
-  if (!form.upload_task_id) {
+  if (form.upload_task_id === null) {
     ElMessage.warning('请先选择上传任务')
     return
   }
@@ -440,6 +388,7 @@ async function handleCheckDir(): Promise<void> {
 async function handleSave(): Promise<void> {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  if (form.upload_task_id === null || form.openlist_task_id === null) return
   saving.value = true
   try {
     const payload: AutomationTaskPayload = { ...form, name: form.name.trim() }

@@ -19,11 +19,6 @@ class AutomationTaskCreate(BaseModel):
     upload_concurrency: int = Field(default=2, ge=1, le=8)
     upload_retry_times: int = Field(default=3, ge=0, le=10)
     openlist_mode: str = Field(default="incremental")
-    wait_interval_seconds: int = Field(default=15, ge=5, le=120)
-    openlist_wait_timeout: int = Field(default=600, ge=60, le=3600)
-    idle_wait_timeout: int = Field(default=600, ge=60, le=3600)
-    stage_timeout: int = Field(default=3600, ge=60, le=7200)
-    interval_seconds: int = Field(default=60, ge=10, le=3600)
 
 
 class AutomationTaskUpdate(BaseModel):
@@ -36,11 +31,6 @@ class AutomationTaskUpdate(BaseModel):
     upload_concurrency: Optional[int] = Field(default=None, ge=1, le=8)
     upload_retry_times: Optional[int] = Field(default=None, ge=0, le=10)
     openlist_mode: Optional[str] = None
-    wait_interval_seconds: Optional[int] = Field(default=None, ge=5, le=120)
-    openlist_wait_timeout: Optional[int] = Field(default=None, ge=60, le=3600)
-    idle_wait_timeout: Optional[int] = Field(default=None, ge=60, le=3600)
-    stage_timeout: Optional[int] = Field(default=None, ge=60, le=7200)
-    interval_seconds: Optional[int] = Field(default=None, ge=10, le=3600)
 
 
 class AutomationBatchDeleteRequest(BaseModel):
@@ -56,13 +46,15 @@ class AutomationCheckDirRequest(BaseModel):
 
 
 class AutomationStartRequest(BaseModel):
-    """手动启动参数覆盖（不写回任务配置，仅本次运行实例生效）。"""
+    """执行管理的执行参数：写入所选任务配置并持续生效，留空的项沿用任务当前值。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    upload_concurrency: Optional[int] = Field(default=None, ge=1, le=8)
-    upload_retry_times: Optional[int] = Field(default=None, ge=0, le=10)
-    openlist_mode: Optional[str] = None
+    wait_interval_seconds: Optional[int] = Field(default=None, ge=5, le=120)
+    openlist_wait_timeout: Optional[int] = Field(default=None, ge=60, le=3600)
+    idle_wait_timeout: Optional[int] = Field(default=None, ge=60, le=3600)
+    stage_timeout: Optional[int] = Field(default=None, ge=60, le=7200)
+    interval_seconds: Optional[int] = Field(default=None, ge=10, le=3600)
 
 
 class AutomationBatchStartRequest(AutomationStartRequest):

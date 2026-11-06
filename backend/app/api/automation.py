@@ -82,7 +82,7 @@ async def bind_options(
 # ---------- 执行管理 ----------
 
 
-async def _ensure_startable(db: AsyncSession, task: AutomationTask, overrides: dict) -> None:
+async def _ensure_startable(db: AsyncSession, task: AutomationTask, params: dict) -> None:
     if engine.is_running(task.id):
         raise BadRequestException("任务正在运行")
     probe = await service.check_dir(
@@ -95,7 +95,8 @@ async def _ensure_startable(db: AsyncSession, task: AutomationTask, overrides: d
     )
     if not probe["reachable"]:
         raise BadRequestException(f"校验目录不可访问：{probe['error'] or '未知错误'}")
-    await engine.start_task(task.id, force_round=True, overrides=overrides)
+    await service.apply_run_params(db, task, params)
+    await engine.start_task(task.id, force_round=True)
 
 
 @router.post("/tasks/{task_id}/start", summary="启动自动化任务（强制一轮）")
@@ -105,19 +106,19 @@ async def start_task(
     db: AsyncSession = Depends(get_db),
 ):
     task = await service.get_task(db, task_id)
-    overrides = data.model_dump(exclude_none=True) if data else {}
-    await _ensure_startable(db, task, overrides)
+    params = data.model_dump(exclude_none=True) if data else {}
+    await _ensure_startable(db, task, params)
     return success_response(data={"started": True, "task_id": task_id})
 
 
 @router.post("/tasks/batch-start", summary="批量启动自动化任务")
 async def batch_start_tasks(data: AutomationBatchStartRequest, db: AsyncSession = Depends(get_db)):
-    overrides = data.model_dump(exclude_none=True, exclude={"task_ids"})
+    params = data.model_dump(exclude_none=True, exclude={"task_ids"})
     results = []
     for task_id in data.task_ids:
         try:
             task = await service.get_task(db, task_id)
-            await _ensure_startable(db, task, overrides)
+            await _ensure_startable(db, task, params)
             results.append({"task_id": task_id, "ok": True, "message": "已启动"})
         except Exception as exc:  # noqa: BLE001 - 逐项返回启动结果
             results.append({"task_id": task_id, "ok": False, "message": str(exc)})

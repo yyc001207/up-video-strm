@@ -53,8 +53,6 @@ MAX_DELAY_SECONDS = 60.0
 
 #: 手动启动强制一轮（跳指纹检查），首轮后自动失效
 _FORCE: dict[int, bool] = {}
-#: 本次运行实例的参数覆盖（并发/重试/模式），不写回任务配置
-_OVERRIDES: dict[int, dict] = {}
 
 
 def parse_pending(raw: Optional[str]) -> list[str]:
@@ -97,7 +95,7 @@ class Snapshot:
     extensions: tuple = ()
 
 
-async def _load_snapshot(task_id: int, overrides: Optional[dict] = None) -> Optional[Snapshot]:
+async def _load_snapshot(task_id: int) -> Optional[Snapshot]:
     async with AsyncSessionLocal() as db:
         task = await db.get(AutomationTask, task_id)
         if task is None or task.is_deleted:
@@ -107,7 +105,6 @@ async def _load_snapshot(task_id: int, overrides: Optional[dict] = None) -> Opti
         if upload_task is None or openlist_task is None or openlist_task.is_deleted:
             return None
         config = await db.scalar(select(OpenListConfig).order_by(OpenListConfig.id).limit(1))
-        values = overrides or {}
         return Snapshot(
             task_id=task.id,
             task_name=task.name,
@@ -115,9 +112,9 @@ async def _load_snapshot(task_id: int, overrides: Optional[dict] = None) -> Opti
             openlist_task_id=task.openlist_task_id,
             local_dir=upload_task.local_dir,
             check_dir=task.check_dir,
-            mode=values.get("openlist_mode") or task.openlist_mode,
-            concurrency=int(values.get("upload_concurrency") or task.upload_concurrency),
-            retry_times=int(values.get("upload_retry_times") or task.upload_retry_times),
+            mode=task.openlist_mode,
+            concurrency=task.upload_concurrency,
+            retry_times=task.upload_retry_times,
             interval_seconds=task.interval_seconds,
             wait_interval_seconds=task.wait_interval_seconds,
             openlist_wait_timeout=task.openlist_wait_timeout,
@@ -176,12 +173,11 @@ async def _finish_run(run_id: int, log: AutomationLogger, status: str, **fields)
 # ---------- 对外入口 ----------
 
 
-async def start_task(task_id: int, *, force_round: bool = True, overrides: Optional[dict] = None) -> None:
+async def start_task(task_id: int, *, force_round: bool = True) -> None:
     """启动一个自动化任务实例（同任务仅一个）。"""
     if registry.is_running(task_id):
         raise BadRequestException("任务正在运行")
     _FORCE[task_id] = force_round
-    _OVERRIDES[task_id] = dict(overrides or {})
     event = registry.get_stop_event(task_id)
     event.clear()
     instance = asyncio.create_task(_run_loop(task_id), name=f"automation-task-{task_id}")
@@ -217,7 +213,6 @@ async def _run_loop(task_id: int) -> None:
         logger.exception("自动化任务 %s 运行实例异常退出", task_id)
     finally:
         _FORCE.pop(task_id, None)
-        _OVERRIDES.pop(task_id, None)
         registry.unregister(task_id)
         registry.clear_runtime(task_id)
         try:
@@ -230,7 +225,7 @@ async def _loop(task_id: int) -> None:
     while True:
         if registry.stop_requested(task_id):
             return
-        snapshot = await _load_snapshot(task_id, _OVERRIDES.get(task_id))
+        snapshot = await _load_snapshot(task_id)
         if snapshot is None:
             logger.warning("自动化任务 %s 不存在或绑定任务已删除，停止运行", task_id)
             return

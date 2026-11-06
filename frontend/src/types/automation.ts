@@ -28,20 +28,15 @@ export interface AutomationTask {
   updated_time: string | null
 }
 
-/** 新建 / 编辑提交字段。 */
+/** 新建 / 编辑提交字段（选择框未选中时为 null，避免回显 0）。 */
 export interface AutomationTaskPayload {
   name: string
-  upload_task_id: number
-  openlist_task_id: number
+  upload_task_id: number | null
+  openlist_task_id: number | null
   check_dir: string
   upload_concurrency: number
   upload_retry_times: number
   openlist_mode: AutomationOpenListMode
-  wait_interval_seconds: number
-  openlist_wait_timeout: number
-  idle_wait_timeout: number
-  stage_timeout: number
-  interval_seconds: number
 }
 
 /** 保存结果附带提示（如校验目录当前不可访问）。 */
@@ -140,11 +135,13 @@ export interface AutomationActiveTask {
   started_time: string | null
 }
 
-/** 手动启动参数覆盖（仅本次运行实例生效）。 */
+/** 执行管理页的执行参数：写入所选任务配置并持续生效，留空沿用任务当前值。 */
 export interface AutomationStartPayload {
-  upload_concurrency?: number
-  upload_retry_times?: number
-  openlist_mode?: AutomationOpenListMode
+  wait_interval_seconds?: number
+  openlist_wait_timeout?: number
+  idle_wait_timeout?: number
+  stage_timeout?: number
+  interval_seconds?: number
 }
 
 export interface AutomationBatchStartItem {

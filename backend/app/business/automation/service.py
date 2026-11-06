@@ -267,11 +267,6 @@ async def create_task(db: AsyncSession, data: AutomationTaskCreate) -> dict[str,
         upload_retry_times=data.upload_retry_times,
         openlist_mode=data.openlist_mode,
         check_dir=check_dir,
-        wait_interval_seconds=data.wait_interval_seconds,
-        openlist_wait_timeout=data.openlist_wait_timeout,
-        idle_wait_timeout=data.idle_wait_timeout,
-        stage_timeout=data.stage_timeout,
-        interval_seconds=data.interval_seconds,
     )
     db.add(task)
     try:
@@ -316,11 +311,6 @@ async def update_task(db: AsyncSession, task_id: int, data: AutomationTaskUpdate
     for field in (
         "upload_concurrency",
         "upload_retry_times",
-        "wait_interval_seconds",
-        "openlist_wait_timeout",
-        "idle_wait_timeout",
-        "stage_timeout",
-        "interval_seconds",
     ):
         if field in changes:
             setattr(task, field, changes[field])
@@ -338,6 +328,15 @@ async def update_task(db: AsyncSession, task_id: int, data: AutomationTaskUpdate
     result = (await _to_dicts(db, [task]))[0]
     result["warnings"] = warnings
     return result
+
+
+async def apply_run_params(db: AsyncSession, task: AutomationTask, params: dict[str, Any]) -> None:
+    """把执行管理页填写的执行参数写入任务配置（持续生效）。"""
+    if not params:
+        return
+    for field, value in params.items():
+        setattr(task, field, value)
+    await db.commit()
 
 
 async def delete_task(db: AsyncSession, task_id: int) -> dict[str, Any]:

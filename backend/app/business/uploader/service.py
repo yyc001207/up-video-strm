@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import weakref
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -46,6 +47,19 @@ TOKEN_STATUS_NONE = "none"
 TOKEN_STATUS_VALID = "valid"
 TOKEN_STATUS_EXPIRED = "expired"
 
+# 并发保护：多个请求同时发现 token 失效时会各自申请新 token，
+# 123 云盘对 token 申请次数有限制（超限报 tokens number has exceeded the limit）。
+_TOKEN_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock]" = weakref.WeakKeyDictionary()
+
+
+def _token_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _TOKEN_LOCKS.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _TOKEN_LOCKS[loop] = lock
+    return lock
+
 
 async def _load_config(db: AsyncSession) -> UploadPlatformConfig:
     """读取唯一一行凭据配置，不存在时自动创建空行。"""
@@ -83,14 +97,24 @@ async def get_config(db: AsyncSession) -> dict:
 
 
 async def update_config(db: AsyncSession, data: UploadPlatformConfigUpdate) -> dict:
-    """保存凭据；clientSecret 留空表示保持不变。凭据变化后清空缓存的 Token。"""
+    """保存凭据；clientSecret 留空表示保持不变。
+
+    只有凭据真正变化时才清空缓存的 Token：前端每次保存都会带上 clientID，
+    若无条件清空会导致每次保存后都重新申请 token（123 云盘对 token 申请次数有限制）。
+    """
     config = await _load_config(db)
+    changed = False
     if data.client_id is not None:
-        config.client_id = data.client_id.strip() or None
-        config.access_token = None
-        config.token_expires_at = None
+        client_id = data.client_id.strip() or None
+        if client_id != config.client_id:
+            config.client_id = client_id
+            changed = True
     if data.client_secret is not None and data.client_secret.strip():
-        config.client_secret = encrypt_secret(data.client_secret.strip())
+        secret = data.client_secret.strip()
+        if secret != decrypt_secret(config.client_secret):
+            config.client_secret = encrypt_secret(secret)
+            changed = True
+    if changed:
         config.access_token = None
         config.token_expires_at = None
     await db.commit()
@@ -127,26 +151,56 @@ async def _resolve_credentials(
 
 
 async def test_connection(db: AsyncSession, data: UploadTestConnectionRequest) -> dict:
-    """用当前凭据换 token 并读取根目录，验证凭据与网络。"""
+    """用当前凭据读取根目录，验证凭据与网络。
+
+    已保存的凭据优先复用缓存 token；仅在没有可用 token 时才申请新 token，
+    避免反复点「测试连接」消耗 123 云盘的 token 申请额度。
+    """
+    config = await _load_config(db)
+    use_saved = not (data.client_id or data.client_secret)
     client_id, client_secret = await _resolve_credentials(db, data.client_id, data.client_secret)
+    cached_token = (
+        decrypt_secret(config.access_token)
+        if use_saved and config.access_token and _token_status(config) == TOKEN_STATUS_VALID
+        else ""
+    )
     async with Pan123Client(client_id, client_secret) as client:
-        message = await client.test_connection()
-    return {"message": message}
+        if cached_token:
+            try:
+                await client.list_files(cached_token, parent_file_id=0, page=1, limit=1)
+                return {"message": "连接成功"}
+            except BadRequestException as exc:
+                # 缓存 token 被提前失效时才回退到重新申请，其他错误直接抛出
+                if "鉴权失败" not in str(exc):
+                    raise
+        token, expires_at = await client.get_access_token()
+        await client.list_files(token, parent_file_id=0, page=1, limit=1)
+    if use_saved:
+        config.access_token = encrypt_secret(token)
+        config.token_expires_at = expires_at
+        await db.commit()
+        await db.refresh(config)
+    return {"message": "连接成功"}
 
 
 async def get_access_token(db: AsyncSession, *, force_refresh: bool = False) -> str:
-    """获取可用 access_token（带缓存与提前刷新）。"""
+    """获取可用 access_token（带缓存与提前刷新；并发请求只申请一次）。"""
     config = await _load_config(db)
     if not force_refresh and config.access_token and _token_status(config) == TOKEN_STATUS_VALID:
         return decrypt_secret(config.access_token)
-    client_id, client_secret = await _resolve_credentials(db)
-    async with Pan123Client(client_id, client_secret) as client:
-        token, expires_at = await client.get_access_token()
-    config.access_token = encrypt_secret(token)
-    config.token_expires_at = expires_at
-    await db.commit()
-    await db.refresh(config)
-    return token
+    async with _token_lock():
+        # 等锁期间可能已有其他请求刷新成功，拿到锁后先复查缓存
+        await db.refresh(config)
+        if not force_refresh and config.access_token and _token_status(config) == TOKEN_STATUS_VALID:
+            return decrypt_secret(config.access_token)
+        client_id, client_secret = await _resolve_credentials(db)
+        async with Pan123Client(client_id, client_secret) as client:
+            token, expires_at = await client.get_access_token()
+        config.access_token = encrypt_secret(token)
+        config.token_expires_at = expires_at
+        await db.commit()
+        await db.refresh(config)
+        return token
 
 
 async def build_client(db: AsyncSession) -> Pan123Client:

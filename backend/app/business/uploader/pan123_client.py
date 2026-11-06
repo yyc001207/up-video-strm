@@ -27,6 +27,12 @@ REMOTE_TYPE_FILE = 0
 REMOTE_TYPE_DIR = 1
 # 官方文件对象里文件 ID 字段为 fileID（大写 D），历史/其他接口存在 fileId/file_id 写法
 _FILE_ID_KEYS = ("fileID", "fileId", "file_id")
+# token 申请次数超限的官方报错标记与友好提示（123 云盘按 clientID 限制 token 申请次数）
+TOKEN_LIMIT_MARK = "tokens number has exceeded the limit"
+TOKEN_LIMIT_MESSAGE = (
+    "123 云盘 token 申请次数已达上限（tokens number has exceeded the limit），"
+    "请稍后重试；若长时间未恢复，可在 123 云盘开放平台重置 clientSecret 后再试"
+)
 
 
 def get_file_id(item: Optional[dict]) -> int:
@@ -133,11 +139,16 @@ class Pan123Client:
 
     async def get_access_token(self) -> tuple[str, Optional[datetime]]:
         """用 clientID / clientSecret 换取 access_token。"""
-        data = await self._request(
-            "POST",
-            "/api/v1/access_token",
-            json={"clientID": self.client_id, "clientSecret": self.client_secret},
-        )
+        try:
+            data = await self._request(
+                "POST",
+                "/api/v1/access_token",
+                json={"clientID": self.client_id, "clientSecret": self.client_secret},
+            )
+        except BadRequestException as exc:
+            if TOKEN_LIMIT_MARK in str(exc):
+                raise BadRequestException(TOKEN_LIMIT_MESSAGE) from exc
+            raise
         token = (data or {}).get("accessToken")
         if not token:
             raise BadRequestException("123 云盘未返回 access_token")

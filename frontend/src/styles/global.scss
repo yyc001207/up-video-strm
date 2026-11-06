@@ -1,4 +1,4 @@
-// 全局重置与页面骨架。
+// 全局重置与页面骨架（Next UI · 暖调媒体方向）。
 
 * {
   box-sizing: border-box;
@@ -12,18 +12,20 @@ body,
 
 html {
   color-scheme: light;
+  font-family: var(--up-strm-font-ui);
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', Arial, sans-serif;
+  font-family: var(--up-strm-font-ui);
   font-size: var(--up-strm-font-size-base);
+  line-height: 1.6;
   color: var(--el-text-color-primary);
   background-color: var(--el-bg-color-page);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -31,24 +33,38 @@ a {
   text-decoration: none;
 }
 
+// 数字等宽：计数、进度、时间统一用 class="nums"。
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
 // 页面骨架：App 内容区内的标准页面容器。
-// .page 默认整页滚动；.page--fill 用于需要占满高度、内部滚动的页面（执行管理 / 实时日志）。
+// .page 默认整页滚动；.page--fill 用于需要占满高度、内部滚动的页面（开始执行 / 运行详情）。
 .page {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--up-strm-space-6);
+  padding: var(--up-strm-page-pad);
 }
 
 .page--fill {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: var(--up-strm-space-4) var(--up-strm-space-6);
+  padding: var(--up-strm-space-4) var(--up-strm-page-pad) var(--up-strm-page-pad);
+}
+
+@media (max-width: 1279px) {
+  .page {
+    padding: var(--up-strm-space-6);
+  }
+
+  .page--fill {
+    padding: var(--up-strm-space-4) var(--up-strm-space-5) var(--up-strm-space-6);
+  }
 }
 
 // 列表页工具栏原语：左侧搜索/提示，右侧操作组；右侧始终贴右。
-// 各页面只保留自身专有规则（如 .toolbar__keyword、.toolbar__hint），不再重复布局。
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -70,7 +86,6 @@ a {
 }
 
 // 列表页骨架：整页不滚动，滚动与分页都收敛在卡片内部。
-// 用法：根节点 .page.page--fill.list-page；内容卡片 .list-card；表格容器 .list-card__table；分页 .list-card__pager。
 .list-page {
   display: flex;
   flex-direction: column;
@@ -107,9 +122,14 @@ a {
   padding-top: var(--up-strm-space-3, 12px);
 }
 
-// 可访问性：所有交互元素统一 2px 焦点环。
+// 可访问性：统一 2px 焦点环（暗色用 300 阶紫）。
 :focus-visible {
+  outline: 2px solid var(--up-primary-500);
   outline-offset: 2px;
+}
+
+html.dark :focus-visible {
+  outline-color: var(--up-primary-300);
 }
 
 // 降低动态效果偏好：禁用过渡与动画。
@@ -141,4 +161,9 @@ a {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+::selection {
+  background: var(--up-primary-100);
+  color: var(--up-ink-900);
 }

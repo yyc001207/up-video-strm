@@ -1,41 +1,139 @@
-// up-video-strm 自定义设计令牌（统一使用 --up-strm- 前缀）。
-// 仅定义项目自有的布局 / 圆角 / 间距 / 阴影 / 字号；Element Plus 变量统一在 element-reset.scss 覆盖。
+// up-video-strm 设计令牌（Next UI · 暖调媒体方向）。
+// 统一使用 --up-strm- 前缀（沿用既有命名，值为 v2 暖调方案）；Element Plus 变量在 element-reset.scss 覆盖。
+// 方案来源：docs/design/ui-next-plan.md 第 6 节与附录 A。
 
 :root {
-  // 布局
-  --up-strm-sidebar-width: 220px;
-  --up-strm-sidebar-collapsed-width: 64px;
-  --up-strm-topbar-height: 56px;
-  --up-strm-content-max-width: 1400px;
+  // ---- 品牌色：暖紫 10 阶 ----
+  --up-primary-50: #f4f0ff;
+  --up-primary-100: #e9e2ff;
+  --up-primary-200: #d3c6ff;
+  --up-primary-300: #b49efc;
+  --up-primary-400: #9277f5;
+  --up-primary-500: #6b4ee6;
+  --up-primary-600: #5a3fd1;
+  --up-primary-700: #4a32ac;
+  --up-primary-800: #3c2a8a;
+  --up-primary-900: #32246f;
 
-  // 圆角：控件 6 / 卡片 8 / 容器 12
-  --up-strm-radius-sm: 6px;
-  --up-strm-radius-md: 8px;
-  --up-strm-radius-lg: 12px;
+  // ---- 暖中性 12 阶 ----
+  --up-ink-0: #ffffff;
+  --up-ink-25: #fdfbf9;
+  --up-ink-50: #faf7f5;
+  --up-ink-100: #f5f0ed;
+  --up-ink-200: #ebe4df;
+  --up-ink-300: #dcd3cd;
+  --up-ink-400: #b7aca5;
+  --up-ink-500: #8c8189;
+  --up-ink-600: #6e6675;
+  --up-ink-700: #4a4350;
+  --up-ink-800: #2e2933;
+  --up-ink-900: #211c26;
 
-  // 间距（4px 基数）
+  // ---- 亮点（蜜桃，仅装饰/头像，不做状态）----
+  --up-accent-mark: #ff8a5b;
+  --up-accent-text: #b84a1e;
+  --up-accent-bg: #fff0e8;
+
+  // ---- 语义色四件套（mark / text / bg）----
+  --up-success-mark: #1fa971;
+  --up-success-text: #0b7a4f;
+  --up-success-bg: #e8f7f0;
+  --up-warning-mark: #e08a00;
+  --up-warning-text: #8a5200;
+  --up-warning-bg: #fff4e0;
+  --up-danger-mark: #e14b4b;
+  --up-danger-text: #a32c2c;
+  --up-danger-bg: #fdebeb;
+
+  // ---- 布局 ----
+  --up-strm-sidebar-width: 232px;
+  --up-strm-sidebar-collapsed-width: 72px;
+  --up-strm-topbar-height: 48px;
+  --up-strm-content-max-width: 1360px;
+  --up-strm-page-pad: 32px;
+  --up-strm-workspace-sidebar: 360px;
+  --up-strm-drawer-width: 420px;
+
+  // ---- 圆角 ----
+  --up-strm-radius-sm: 8px;
+  --up-strm-radius-md: 10px;
+  --up-strm-radius-lg: 16px;
+  --up-strm-radius-xl: 20px;
+  --up-strm-radius-pill: 999px;
+
+  // ---- 间距（4px 基数）----
   --up-strm-space-1: 4px;
   --up-strm-space-2: 8px;
   --up-strm-space-3: 12px;
   --up-strm-space-4: 16px;
+  --up-strm-space-5: 20px;
   --up-strm-space-6: 24px;
   --up-strm-space-8: 32px;
+  --up-strm-space-10: 40px;
+  --up-strm-space-14: 56px;
 
-  // 阴影（亮色主题）
-  --up-strm-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --up-strm-shadow-md: 0 4px 12px rgba(16, 24, 40, 0.1);
-  --up-strm-shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.14);
+  // ---- 阴影（暖色，低饱和）----
+  --up-strm-shadow-sm: 0 1px 2px rgba(46, 26, 60, 0.04);
+  --up-strm-shadow-md: 0 6px 20px rgba(46, 26, 60, 0.07);
+  --up-strm-shadow-lg: 0 16px 40px rgba(46, 26, 60, 0.1);
 
-  // 字号阶（正文行高 1.5，标题行高 1.4）
-  --up-strm-font-size-xs: 12px; // 标注 / 元信息
-  --up-strm-font-size-sm: 13px; // 辅助说明
-  --up-strm-font-size-base: 14px; // 正文与表格
-  --up-strm-font-size-lg: 16px; // 卡片标题
-  --up-strm-font-size-xl: 20px; // 页面标题
+  // ---- 字体 ----
+  --up-strm-font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'PingFang SC', system-ui, sans-serif;
+  --up-strm-font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Microsoft YaHei UI', 'PingFang SC',
+    monospace;
+
+  // ---- 字号阶 ----
+  --up-strm-font-size-xs: 12px; // 元信息 / 时间 / 表头
+  --up-strm-font-size-sm: 13px; // 副标题 / 帮助文本
+  --up-strm-font-size-base: 14px; // 正文 / 表单 / 按钮
+  --up-strm-fs-15: 15px; // 卡片 / 列表标题
+  --up-strm-font-size-lg: 16px; // 兼容既有页面（卡片标题）
+  --up-strm-fs-18: 18px; // 区块标题
+  --up-strm-font-size-xl: 20px; // 兼容既有页面
+  --up-strm-fs-24: 24px; // 次级页面标题
+  --up-strm-fs-28: 28px; // 页面标题
+  --up-strm-fs-32: 32px; // 「今天」大数字
+
+  // ---- 动效 ----
+  --up-strm-dur-fast: 160ms;
+  --up-strm-dur-base: 220ms;
+  --up-strm-dur-slow: 320ms;
+  --up-strm-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html.dark {
-  --up-strm-shadow-sm: 0 0 0 1px rgba(255, 255, 255, 0.04);
+  // 暗色表面四层：page / card / panel / overlay
+  --up-ink-0: #1e1a24;
+  --up-ink-25: #211d28;
+  --up-ink-50: #16131a;
+  --up-ink-100: #262130;
+  --up-ink-200: #3a3344;
+  --up-ink-300: #453c52;
+  --up-ink-400: #8c8189;
+  --up-ink-500: #a79fa4;
+  --up-ink-600: #b9b0c6;
+  --up-ink-700: #cfc7c2;
+  --up-ink-800: #e8e1dc;
+  --up-ink-900: #f5f0ed;
+
+  --up-primary-500: #b49efc;
+  --up-primary-600: #d3c6ff;
+
+  --up-success-mark: #6be0ae;
+  --up-success-text: #8fe9c4;
+  --up-success-bg: #16281f;
+  --up-warning-mark: #ffc46b;
+  --up-warning-text: #ffd79a;
+  --up-warning-bg: #2b2113;
+  --up-danger-mark: #ff9b9b;
+  --up-danger-text: #ffbdbd;
+  --up-danger-bg: #2c181a;
+  --up-accent-mark: #ffa57c;
+  --up-accent-text: #ffc0a8;
+  --up-accent-bg: #2e1d16;
+
+  --up-strm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --up-strm-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --up-strm-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --up-strm-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
 }

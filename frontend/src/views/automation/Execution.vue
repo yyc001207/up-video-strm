@@ -974,7 +974,7 @@ onBeforeUnmount(() => {
     gap: var(--up-strm-space-2);
 
     :deep(.el-input-number) {
-      width: 180px;
+      width: 100%;
     }
 
     &__label {

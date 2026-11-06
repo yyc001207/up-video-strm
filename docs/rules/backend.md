@@ -89,7 +89,7 @@ backend/
 7. 进程重启清理（阶段⓿）：[database.py](../../backend/app/core/database.py) 的 `init_db` 在建表/列迁移后把遗留 `running` 执行置为 `fail` 并写 `error_code='PROCESS_RESTART'`、`error_message='进程重启中断'`；不自动恢复执行。
 8. 引用保护（阶段⓿）：[automation/refs.py](../../backend/app/business/automation/refs.py) 在 A/B 任务或服务器删除前检查是否被自动化任务绑定，命中返回 400「任务正被自动化任务「X」绑定，请先解除绑定后再删除」。
 9. 自动化任务链路：由 `POST /api/automation/tasks/{id}/start` 启动后台循环，每轮先按本地目录指纹判断是否有新增/变化（无变化不建运行记录）；有待校验文件时跳过上传直接校验，否则等待 A/B 空闲后创建并启动上传（冲突策略固定跳过）。上传成功后按 `remote_name` 轮询 `check_dir` 可见性，全部可见后触发 STRM 任务；成功后清空待校验并提交指纹，失败保留待校验供下一轮补偿。轮次间隔 60s，连续 3 次轮次失败终止，进程重启不自动恢复（残留 `running` 置 `fail` + `PROCESS_RESTART`）。等待 A/B 执行期间由 [relay.py](../../backend/app/business/automation/relay.py) 尾随 A/B 日志文件并逐行转写进本轮自动化日志，因此自动化实时日志与历史日志都能看到 A/B 的详细执行行（`[A#id]` / `[B#id]` 前缀）。
-10. 自动化任务接口：任务 CRUD / 批量删除 / 绑定选项 / 校验目录、启动 / 批量启动 / 停止 / 重置指纹 / 清空待校验、`GET /api/automation/active`、运行历史 `/api/automation/runs`、运行日志 `/runs/{id}/logs`、失败重试 `/runs/{id}/retry-failed`，以及 WebSocket `/api/automation/ws/{task_id}`（log / progress / status / alert 帧）。历史与日志清理由 [retention.py](../../backend/app/business/automation/retention.py) 在启动时执行一次并每日定时执行。
+10. 自动化任务接口：任务 CRUD / 批量删除 / 绑定选项 / 校验目录、启动 / 批量启动 / 停止 / 重置指纹 / 清空待校验、`GET /api/automation/active`、运行历史 `/api/automation/runs`（`task_id` / `status` / `start_time` / `end_time` 筛选，日期按北京时间含首尾两天，按 `coalesce(started_time, created_time)` 过滤）、运行日志 `/runs/{id}/logs`、失败重试 `/runs/{id}/retry-failed`，以及 WebSocket `/api/automation/ws/{task_id}`（log / progress / status / alert 帧）。历史与日志清理由 [retention.py](../../backend/app/business/automation/retention.py) 在启动时执行一次并每日定时执行。
 
 ## 环境变量（backend/.env，应用配置）
 

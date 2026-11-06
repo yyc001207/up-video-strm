@@ -24,7 +24,7 @@
 
 | 服务 | 默认端口 | 说明 |
 |------|----------|------|
-| 后端 | `8000` | 源码运行 `uvicorn` 监听 `127.0.0.1:8000`；桌面版由 [backend/run.py](../../backend/run.py) 探测可用端口 |
+| 后端 | `8000`（源码）/ `18765`（安装包） | 源码运行 `uvicorn` 监听 `127.0.0.1:8000`；正式版与测试版安装包默认 `18765`，避开 8000/8080 等常用端口，均由 [backend/run.py](../../backend/run.py) 探测可用端口并顺延 |
 | 前端开发服务器 | `5173` | `vite`，`/api` 代理到后端 |
 
 > 端口被占用时须自动切换（见 [AGENTS.md](../../AGENTS.md) 规则 4），并保持前端代理目标与后端实际端口一致；端口变更须在启动日志与交付说明中告知用户。
@@ -70,7 +70,7 @@ npm run dev
 |------|-----------|
 | 数据目录 | 正式版固定为 `%LOCALAPPDATA%\up-video-strm`，测试版为 `%LOCALAPPDATA%\up-video-strm-test`（由资源目录内 `build_profile.json` 区分；`UP_VIDEO_STRM_HOME` 均可覆盖）；启动后 `os.chdir(数据目录)`，`./data`、`./openlist_logs`、`./output` 等相对路径均落在数据目录下 |
 | 资源定位 | `resource_dir()` 返回 `_MEIPASS`（onedir 为 `_internal`）定位打包的前端产物；exe 同级 `frontend/dist` 也可作为托管目录；`build_profile.json`（`prod`/`test`）记录构建类型 |
-| 端口回退 | 首选 `8000`（`UP_VIDEO_STRM_PORT` 可改），被占用时顺延探测最多 20 个端口，全失败则报错退出 |
+| 端口回退 | 源码首选 `8000`、安装包首选 `18765`（`UP_VIDEO_STRM_PORT` 可改），被占用时顺延探测最多 20 个端口，全失败则报错退出 |
 | 进程模型 | 不派生子进程：后台线程运行 uvicorn，主线程运行原生窗口；exe 为 GUI 进程（无控制台），stdio 重定向到 `logs/app.log`（超 5 MB 轮转） |
 | 单实例 | Windows 命名互斥体 `Local\up-video-strm-single-instance`（测试版 `Local\up-video-strm-test-single-instance`）保证唯一实例，再次启动通过命名事件唤起已有窗口 |
 | 配置读取 | `.env` 依次读取数据目录与 exe 同级（后者优先）；启动器环境变量（`UP_VIDEO_STRM_HOST` 等）只从进程环境读取，不读 `.env` |

@@ -117,7 +117,7 @@ backend/
 |------|------|------|
 | `UP_VIDEO_STRM_HOME` | `%LOCALAPPDATA%\up-video-strm` | 冻结态数据根目录（数据库/日志/输出） |
 | `UP_VIDEO_STRM_HOST` | `127.0.0.1` | 监听地址 |
-| `UP_VIDEO_STRM_PORT` | `8000` | 首选端口，占用时自动顺延（最多 20 个） |
+| `UP_VIDEO_STRM_PORT` | 源码 `8000`、安装包 `18765` | 首选端口，占用时自动顺延（最多 20 个）；安装包默认避开 8000/8080 等常用端口 |
 | `UP_VIDEO_STRM_UI` | 冻结态 `window`、源码 `server` | `window` 开原生窗口；`server` 只跑控制台服务（配合浏览器排查） |
 | `UP_VIDEO_STRM_TRAY` | `1` | 关闭窗口是否收进托盘；`0` 表示关窗即退出 |
 

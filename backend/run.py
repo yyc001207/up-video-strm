@@ -25,7 +25,10 @@ from pathlib import Path
 from app.core.paths import APP_DIR_NAME
 
 DEFAULT_HOST = "127.0.0.1"
+# 源码运行（开发）沿用常用端口；安装包（正式版/测试版）默认使用不常见端口，
+# 避免与 8000、8080 等被其他服务占用的常用端口冲突。
 DEFAULT_PORT = 8000
+FROZEN_DEFAULT_PORT = 18765
 PORT_SCAN_LIMIT = 20
 # 单实例互斥体/唤醒事件按应用目录名区分：测试版（up-video-strm-test）可与正式版并存运行
 MUTEX_NAME = f"Local\\{APP_DIR_NAME}-single-instance"
@@ -80,6 +83,13 @@ def _pick_port(host: str, preferred: int) -> int:
         if _port_available(host, port):
             return port
     raise RuntimeError(f"端口 {preferred}-{preferred + PORT_SCAN_LIMIT - 1} 均被占用")
+
+
+def default_port(frozen: bool | None = None) -> int:
+    """默认首选端口：安装包用不常见端口，源码运行沿用 8000。"""
+    if frozen is None:
+        frozen = _is_frozen()
+    return FROZEN_DEFAULT_PORT if frozen else DEFAULT_PORT
 
 
 def _acquire_single_instance() -> bool:
@@ -250,10 +260,11 @@ def main() -> None:
         prefs = {}
 
     host = os.environ.get("UP_VIDEO_STRM_HOST", DEFAULT_HOST)
+    fallback_port = default_port(frozen)
     try:
-        preferred_port = int(os.environ.get("UP_VIDEO_STRM_PORT", DEFAULT_PORT))
+        preferred_port = int(os.environ.get("UP_VIDEO_STRM_PORT", fallback_port))
     except ValueError:
-        preferred_port = DEFAULT_PORT
+        preferred_port = fallback_port
 
     try:
         port = _pick_port(host, preferred_port)

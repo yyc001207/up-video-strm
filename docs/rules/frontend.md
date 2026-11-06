@@ -13,18 +13,19 @@
 ```text
 frontend/
 ├── src/
-│   ├── main.ts / App.vue / router/index.ts  # 入口、壳层（侧栏 + 顶栏）、路由
+│   ├── main.ts / App.vue / router/index.ts  # 入口、壳层（手风琴侧栏 + 顶栏）、路由
 │   ├── api/                # axios 实例 + openlist / uploader / automation / desktop 接口封装
 │   ├── stores/             # Pinia（openlist 业务 / running 运行状态聚合 / theme 主题）
 │   ├── views/
-│   │   ├── schedule/       # 任务调度模块：四个路由页面 + components/DirTreePanel.vue
-│   │   ├── upload/         # 上传管理模块：任务配置 / 重命名规则 / 执行管理 / 实时日志 / 任务历史 + components/RemoteDirPanel.vue
-│   │   ├── automation/     # 自动化任务模块：任务配置 / 执行管理 / 实时日志 / 任务历史
-│   │   ├── config/         # 全局配置模块：服务器配置 + 视频/字幕格式 + 123 云盘凭据
+│   │   ├── Today.vue       # 今天（默认页）：生成 / 上传 / 追更三张流水线卡 + 需要处理 + 最近活动
+│   │   ├── schedule/       # STRM 生成模块：任务 / 开始执行 / 运行详情 / 运行记录 + components/DirTreePanel.vue
+│   │   ├── upload/         # 云盘上传模块：任务 / 命名规则 / 开始执行 / 运行详情 / 运行记录 + components/RemoteDirPanel.vue
+│   │   ├── automation/     # 自动追更模块：任务配置 / 开始执行 / 运行详情 / 运行记录
+│   │   ├── config/         # 连接与格式：服务器配置 + 视频/字幕格式 + 123 云盘凭据
 │   │   └── Settings/       # 桌面设置页
-│   ├── components/         # 通用组件（StatusDot 状态点 / LogViewer 日志终端 / ThemeToggle 主题切换）
+│   ├── components/         # 通用组件（AppSidebar / TopBar / ActivityDrawer / PageHeader / FlowCard / StatusPill / AvatarTile / EmptyState / ProgressRing / StatusDot / LogViewer / ThemeToggle）
 │   ├── types/ / utils/     # 类型（openlist / uploader / automation / desktop）、工具（date / ws）
-│   └── styles/             # variables（--up-strm-* 令牌）/ element-reset（EP 变量映射与表格统一）/ dark / global
+│   └── styles/             # variables（Next UI v2 令牌）/ element-reset（EP 变量映射与表格统一）/ dark（紫黑四层）/ global
 ├── index.html              # 标题「up-video-strm 控制台」+ 首屏主题预加载
 ├── vite.config.ts          # 别名 @ → src；dev server :5173；/api 代理 → 127.0.0.1:8000（ws 透传）
 ├── .env.development / .env.production / tsconfig*.json
@@ -35,29 +36,32 @@ frontend/
 
 | 路由 | 页面文件 | 说明 |
 |------|----------|------|
-| `/` | — | 重定向到 `/schedule/execution` |
-| `/schedule/execution` | `views/schedule/Execution.vue` | 执行管理：选任务、设执行模式并启动 |
+| `/` | `views/Today.vue` | 今天（默认页）：三张流水线卡 + 需要处理 + 最近活动 |
+| `/schedule` | — | 重定向到 `/schedule/tasks` |
+| `/schedule/tasks` | `views/schedule/TaskManage.vue` | 任务：任务 CRUD、快速添加、批量删除、默认运行参数 |
+| `/schedule/execution` | `views/schedule/Execution.vue` | 开始执行：选任务、设执行模式并启动 |
+| `/schedule/realtime` | `views/schedule/RealtimeLog.vue` | 运行详情：WebSocket 实时日志 |
+| `/schedule/history` | `views/schedule/TaskHistory.vue` | 运行记录：历次执行记录与日志 |
 | `/schedule/config` | — | 旧路径兼容，重定向到 `/config` |
-| `/config` | `views/config/GlobalConfig.vue` | 全局配置：服务器配置 + 视频/字幕格式 + 123 云盘凭据 |
-| `/schedule/tasks` | `views/schedule/TaskManage.vue` | 任务 CRUD、快速添加、批量删除、默认运行参数 |
-| `/schedule/history` | `views/schedule/TaskHistory.vue` | 任务历史列表与详情、日志回放 / 打开日志文件夹 |
-| `/schedule/realtime` | `views/schedule/RealtimeLog.vue` | WebSocket 实时日志 |
+| `/config` | `views/config/GlobalConfig.vue` | 连接与格式：服务器配置 + 视频/字幕格式 + 123 云盘凭据 |
 | `/upload` | — | 重定向到 `/upload/tasks` |
-| `/upload/tasks` | `views/upload/TaskConfig.vue` | 上传任务 CRUD：本地目录、云端目录、集数映射、命名规则 |
-| `/upload/rename` | `views/upload/RenameRules.vue` | 重命名规则 CRUD、可选自定义集数正则与模板预览 |
-| `/upload/execution` | `views/upload/Execution.vue` | 执行管理：三卡片（选任务 / 执行参数 / 已选任务）+ 正在执行列表 |
-| `/upload/realtime` | `views/upload/RealtimeLog.vue` | WebSocket 实时日志：6 阶段进度与逐文件输出，支持批量排队 |
-| `/upload/history` | `views/upload/TaskHistory.vue` | 上传历史：按任务汇总 → 执行记录 → 文件明细、日志回放 / 打开日志文件夹、重跑 |
+| `/upload/tasks` | `views/upload/TaskConfig.vue` | 任务：本地目录、云端目录、集数映射、命名规则 |
+| `/upload/rename` | `views/upload/RenameRules.vue` | 命名规则 CRUD、可选自定义集数正则与模板预览 |
+| `/upload/execution` | `views/upload/Execution.vue` | 开始执行：三卡片（选任务 / 执行参数 / 已选任务）+ 正在执行列表 |
+| `/upload/realtime` | `views/upload/RealtimeLog.vue` | 运行详情：6 阶段进度与逐文件输出，支持批量排队 |
+| `/upload/history` | `views/upload/TaskHistory.vue` | 运行记录：按任务汇总 → 执行记录 → 文件明细、日志回放 / 打开日志文件夹、重跑 |
 | `/automation` | — | 重定向到 `/automation/tasks` |
-| `/automation/tasks` | `views/automation/TaskConfig.vue` | 自动化任务 CRUD：绑定上传/STRM 任务、校验目录检测与上传/生成参数 |
-| `/automation/execution` | `views/automation/Execution.vue` | 执行管理：批量启动/停止、运行阶段与待校验文件、5 项时间参数（写回任务配置） |
-| `/automation/realtime` | `views/automation/RealtimeLog.vue` | WebSocket 实时日志：按任务切换、最近 200 帧回放、异常通知 |
-| `/automation/history` | `views/automation/TaskHistory.vue` | 运行历史：按任务/状态筛选，详情抽屉、日志回放、失败文件写回待校验 |
+| `/automation/tasks` | `views/automation/TaskConfig.vue` | 自动追更任务 CRUD：绑定上传/STRM 任务、校验目录检测与上传/生成参数 |
+| `/automation/execution` | `views/automation/Execution.vue` | 开始执行：批量启动/停止、运行阶段与待校验文件、5 项时间参数（写回任务配置） |
+| `/automation/realtime` | `views/automation/RealtimeLog.vue` | 运行详情：按任务切换、最近 200 帧回放、异常通知 |
+| `/automation/history` | `views/automation/TaskHistory.vue` | 运行记录：按任务/状态/时间范围筛选，详情抽屉、日志回放、失败文件写回待校验 |
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
-- 侧栏由 [App.vue](../../frontend/src/App.vue) 的 `modules` 数据驱动（模块 → 分组 → 页面），当前四个平级模块：「全局配置」（`/config`）、「任务调度」（`/schedule/*`）、「上传管理」（`/upload/*`）与「自动化任务」（`/automation/*`）；单页模块不显示分组标题，新增模块只需追加一项数据。折叠状态存 `localStorage` 的 `up-video-strm-sidebar-collapsed`。导航选中态只用「主色文字 + 12% 主色底 + 左侧 2px 主色指示条」表达，**不使用 `font-weight` 加重**（Windows 微软雅黑会把 600 映射为 Bold，导致文字变宽跳位）。
-- 顶栏标题按「模块 · 页面」拼接（`pageTitle`），单页模块与页面同名只显示一次（如「全局配置」），无模块归属时显示页面名（如「设置」）；描述取路由 `meta.description`；`document.title` 同步为「`<页面标题> - up-video-strm`」，默认「up-video-strm 控制台」。默认进入「全局配置」（`/` 与未匹配路由均重定向 `/config`）。顶栏右侧不提供运行状态入口；导航「实时日志」仍按 [stores/running.ts](../../frontend/src/stores/running.ts)（聚合三模块运行数：调度/上传 `listExecutions({status:'running'})` 与自动化 `GET /active`，30s 轮询且页面隐藏时跳过）显示运行数徽标。后端不可达时顶栏下方展示可关闭的 `el-alert`「无法连接后端服务，正在自动重试…」，恢复后消失。
+- 壳层（Next UI v2，见 [docs/design/ui-next-plan.md](../design/ui-next-plan.md)）：左侧 [AppSidebar.vue](../../frontend/src/components/AppSidebar.vue) 232px 单列手风琴（折叠 72px，存 `localStorage` 的 `up-video-strm-sidebar-collapsed`），顶部「今天」，随后「STRM 生成 / 云盘上传 / 自动追更」三个模块（同一时刻只展开一个，组内记住上次页面：`up-video-strm-nav-last-page`、`up-video-strm-nav-open-group`），底部「连接与格式」「设置」；「开始执行」项显示该模块运行中数量徽标。顶栏 [TopBar.vue](../../frontend/src/components/TopBar.vue) 48px 吸顶：面包屑 + 运行胶囊（`N 个在跑 · P%` / 空闲，点击打开 [ActivityDrawer.vue](../../frontend/src/components/ActivityDrawer.vue) 可看详情或停止）+ 连接状态 + 主题切换；搜索胶囊 P5 前保持禁用。`App.vue` 仅负责壳层、离线细横幅与 30s 运行状态轮询（页面隐藏时跳过），页面标题由 [PageHeader.vue](../../frontend/src/components/PageHeader.vue) 在内容区渲染（标题 28 / 600，副标题取路由 `meta.description`），除「今天」外由 `App.vue` 统一渲染。
+- 展示名（路由不变）：任务调度 → STRM 生成，任务配置 → 任务，执行管理 → 开始执行，实时日志 → 运行详情，任务历史 → 运行记录；上传管理 → 云盘上传，重命名规则 → 命名规则；自动化任务 → 自动追更；全局配置 → 连接与格式。默认进入「今天」（`/`），未匹配路由重定向 `/`。`document.title` 同步为「`<页面标题> - up-video-strm`」，默认「up-video-strm 控制台」。
+- 「今天」首屏固定 5 个只读请求（`openlistApi.listTasks`、`openlistApi.listExecutions`、`uploaderApi.listExecutions`、`automationApi.listTasks`、`automationRunApi.active`，均 silent），任一失败只降级对应区块；无任务时展示「先从连接开始」三步空态；壳层 running store 的聚合请求不计入。
+- 后端不可达时内容区顶部展示可关闭的离线细横幅，运行状态由 [stores/running.ts](../../frontend/src/stores/running.ts) 聚合（三模块运行中数量、`items` 运行条目、加权 `progress`、`lastUpdatedAt`，30s 轮询且页面隐藏时跳过）。
 - 原「五页签」语义改为独立路由页面：进入页面即按需加载，切换路由即刷新，不再依赖 tab 的 `reload`。
 - 执行管理 → 实时日志通过路由 query 传参：任务调度为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`），上传管理为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName}`）。实时日志页先建立 WebSocket，`onOpen` 后再调用 `startExecution`（保证先连日志再启动）；上传管理多个执行按队列串行启动与切换。
 - 时间统一按**北京时间**解释与展示：一律使用 `utils/date.ts` 的 `formatDateTime`（`YYYY-MM-DD HH:mm:ss`）、`formatDate`（`YYYY-MM-DD`）或 `beijingMillis`（耗时计算），不要直接调用 dayjs 格式化；后端返回无时区墙钟字符串时按 `Asia/Shanghai` 解析，自带 Z / 偏移则先换算到北京时间。
@@ -73,7 +77,7 @@ frontend/
 - `TaskManage.vue`：页顶部「默认运行参数」卡（最大并发、限流、SSL 校验、输出目录前缀与根目录、OpenList 远程目录前缀）+ 编辑抽屉（配置全局生效，任务未单独设置时使用）；工具栏分组（搜索 / 新建、快速添加、批量删除）；表格任务名与路径双行；快速添加使用 `DirTreePanel.vue`（目录树勾选 + 搜索下钻 + 缓存刷新）。
 - `TaskHistory.vue`：列表（每任务最近执行 + 状态点，工具栏三项筛选：关键字 / 时间范围 / 状态，客户端分页 20 / 10 / 50）与页面级详情（服务端分页 20、日志抽屉、「日志文件夹」在资源管理器中打开日志目录）；顶部 `.page-hint` 说明筛选与分页规则。
 - `RealtimeLog.vue`：两模块共用同一套页面骨架（`views/schedule/RealtimeLog.vue` 与 `views/upload/RealtimeLog.vue`，类名与样式一致）：顶部说明段（`.realtime-page__desc`）→ 工具条（`.realtime-toolbar`：执行选择 260px、连接状态、启动中、执行状态点 /「无运行中任务」；右侧「重连 / 清空 / 打开日志文件夹」）→ 进度卡（`.progress-card`：6 个统计项 + 1 个宽项「当前文件 / 当前任务」）→ 日志工具条（`.log-toolbar`：级别筛选、关键字、行数；右侧「返回执行管理」）→ 日志区（`LogViewer`）；状态帧结束即断开并提示前往任务历史。
-- 通用组件：`StatusDot.vue`（执行状态点 + 文案）、`LogViewer.vue`（可复用日志终端）、`ThemeToggle.vue`（浅色 / 深色 / 跟随系统）。
+- 通用组件：`StatusDot.vue`（执行状态点 + 文案）、`LogViewer.vue`（可复用日志终端）、`ThemeToggle.vue`（浅色 / 深色 / 跟随系统）、`StatusPill.vue`（柔和底状态胶囊：运行中 / 排队中 / 成功 / 失败 / 已取消 / 还没跑过 / 待处理 N）、`AvatarTile.vue`（名称首字 + 哈希取色）、`EmptyState.vue`（空态标题 / 说明 / 一个主行动）、`PageHeader.vue`（内容区页面头）、`FlowCard.vue`（今天页流水线卡 + 进度环）、`ProgressRing.vue`（0–100 进度环，null 为不确定态）、`AppSidebar.vue` / `TopBar.vue` / `ActivityDrawer.vue`（壳层与运行抽屉）。
 - `TaskConfig.vue`（上传管理）：上传任务列表与抽屉编辑（任务名 / 本地目录 / 云端目录 / 输出季数 / 源起始集号 / 命名规则）；工具栏支持任务名称搜索与「批量删除」，列表使用 `list-page` 骨架并客户端分页（20 / 10 / 50），滚动只在卡片内部；本地目录可点「浏览」调用桌面端 `window.pywebview.api.pick_directory()` 快速选择（网页版提示手动输入）；云端目录不预填 `/test`，用 `RemoteDirPanel.vue` **逐级导航**选择（打开只请求根目录一次，点击目录行进入下级、每次进入仅一次接口；面包屑与「返回上级」可回退；顶部搜索框对当前目录已加载的文件夹做实时模糊过滤，切换目录时清空关键字，无匹配显示空态；底部醒目展示当前目录，确认后回填；只读浏览、不自动建目录，提示仅使用 `/test`）；集号换算提示为「季内集号 = 绝对集号 − 起始集号 + 1」。
 - `RenameRules.vue`（上传管理）：规则列表 + 模板编辑对话框（变量 `{season}` / `{episode}` / `{ext}`，`:02` 补零）+ 文件名预览（显示解析出的绝对集号或原因）；工具栏支持规则名称搜索与「批量删除」，列表同样分页 20 / 10 / 50；被任务引用的规则不可删除（后端返回具体规则名）。
 - `Execution.vue`（上传管理）：与任务调度执行管理采用同一套骨架与样式常量——`exec-page / exec-body / exec-workspace / exec-panel / exec-panel__head / exec-panel__body / exec-panel__footer`，卡片区高度固定（`clamp(380px, 52vh, 560px)`），勾选数量变化不改变卡片高度，列表超高时在卡片内部滚动；三卡头部均有标题与一句用途说明；「选择任务」卡支持名称 / 目录关键字搜索，底部右侧「全选 / 取消全选」+ 左侧「可选 N · 已选 N」；「已选任务」卡头部与摘要均显示已选数量，可移除或清空；执行参数为冲突策略（跳过 / 覆盖 / 追加后缀）、并发上传、失败重试、试运行，底部带参数说明；批量创建执行记录后跳转实时日志页，由 WS 连接成功后逐个启动；「正在执行」表 5s 轮询，可查看日志或取消。
@@ -84,16 +88,17 @@ frontend/
 
 ## 设计与令牌
 
-- 颜色一律使用 `var(--el-*)`（Element Plus 变量在 `styles/element-reset.scss` 中映射为设计色板）；壳层尺寸、间距、圆角、字号、阴影使用 `var(--up-strm-*)`（定义于 `styles/variables.scss`，暗色阴影在 `styles/dark.scss` 覆盖）。
-- 表格统一：行高 40px、表头 12px、计数列右对齐 `font-variant-numeric: tabular-nums`、`0/0` 显示为 `—`。
-- 交互细节：`:focus-visible` 焦点环；尊重 `prefers-reduced-motion`；删除类确认弹窗写明对象、数量与不可恢复。
-- 设计依据：[docs/design/ui-redesign-plan.md](../design/ui-redesign-plan.md)。
+- 方向：Next UI v2「暖调媒体」（暖紫 `#6B4EE6` + 蜜桃 `#FF8A5B` 点缀、奶油底 `#FAF7F5`；暗色为紫黑四层），完整方案与页面蓝图见 [docs/design/ui-next-plan.md](../design/ui-next-plan.md)。
+- 颜色一律使用 `var(--el-*)`（Element Plus 变量在 `styles/element-reset.scss` 中映射为设计色板）；壳层尺寸、间距、圆角、字号、阴影使用 `var(--up-strm-*)`（定义于 `styles/variables.scss`，暗色在 `styles/dark.scss` 覆盖）。字号档位：12 / 13 / 14 / 15 / 16 / 18 / 20 / 24 / 28 / 32；圆角 8 / 10 / 16 / 20 / 999；侧栏 232（折叠 72）、顶栏 48、内容最大宽 1360、页面左右留白 32。
+- 表格统一：行高 44px、表头 12px、计数列右对齐 `font-variant-numeric: tabular-nums`、`0/0` 显示为 `—`。
+- 交互细节：`:focus-visible` 焦点环（暗色降为 300 阶紫）；尊重 `prefers-reduced-motion`；删除类确认弹窗写明对象、数量与不可恢复。
+- 设计依据：[docs/design/ui-next-plan.md](../design/ui-next-plan.md)（同目录旧版 `ui-redesign-plan.md` 为历史方案）。
 
 ## 接口与状态
 
 - axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`；错误提示按文案 3s 去重；请求 config 传 `{ silent: true }` 时不弹提示，供轮询使用）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload' | 'automation')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
 - 后端 API 基址由 `VITE_API_BASE_URL` 控制（默认 `/api`）。
-- Pinia store：[stores/openlist.ts](../../frontend/src/stores/openlist.ts)（业务，含 `runningCount` 与 `fetchRunning(silent)`）、[stores/running.ts](../../frontend/src/stores/running.ts)（壳层运行状态聚合：三模块运行中数量、离线判定与导航徽标；每 30s 轮询且页面隐藏时跳过）、[stores/theme.ts](../../frontend/src/stores/theme.ts)（浅色/深色/跟随系统，localStorage 记忆，键名 `up-video-strm-theme`，首屏无闪烁）。
+- Pinia store：[stores/openlist.ts](../../frontend/src/stores/openlist.ts)（业务，含 `runningCount` 与 `fetchRunning(silent)`）、[stores/running.ts](../../frontend/src/stores/running.ts)（壳层运行状态聚合：三模块运行中数量、运行条目 `items`、加权进度 `progress`（运行数 ≤5 且每条目有分母时才算）、`lastUpdatedAt`、离线判定；30s 轮询且页面隐藏时跳过，失败时清空条目）、[stores/theme.ts](../../frontend/src/stores/theme.ts)（浅色/深色/跟随系统，localStorage 记忆，键名 `up-video-strm-theme`，首屏无闪烁）。
 - WebSocket 工具：[utils/ws.ts](../../frontend/src/utils/ws.ts)，连接 `ws://.../api/openlist/ws/{execution_id}`；`connectAutomationWs(taskId)` 连接 `ws://.../api/automation/ws/{task_id}`。
 - 桌面外壳导航桥：[main.ts](../../frontend/src/main.ts) 把路由挂到 `window.__upVideoStrmNavigate(path)`，托盘菜单「设置…」通过它直接切页而不整页重载（后端 [desktop.py](../../backend/app/desktop.py) 调用）。
 

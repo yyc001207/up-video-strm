@@ -1,6 +1,6 @@
 # 前端复用重构方案（纯逻辑优先）
 
-> 状态：方案，待批准，未改代码
+> 状态：P0 已实施（v4.19.4）；P1–P3 待实施
 > 基线：v4.19.3（`43975d9`）
 > 替代：已删除的 `frontend-component-extraction-plan.md`（该方案被判定不合格，原因见 §1，本方案不沿用其任何组件设计）
 
@@ -128,6 +128,8 @@ export const EXECUTION_TAG_TYPES: Record<'running' | 'success' | 'fail' | 'cance
 ```
 
 说明：三个页面里与「筛选选项」绑定的 `STATUS_OPTIONS` 只在各自页面用一次，**保留在页面**，本方案不合并。
+
+> **P0 实施调整（v4.19.4）**：按 §2.1「同一逻辑出现第 2 份实现才合并」复测后，`EXECUTION_STATUS_LABELS` / `EXECUTION_TAG_TYPES` / `AUTOMATION_RUN_TAG_TYPES` 实际各只有 1 份副本，未落库（仍留在页面）；`AUTOMATION_RUN_STATUS_LABELS` 有 2 份，已抽取。自动化「运行记录」页的阶段用词与「开始执行 / 运行详情」不同，为保持文案逐字不变，`utils/status.ts` 同时提供 `PHASE_LABELS` 与 `PHASE_LABELS_HISTORY`。
 
 ### 4.3 `frontend/src/utils/execution.ts`
 
@@ -259,6 +261,8 @@ export function useSelection<T>(options: {
 | P1 | `usePolling`、`useConfirmAction`、`useLogDir` 各在 1 个页面试点 | 试点页手工回归（不重复发请求、切后台暂停、确认弹窗文案不变、日志目录失败提示） | 3 个 composable + 3 个试点页 |
 | P2 | 铺开剩余调用点：轮询 9 处、确认 18 处、日志目录 20 处；`useClientPagination` 5 处、`useSelection` 6 处 | `vue-tsc`、`npm run build`、逐页回归清单 | 页面 diff |
 | P3 | 评估 `useEntityForm`、`utils/storage` 是否达到 §2 判据；未达标则明确否决并记录 | 达标才实施 | 结论记录 |
+
+> **P0 已完成（v4.19.4）**：4 个 utils 文件与 24 个单测落地，页面/store 本地实现已删除并通过 §6 grep 断言；P1 起仍待批准与实施。
 
 每批独立 commit；文档（`docs/rules/frontend.md` 判据与目录）随代码提交更新；每批交付前跑 `vue-tsc`、`npm run build`、`vitest`。
 

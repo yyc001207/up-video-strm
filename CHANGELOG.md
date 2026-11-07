@@ -21,6 +21,16 @@
 
 - 暂无。
 
+## [4.19.4] - 2026-11-07
+
+**级别：PATCH（纯逻辑抽取，交互与文案不变）** · 代码见本次提交
+
+- 新增纯函数模块：`frontend/src/utils/format.ts`（`triggerText` / `countText` / `durationText` / `clockText`）、`utils/status.ts`（`PHASE_LABELS`、`PHASE_LABELS_HISTORY`、`CONNECTION_META`、`AUTOMATION_RUN_STATUS_LABELS`）、`utils/execution.ts`（`percentOf` / `scheduleProgress` / `uploadProgress`）；`utils/date.ts` 新增 `toBeijingDayRange`。
+- 三个模块的 11 处页面/store（开始执行、运行记录、运行详情、今天、运行状态 store）删除本地同名实现，统一改为 import；日期范围边界不再各写 `00:00:00 / 23:59:59`。
+- 引入 vitest（node 环境，仅纯函数单测）：`frontend/vitest.config.ts`、`src/__tests__/` 4 个文件共 24 用例，新增 `npm test` / `npm run test:watch`。
+- 行为不变；唯一可见差异：运行详情「用时」超过 1 小时时统一显示 `1:01:05`（此前云盘上传页显示 `61:05`）。
+- 文档：`docs/rules/frontend.md` 新增「复用判据」与单测命令；`docs/design/frontend-reuse-plan.md` 标记 P0 完成并记录两处范围调整。
+
 ## [4.19.3] - 2026-11-07
 
 **级别：PATCH（顶栏面包屑改为「模块 · 页面」、执行参数卡去掉内部滚动条）** · 代码见本次提交

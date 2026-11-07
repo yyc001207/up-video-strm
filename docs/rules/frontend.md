@@ -24,10 +24,12 @@ frontend/
 │   │   ├── config/         # 连接与格式：服务器配置 + 视频/字幕格式 + 123 云盘凭据
 │   │   └── Settings/       # 桌面设置页
 │   ├── components/         # 通用组件（AppSidebar / TopBar / ActivityDrawer / CommandPalette / FlowCard / StatusPill / AvatarTile / EmptyState / ProgressRing / BulkBar / StatusDot / LogViewer / ThemeToggle）
-│   ├── types/ / utils/     # 类型（openlist / uploader / automation / desktop）、工具（date / ws）
+│   ├── types/ / utils/     # 类型（openlist / uploader / automation / desktop）、工具（date / ws / format / status / execution）
+│   ├── __tests__/          # 纯函数单测（vitest，node 环境，不挂载组件）
 │   └── styles/             # variables（Next UI v2 令牌）/ element-reset（EP 变量映射与表格统一）/ dark（紫黑四层）/ global
 ├── index.html              # 标题「up-video-strm 控制台」+ 首屏主题预加载
 ├── vite.config.ts          # 别名 @ → src；dev server :5173；/api 代理 → 127.0.0.1:8000（ws 透传）
+├── vitest.config.ts        # 单测：node 环境、@ 别名、只跑 src/__tests__/**/*.test.ts
 ├── .env.development / .env.production / tsconfig*.json
 └── package.json / package-lock.json / pnpm-lock.yaml
 ```
@@ -94,6 +96,16 @@ frontend/
 - 交互细节：`:focus-visible` 焦点环（暗色降为 300 阶紫）；尊重 `prefers-reduced-motion`；删除类确认弹窗写明对象、数量与不可恢复。
 - 设计依据：[docs/design/ui-next-plan.md](../design/ui-next-plan.md)（同目录旧版 `ui-redesign-plan.md` 为历史方案）。
 
+## 复用判据
+
+完整方案与实测重复点见 [docs/design/frontend-reuse-plan.md](../design/frontend-reuse-plan.md)；落地时的硬性规则：
+
+- **纯函数（鼓励抽）**：不 import Vue / DOM / router / store / api，输入输出都是纯数据；同一逻辑出现第 2 份实现即合并并删除原实现；必须有单测；放在 `src/utils/<domain>.ts`。现有：`utils/format.ts`（`triggerText` / `countText` / `durationText` / `clockText`）、`utils/status.ts`（`PHASE_LABELS` / `PHASE_LABELS_HISTORY` / `CONNECTION_META` / `AUTOMATION_RUN_STATUS_LABELS`）、`utils/execution.ts`（`percentOf` / `scheduleProgress` / `uploadProgress`）、`utils/date.ts#toBeijingDayRange`。
+- **组合式函数（谨慎抽）**：只封装状态机语义（启动 / 停止、去重、清理），参数 ≤ 3、返回值 ≤ 8，不 import store、不接收组件实例；页面仍负责取数、错误处理、文案；必须先在一页试点证明页面变短且行为等价。
+- **组件（默认不抽）**：需同时满足「≥3 处使用且语义一致、内部承载非平凡决策、删除后每个使用点至少多写 10 行、props ≤ 5 且 slots ≤ 2、不是第三方 props 同构转发」；已存在且合格的维持现状（`StatusDot` / `StatusPill` / `EmptyState` / `LogViewer` / `BulkBar` / `FlowCard`）。
+- **否决**：同构转发、只有布局、只有一个使用点 → 撤回本批并删除文件；单批 ≤ 3 个新文件、≤ 15 个调用点。
+- **不改交互**：详情页 / 抽屉形态、弹窗形态、状态组件合并等交互变更不随复用批一起做，需另立方案确认。
+
 ## 接口与状态
 
 - axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`；错误提示按文案 3s 去重；请求 config 传 `{ silent: true }` 时不弹提示，供轮询使用）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload' | 'automation')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
@@ -107,6 +119,7 @@ frontend/
 安装、启动与构建命令见 [README.md 快速开始](../../README.md#方式二源码运行)（`npm run build` = `vue-tsc` + `vite build`）。
 
 - 本地完整类型检查：`npx vue-tsc -b --force`（`tsconfig.json` 为 solution 风格，裸 `vue-tsc` 不会真正检查 `src`）。
+- 纯函数单测：`npm test`（`vitest run`，node 环境，用例在 `src/__tests__/`）；监听模式 `npm run test:watch`。`tsconfig.app.json` 已排除 `src/__tests__`，单测不参与应用类型检查。
 - TypeScript 6 起 `baseUrl` 弃用，`tsconfig.app.json` 已显式设置 `ignoreDeprecations: "6.0"`。
 - 受限环境（如沙箱）中 Vite 构建可能因 `exec("net use")` 报 `spawn EPERM`，需放宽文件/进程权限后重试。
 

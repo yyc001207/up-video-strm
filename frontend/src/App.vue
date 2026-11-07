@@ -10,6 +10,7 @@ import { useRoute } from 'vue-router'
 import AppSidebar from '@/components/AppSidebar.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import TopBar from '@/components/TopBar.vue'
+import { usePolling } from '@/composables/usePolling'
 import { RUNNING_POLL_MS, useRunningStore } from '@/stores/running'
 
 const COLLAPSE_KEY = 'up-video-strm-sidebar-collapsed'
@@ -20,7 +21,6 @@ const runningStore = useRunningStore()
 const collapsed = ref(readCollapsed())
 const offlineDismissed = ref(false)
 const paletteOpen = ref(false)
-let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const pageTitle = computed(() => (route.meta.title as string | undefined) ?? '')
 const showOfflineAlert = computed(() => runningStore.offline && !offlineDismissed.value)
@@ -56,6 +56,9 @@ async function refreshRunning(): Promise<void> {
   }
 }
 
+// 运行状态轮询：页面隐藏时跳过（与旧实现一致），卸载时由 usePolling 自动停止
+const runningPoll = usePolling(refreshRunning, { interval: RUNNING_POLL_MS })
+
 /** 全局快捷键：Ctrl/Cmd + K 打开命令面板，Esc 关闭。 */
 function handleGlobalKeydown(event: KeyboardEvent): void {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
@@ -80,18 +83,11 @@ onMounted(() => {
   LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key))
   void refreshRunning()
   document.addEventListener('keydown', handleGlobalKeydown)
-  pollTimer = setInterval(() => {
-    if (document.hidden) return
-    void refreshRunning()
-  }, RUNNING_POLL_MS)
+  runningPoll.start()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleGlobalKeydown)
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
 })
 </script>
 

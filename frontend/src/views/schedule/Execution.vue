@@ -15,6 +15,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Refresh, RefreshLeft, Search, Select, VideoPlay } from '@element-plus/icons-vue'
 
 import StatusDot from '@/components/StatusDot.vue'
+import { usePolling } from '@/composables/usePolling'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListExecution, OpenListTask } from '@/types/openlist'
 import { formatDateTime } from '@/utils/date'
@@ -114,7 +115,6 @@ function toggleSelectAll(): void {
   selectedTaskIds.value = [...merged]
 }
 
-let pollTimer: ReturnType<typeof setInterval> | null = null
 /** 组件是否已卸载：异步首屏加载完成时避免在卸载后继续启动轮询。 */
 let disposed = false
 
@@ -173,6 +173,12 @@ async function refreshRunning(silent = false): Promise<void> {
     if (!silent) runningLoading.value = false
   }
 }
+
+// 「正在执行」表 5s 轮询；静默刷新避免表格 loading 遮挡（与旧实现一致，页面隐藏时仍刷新）
+const runningPoll = usePolling(() => refreshRunning(true), {
+  interval: POLL_INTERVAL_MS,
+  visibleOnly: false
+})
 
 async function load(): Promise<void> {
   loading.value = true
@@ -286,18 +292,11 @@ function goTasks(): void {
 onMounted(async () => {
   await load()
   if (disposed) return
-  // 「正在执行」表 5s 轮询；静默刷新避免表格 loading 遮挡
-  pollTimer = setInterval(() => {
-    void refreshRunning(true)
-  }, POLL_INTERVAL_MS)
+  runningPoll.start()
 })
 
 onUnmounted(() => {
   disposed = true
-  if (pollTimer !== null) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
 })
 </script>
 

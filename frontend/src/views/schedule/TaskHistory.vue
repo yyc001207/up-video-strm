@@ -2,9 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, FolderOpened, Refresh, Search, View } from '@element-plus/icons-vue'
 
-import { desktopApi } from '@/api/desktop'
 import { openlistApi } from '@/api/openlist'
 import StatusDot from '@/components/StatusDot.vue'
+import { useLogDir } from '@/composables/useLogDir'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { HistorySummaryItem, OpenListExecution, OpenListLog } from '@/types/openlist'
 import { beijingMillis, formatDateTime, toBeijingDayRange } from '@/utils/date'
@@ -155,11 +155,7 @@ async function openLogs(row: OpenListExecution) {
   }
 }
 
-function openLogDir() {
-  desktopApi.openLogDir('openlist').catch(() => {
-    /* 拦截器提示 */
-  })
-}
+const { open: openLogDir } = useLogDir('openlist')
 
 onMounted(async () => {
   await Promise.all([load(), store.fetchConfig()])

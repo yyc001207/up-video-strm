@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Delete, Edit, FolderOpened, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
   ElMessage,
-  ElMessageBox,
   type FormInstance,
   type FormRules,
   type TableInstance
@@ -12,6 +11,7 @@ import {
 import { uploaderApi } from '@/api/uploader'
 import BulkBar from '@/components/BulkBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { useConfirmAction } from '@/composables/useConfirmAction'
 import type { UploadRenameRule, UploadTask, UploadTaskCreate } from '@/types/uploader'
 
 import RemoteDirPanel from './components/RemoteDirPanel.vue'
@@ -27,6 +27,7 @@ const page = ref(1)
 const pageSize = ref(20)
 
 const tableRef = ref<TableInstance>()
+const { confirmDanger } = useConfirmAction()
 
 function handleSelectionChange(rows: UploadTask[]): void {
   selectedIds.value = rows.map(row => row.id)
@@ -186,15 +187,12 @@ async function handleSave(): Promise<void> {
 }
 
 async function handleDelete(task: UploadTask): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `将删除上传任务「${task.name}」及其配置（不影响云端已上传文件），该操作不可恢复。`,
-      '删除上传任务',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
-    )
-  } catch {
-    return
-  }
+  const confirmed = await confirmDanger({
+    title: '删除上传任务',
+    message: `将删除上传任务「${task.name}」及其配置（不影响云端已上传文件），该操作不可恢复。`,
+    confirmText: '删除'
+  })
+  if (!confirmed) return
   await uploaderApi.deleteTask(task.id)
   ElMessage.success('上传任务已删除')
   await load()
@@ -206,15 +204,12 @@ async function handleBatchDelete(): Promise<void> {
   if (ids.length === 0) {
     return
   }
-  try {
-    await ElMessageBox.confirm(`确定删除选中的 ${ids.length} 个任务？删除后不可恢复。`, '批量删除任务', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消'
-    })
-  } catch {
-    return
-  }
+  const confirmed = await confirmDanger({
+    title: '批量删除任务',
+    message: `确定删除选中的 ${ids.length} 个任务？删除后不可恢复。`,
+    confirmText: '删除'
+  })
+  if (!confirmed) return
   try {
     const res = await uploaderApi.batchDeleteTasks(ids)
     ElMessage.success(`已删除 ${res.data.deleted} 个任务`)

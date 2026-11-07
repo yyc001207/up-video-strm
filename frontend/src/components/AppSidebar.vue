@@ -152,6 +152,47 @@ function badgeValue(kind?: NavPage['badge']): number {
   if (kind === 'automation') return running.automationCount
   return 0
 }
+
+/**
+ * 展开 / 收起手风琴的动画时长（与 `--up-strm-dur-base` 对齐）。
+ * 动画由 JS 接管：先锁定当前高度，再过渡到目标高度，结束后才允许 Transition 移除节点，
+ * 避免 CSS 离散属性（visibility / display）中途切换造成的闪动与残留。
+ */
+const NAV_ANIM_MS = 220
+
+function clearAnim(el: Element): void {
+  const node = el as HTMLElement
+  node.style.removeProperty('height')
+  node.style.removeProperty('overflow')
+  node.style.removeProperty('transition')
+}
+
+function onEnter(el: Element, done: () => void): void {
+  const node = el as HTMLElement
+  node.style.overflow = 'hidden'
+  node.style.height = '0px'
+  // 强制回流，确保 0 → 目标高度 的过渡真实发生
+  void node.offsetHeight
+  node.style.transition = `height ${NAV_ANIM_MS}ms var(--up-strm-ease)`
+  node.style.height = `${node.scrollHeight}px`
+  window.setTimeout(() => {
+    clearAnim(node)
+    done()
+  }, NAV_ANIM_MS + 16)
+}
+
+function onLeave(el: Element, done: () => void): void {
+  const node = el as HTMLElement
+  node.style.overflow = 'hidden'
+  node.style.height = `${node.scrollHeight}px`
+  void node.offsetHeight
+  node.style.transition = `height ${NAV_ANIM_MS}ms var(--up-strm-ease)`
+  node.style.height = '0px'
+  window.setTimeout(() => {
+    clearAnim(node)
+    done()
+  }, NAV_ANIM_MS + 16)
+}
 </script>
 
 <template>
@@ -192,27 +233,31 @@ function badgeValue(kind?: NavPage['badge']): number {
             <ArrowDown />
           </el-icon>
         </button>
-        <div
-          v-if="!collapsed"
-          class="nav-group__wrap"
-          :class="{ 'is-open': openGroup === group.id }"
+        <Transition
+          :css="false"
+          @enter="onEnter"
+          @enter-cancelled="clearAnim"
+          @leave="onLeave"
+          @leave-cancelled="clearAnim"
         >
-          <div class="nav-group__body">
-            <button
-              v-for="page in group.pages"
-              :key="page.path"
-              class="nav-item"
-              type="button"
-              :class="{ 'is-active': pageActive(page.path) }"
-              @click="go(page.path)"
-            >
-              <span class="nav-item__label">{{ page.label }}</span>
-              <span v-if="badgeValue(page.badge) > 0" class="nav-item__badge">
-                {{ badgeValue(page.badge) }}
-              </span>
-            </button>
+          <div v-if="!collapsed && openGroup === group.id" class="nav-group__wrap">
+            <div class="nav-group__body">
+              <button
+                v-for="page in group.pages"
+                :key="page.path"
+                class="nav-item"
+                type="button"
+                :class="{ 'is-active': pageActive(page.path) }"
+                @click="go(page.path)"
+              >
+                <span class="nav-item__label">{{ page.label }}</span>
+                <span v-if="badgeValue(page.badge) > 0" class="nav-item__badge">
+                  {{ badgeValue(page.badge) }}
+                </span>
+              </button>
+            </div>
           </div>
-        </div>
+        </Transition>
       </template>
     </nav>
 
@@ -390,18 +435,9 @@ function badgeValue(kind?: NavPage['badge']): number {
 }
 
 .nav-group__wrap {
-  display: grid;
-  grid-template-rows: 0fr;
+  flex: none;
   overflow: hidden;
-  visibility: hidden;
-  transition:
-    grid-template-rows var(--up-strm-dur-base) var(--up-strm-ease),
-    visibility var(--up-strm-dur-base) var(--up-strm-ease);
-
-  &.is-open {
-    grid-template-rows: 1fr;
-    visibility: visible;
-  }
+  will-change: height;
 }
 
 .nav-group__body {
@@ -410,7 +446,6 @@ function badgeValue(kind?: NavPage['badge']): number {
   gap: 2px;
   min-height: 0;
   padding: 2px 0 6px 20px;
-  overflow: hidden;
 }
 
 .nav-item__label {

@@ -21,6 +21,16 @@
 
 - 暂无。
 
+## [4.19.6] - 2026-11-07
+
+**级别：PATCH（缺陷修复，接口与交互不变）** · 代码见本次提交
+
+- 修复下载中的临时文件可能被误当完整视频：`backend/app/business/uploader/scanner.py` 新增 `is_partial_file()` 与 `_PARTIAL_SUFFIXES`（`.!qB`、`.part`、`.parts`、`.!ut`、`.crdownload`、`.aria2`、`.download`、`.partial`、`.tmp`，忽略大小写），扫描时跳过并累计数量；`scan_files()` 改为返回 `(files, errors, ignored_partial)`。
+- 自动化指纹扫描同步跳过下载中文件：`backend/app/business/automation/change_detector.py` 的 `collect_stats()` / `compute_fingerprint()` 增加忽略计数，避免文件大小/修改时间在下载过程中持续变化导致每轮误触发。
+- 日志提示：上传执行日志新增「忽略下载中文件 N 个（下载完成后下一轮会自动纳入）」；自动追更本轮只有下载中文件时通过 `execution_logger.broadcast_notice` 广播一行提示，不建运行记录。
+- 文档：`docs/rules/backend.md`、`manual/用户手册.md`（2.9 / 2.6 / 5.10）同步说明；`docs/design/pending-items.md` 新增 P-002（自动追更启动后运行详情误报「本轮执行已结束」的待确认修复方案）。
+- 测试：新增 `backend/tests/test_upload_scanner.py`（下载中后缀识别、扫描跳过与计数、目录不存在错误）；`test_automation_phase3.py` 覆盖指纹扫描忽略计数。
+
 ## [4.19.5] - 2026-11-07
 
 **级别：PATCH（纯逻辑抽取，交互与文案不变）** · 代码见本次提交

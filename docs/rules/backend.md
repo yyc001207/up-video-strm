@@ -47,7 +47,7 @@ backend/
 |------|------|
 | [service.py](../../backend/app/business/uploader/service.py) | 123 云盘凭据（DPAPI 加密存储、Token 缓存与续期；凭据真正变化才清空缓存、并发刷新加锁、测试连接复用缓存令牌）、重命名规则、上传任务、执行记录/历史/日志读取、配置 seed |
 | [pan123_client.py](../../backend/app/business/uploader/pan123_client.py) | 123 云盘开放平台客户端（token、文件列表/查重、目录解析、秒传/分片上传、异步结果、删除；`get_file_id` 兼容 `fileID`/`fileId`） |
-| [scanner.py](../../backend/app/business/uploader/scanner.py) | 本地目录扫描与视频过滤（扩展名来自全局「视频格式」）、MD5 计算 |
+| [scanner.py](../../backend/app/business/uploader/scanner.py) | 本地目录扫描与视频过滤（扩展名来自全局「视频格式」）、MD5 计算；跳过下载中/临时文件（`is_partial_file`：`.!qB`、`.part`、`.crdownload`、`.aria2` 等）并返回忽略数量供日志提示 |
 | [rename_engine.py](../../backend/app/business/uploader/rename_engine.py) | 集数解析（`第03集`/`S01E03`/`EP03`/`[03]`/`03 - 标题`，排除分辨率与哈希数字）+ 可选自定义集数正则（`episode_pattern`，第 1 个分组为集号）+ 模板渲染（`{season}`/`{episode}`/`{ext}`） |
 | [execution_engine.py](../../backend/app/business/uploader/execution_engine.py) | 六阶段执行流水线（扫描 → 过滤 → 重命名 → 清单 → 查重 → 上传）、并发上传与重试、取消、结果回写 |
 | [execution_logger.py](../../backend/app/business/uploader/execution_logger.py) | 日志通道：按执行写 `upload_logs/execution_{id}.log` + WebSocket 广播 log/progress/status 帧（不落库） |
@@ -61,7 +61,7 @@ backend/
 | [schema.py](../../backend/app/business/automation/schema.py) | Pydantic 请求模型（创建/更新/批量删除/校验目录/启动参数/清空待校验） |
 | [registry.py](../../backend/app/business/automation/registry.py) | 进程内运行登记：运行任务、停止事件、每任务锁、运行态快照（阶段 / 下一轮时间 / 当前运行 id） |
 | [execution_engine.py](../../backend/app/business/automation/execution_engine.py) | 每任务后台循环：指纹判断 → 等待 A/B 空闲 → 触发上传 → 可见性校验 → 触发 STRM → 收尾（待校验 / 指纹 / 连续失败计数）；超时、退避与停止 |
-| [change_detector.py](../../backend/app/business/automation/change_detector.py) | 本地目录 stat 指纹（路径 + 大小 + mtime_ns，按视频格式过滤） |
+| [change_detector.py](../../backend/app/business/automation/change_detector.py) | 本地目录 stat 指纹（路径 + 大小 + mtime_ns，按视频格式过滤）；跳过下载中/临时文件并返回忽略数量 |
 | [adapters.py](../../backend/app/business/automation/adapters.py) | A/B 调用适配层：按模式创建并启动执行、查询终态、读取上传成功的远端文件名、取消 |
 | [execution_logger.py](../../backend/app/business/automation/execution_logger.py) | 每轮日志文件 `automation_logs/automation_run_{run_id}.log` + WebSocket 广播（log / progress / status） |
 | [notifier.py](../../backend/app/business/automation/notifier.py) | 异常终止托盘通知 + 网页 `alert` 帧；主动停止不通知 |
@@ -88,7 +88,7 @@ backend/
 6. 启动闸门（阶段⓿）：[execution_registry.py](../../backend/app/business/execution_registry.py) 在 `start_execution` 入队前按 `(模块, execution_id) -> task_id` 登记，引擎 `finally` 注销；同模块同 `task_id` 已有活跃执行时返回 400「任务正在执行，请等待当前执行结束」，`task_id=0`（目录执行）不互斥。
 7. 进程重启清理（阶段⓿）：[database.py](../../backend/app/core/database.py) 的 `init_db` 在建表/列迁移后把遗留 `running` 执行置为 `fail` 并写 `error_code='PROCESS_RESTART'`、`error_message='进程重启中断'`；不自动恢复执行。
 8. 引用保护（阶段⓿）：[automation/refs.py](../../backend/app/business/automation/refs.py) 在 A/B 任务或服务器删除前检查是否被自动化任务绑定，命中返回 400「任务正被自动化任务「X」绑定，请先解除绑定后再删除」。
-9. 自动化任务链路：由 `POST /api/automation/tasks/{id}/start` 启动后台循环，每轮先按本地目录指纹判断是否有新增/变化（无变化不建运行记录）；有待校验文件时跳过上传直接校验，否则等待 A/B 空闲后创建并启动上传（冲突策略固定跳过）。上传成功后按 `remote_name` 轮询 `check_dir` 可见性，全部可见后触发 STRM 任务；成功后清空待校验并提交指纹，失败保留待校验供下一轮补偿。轮次间隔取任务配置 `interval_seconds`（默认 60s，可在执行管理启动时填写并写回任务），连续 3 次轮次失败终止，进程重启不自动恢复（残留 `running` 置 `fail` + `PROCESS_RESTART`）。启动参数 `AutomationStartRequest` 只包含 5 项时间参数（可见性轮询间隔 / 可见性等待上限 / 空闲等待上限 / 阶段超时 / 轮次间隔），由 `service.apply_run_params` 写入任务配置后启动；上传/STRM 参数不再作为执行参数。等待 A/B 执行期间由 [relay.py](../../backend/app/business/automation/relay.py) 尾随 A/B 日志文件并逐行转写进本轮自动化日志，因此自动化实时日志与历史日志都能看到 A/B 的详细执行行（`[A#id]` / `[B#id]` 前缀）。
+9. 自动化任务链路：由 `POST /api/automation/tasks/{id}/start` 启动后台循环，每轮先按本地目录指纹判断是否有新增/变化（无变化不建运行记录）；有待校验文件时跳过上传直接校验，否则等待 A/B 空闲后创建并启动上传（冲突策略固定跳过）。上传成功后按 `remote_name` 轮询 `check_dir` 可见性，全部可见后触发 STRM 任务；成功后清空待校验并提交指纹，失败保留待校验供下一轮补偿。轮次间隔取任务配置 `interval_seconds`（默认 60s，可在执行管理启动时填写并写回任务），连续 3 次轮次失败终止，进程重启不自动恢复（残留 `running` 置 `fail` + `PROCESS_RESTART`）。启动参数 `AutomationStartRequest` 只包含 5 项时间参数（可见性轮询间隔 / 可见性等待上限 / 空闲等待上限 / 阶段超时 / 轮次间隔），由 `service.apply_run_params` 写入任务配置后启动；上传/STRM 参数不再作为执行参数。等待 A/B 执行期间由 [relay.py](../../backend/app/business/automation/relay.py) 尾随 A/B 日志文件并逐行转写进本轮自动化日志，因此自动化实时日志与历史日志都能看到 A/B 的详细执行行（`[A#id]` / `[B#id]` 前缀）。扫描会跳过下载中/临时文件（`.!qB` / `.part` / `.crdownload` 等）；若本轮只有这类文件，则不建运行记录，仅通过 `execution_logger.broadcast_notice` 广播一行「忽略下载中文件 N 个」。
 10. 自动化任务接口：任务 CRUD / 批量删除 / 绑定选项 / 校验目录、启动 / 批量启动 / 停止 / 重置指纹 / 清空待校验、`GET /api/automation/active`、运行历史 `/api/automation/runs`（`task_id` / `status` / `start_time` / `end_time` 筛选，日期按北京时间含首尾两天，按 `coalesce(started_time, created_time)` 过滤）、运行日志 `/runs/{id}/logs`、失败重试 `/runs/{id}/retry-failed`，以及 WebSocket `/api/automation/ws/{task_id}`（log / progress / status / alert 帧）。历史与日志清理由 [retention.py](../../backend/app/business/automation/retention.py) 在启动时执行一次并每日定时执行。
 
 ## 环境变量（backend/.env，应用配置）

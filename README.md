@@ -102,6 +102,7 @@ npm run preview                   # 本地预览构建产物
 | [docs/design/ui-next-fix-plan.md](docs/design/ui-next-fix-plan.md) | 新版 UI 落地问题修复方案（v4.19.0 复盘）：深色对比度、导航交互、页面标题、参数卡裁切、浅色卡片去白化等 9 项与全站样式复查 |
 | [docs/design/ui-review-round2.md](docs/design/ui-review-round2.md) | 第二轮 UI 评审与修复方案（v4.9.0–4.9.1 已实施）：全局错误治理、运行状态聚合、列表筛选与布局一致性（历史记录） |
 | [docs/design/frontend-reuse-plan.md](docs/design/frontend-reuse-plan.md) | 前端复用重构方案（方案，待批准）：只抽纯函数与 headless composable，禁止中间商组件；含重复点实测、判据、验收与「明确不做」清单 |
+| [docs/design/pending-items.md](docs/design/pending-items.md) | 待定事项：已形成结论但未批准实施的改动计划与待确认取舍（当前：日志组件与日志管线抽取） |
 | [docs/design/ui-redesign-plan.md](docs/design/ui-redesign-plan.md) | 早期界面重构方案（v2.1.0 已实施）：布局、导航、日志与响应式基线（历史记录） |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |

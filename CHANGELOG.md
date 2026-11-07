@@ -21,6 +21,18 @@
 
 - 暂无。
 
+## [4.19.7] - 2026-11-08
+
+**级别：PATCH（缺陷修复，交互语义修正，接口仅新增可选字段）** · 代码见本次提交
+
+- 修复「启动自动追更后运行详情误报本轮执行已结束」：后端 WS 回放帧统一标记 `replay: true`（`backend/app/api/automation.py` 的 `_replay_frames`），前端 `onFrame` 直接丢弃，不再把上一轮终态当成本轮结束。
+- 运行详情页改为「任务 / 本轮 / 连接」三层状态并列、互不冒充：任务层由 `GET /api/automation/active` 5s 轮询（运行中 · 阶段 / 已停止），本轮层由 WS live 帧 + 终态后 `GET /runs/{run_id}`（第 N 轮 · 状态 / 失败原因），连接层只表达 WS。状态推导抽为纯函数 `frontend/src/utils/automationState.ts` 的 `deriveRunDetailView`，新增 `src/__tests__/automationState.test.ts` 覆盖空闲等待 / 轮次间隔 / 失败退避 / 等待 A/B / 已停止 / 断线 / 重连等组合。
+- 单轮终态后不再断开：显示「下一轮 HH:mm:ss」并保持连接，只有任务停止才断开；断线且任务仍在运行时按 1s / 3s / 5s 自动重连（最多 5 次，标签「重连中」）；历史日志改为「查看最近一轮」显式加载，不再自动回放。
+- 终态 `status` 帧透传 `error_code / error_message / missed`（`execution_engine._finish_run`），页面无需再查库即可展示「本轮失败：原因」；空态文案按任务阶段区分（目录暂无完整视频 / 等待下一轮 / 退避重试 / 等待 A/B 空闲 / 未启动）。
+- 页面控件（任务切换、级别、关键字、清空）禁用只依赖是否选中任务，不再由连接状态误伤。
+- 文档：`docs/rules/frontend.md` 自动化运行详情与路由表、`manual/用户手册.md` 3.13.3、`docs/design/pending-items.md` P-002 标记已实施。
+- 测试：后端 `test_automation_phase3.py` 21 项（含回放标记与终态字段）；前端 `npm test` 8 个文件 52 个用例。
+
 ## [4.19.6] - 2026-11-07
 
 **级别：PATCH（缺陷修复，接口与交互不变）** · 代码见本次提交

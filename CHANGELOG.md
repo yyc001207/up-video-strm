@@ -21,6 +21,14 @@
 
 - 暂无。
 
+## [4.19.5] - 2026-11-07
+
+**级别：PATCH（纯逻辑抽取，交互与文案不变）** · 代码见本次提交
+
+- 新增组合式函数：`frontend/src/composables/usePolling.ts`（单定时器、上一轮未完成跳过、`visibleOnly` 页面隐藏跳过、卸载自动停止）、`useConfirmAction.ts`（统一 `warning` + danger 主按钮，取消返回 `false`）、`useLogDir.ts`（打开日志文件夹唯一入口，重入保护，失败提示沿用后端文案）。
+- 试点接入四页：`App.vue` 运行数 30s 轮询、`views/schedule/Execution.vue` 正在执行 5s 轮询（保持旧实现「页面隐藏时仍刷新」）、`views/upload/TaskConfig.vue` 两个删除确认、`views/schedule/TaskHistory.vue` 日志文件夹按钮；页面不再各写 `setInterval` / `ElMessageBox.confirm` / `openLogDir` 的 try-catch。
+- 新增 `src/__tests__/usePolling.test.ts`、`useConfirmAction.test.ts`、`useLogDir.test.ts` 共 12 个用例（`npm test` 现为 7 个文件 36 个用例）。
+
 ## [4.19.4] - 2026-11-07
 
 **级别：PATCH（纯逻辑抽取，交互与文案不变）** · 代码见本次提交

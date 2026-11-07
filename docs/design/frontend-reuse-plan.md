@@ -1,6 +1,6 @@
 # 前端复用重构方案（纯逻辑优先）
 
-> 状态：P0 已实施（v4.19.4）；P1–P3 待实施
+> 状态：P0–P1 已实施（v4.19.5）；P2–P3 待实施
 > 基线：v4.19.3（`43975d9`）
 > 替代：已删除的 `frontend-component-extraction-plan.md`（该方案被判定不合格，原因见 §1，本方案不沿用其任何组件设计）
 
@@ -170,14 +170,14 @@ export interface UsePollingOptions {
   visibleOnly?: boolean // 默认 true：document.hidden 时跳过
 }
 
-/** 返回 start/stop；同一时刻只有一条定时器；上一轮未完时跳过本轮；组件卸载自动 stop。 */
+/** 返回 start/stop/tick；同一时刻只有一条定时器；上一轮未完时跳过本轮；组件卸载自动 stop。 */
 export function usePolling(
   task: () => void | Promise<void>,
   options?: UsePollingOptions
-): { start: () => void; stop: () => void }
+): { start: () => void; stop: () => void; tick: () => Promise<void> }
 ```
 
-试点：`App.vue`（运行数 30s）与 `views/schedule/Execution.vue`（正在执行 5s）先改；验证无重叠请求、切后台跳过后再推广到其余 7 处。
+试点：`App.vue`（运行数 30s，保持「页面隐藏跳过」）与 `views/schedule/Execution.vue`（正在执行 5s，保持旧实现「隐藏时仍刷新」即 `visibleOnly: false`）先改；验证无重叠请求后再推广到其余 7 处。
 
 ### 4.6 `frontend/src/composables/useConfirmAction.ts`
 
@@ -202,7 +202,7 @@ export function useConfirmAction(): {
 ```ts
 export type LogDirKind = 'openlist' | 'upload' | 'automation'
 
-/** 打开日志文件夹；失败时提示「仅 Windows 本地环境支持打开日志文件夹」。 */
+/** 打开日志文件夹；带重入保护，失败提示沿用后端文案（拦截器展示）。 */
 export function useLogDir(kind: LogDirKind): { open: () => Promise<void> }
 ```
 
@@ -262,7 +262,9 @@ export function useSelection<T>(options: {
 | P2 | 铺开剩余调用点：轮询 9 处、确认 18 处、日志目录 20 处；`useClientPagination` 5 处、`useSelection` 6 处 | `vue-tsc`、`npm run build`、逐页回归清单 | 页面 diff |
 | P3 | 评估 `useEntityForm`、`utils/storage` 是否达到 §2 判据；未达标则明确否决并记录 | 达标才实施 | 结论记录 |
 
-> **P0 已完成（v4.19.4）**：4 个 utils 文件与 24 个单测落地，页面/store 本地实现已删除并通过 §6 grep 断言；P1 起仍待批准与实施。
+> **P0 已完成（v4.19.4）**：4 个 utils 文件与 24 个单测落地，页面/store 本地实现已删除并通过 §6 grep 断言。
+>
+> **P1 已完成（v4.19.5）**：`composables/usePolling.ts`、`useConfirmAction.ts`、`useLogDir.ts` 落地（新增 12 个单测，纯函数与组合式函数共 36 个）；试点接入 `App.vue`（运行数 30s）、`views/schedule/Execution.vue`（正在执行 5s）、`views/upload/TaskConfig.vue`（两个删除确认）、`views/schedule/TaskHistory.vue`（日志文件夹）；三个入口的旧实现（`setInterval` / `ElMessageBox.confirm` / `desktopApi.openLogDir` + 各写 catch）在试点页已删除，其余调用点留待 P2 铺开。
 
 每批独立 commit；文档（`docs/rules/frontend.md` 判据与目录）随代码提交更新；每批交付前跑 `vue-tsc`、`npm run build`、`vitest`。
 

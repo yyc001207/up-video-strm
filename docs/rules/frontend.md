@@ -25,7 +25,8 @@ frontend/
 │   │   └── Settings/       # 桌面设置页
 │   ├── components/         # 通用组件（AppSidebar / TopBar / ActivityDrawer / CommandPalette / FlowCard / StatusPill / AvatarTile / EmptyState / ProgressRing / BulkBar / StatusDot / LogViewer / ThemeToggle）
 │   ├── types/ / utils/     # 类型（openlist / uploader / automation / desktop）、工具（date / ws / format / status / execution）
-│   ├── __tests__/          # 纯函数单测（vitest，node 环境，不挂载组件）
+│   ├── composables/        # 组合式函数（usePolling / useConfirmAction / useLogDir）：轮询、危险确认、日志目录的唯一入口
+│   ├── __tests__/          # 纯函数与组合式函数单测（vitest，node 环境，不挂载组件）
 │   └── styles/             # variables（Next UI v2 令牌）/ element-reset（EP 变量映射与表格统一）/ dark（紫黑四层）/ global
 ├── index.html              # 标题「up-video-strm 控制台」+ 首屏主题预加载
 ├── vite.config.ts          # 别名 @ → src；dev server :5173；/api 代理 → 127.0.0.1:8000（ws 透传）
@@ -101,7 +102,10 @@ frontend/
 完整方案与实测重复点见 [docs/design/frontend-reuse-plan.md](../design/frontend-reuse-plan.md)；落地时的硬性规则：
 
 - **纯函数（鼓励抽）**：不 import Vue / DOM / router / store / api，输入输出都是纯数据；同一逻辑出现第 2 份实现即合并并删除原实现；必须有单测；放在 `src/utils/<domain>.ts`。现有：`utils/format.ts`（`triggerText` / `countText` / `durationText` / `clockText`）、`utils/status.ts`（`PHASE_LABELS` / `PHASE_LABELS_HISTORY` / `CONNECTION_META` / `AUTOMATION_RUN_STATUS_LABELS`）、`utils/execution.ts`（`percentOf` / `scheduleProgress` / `uploadProgress`）、`utils/date.ts#toBeijingDayRange`。
-- **组合式函数（谨慎抽）**：只封装状态机语义（启动 / 停止、去重、清理），参数 ≤ 3、返回值 ≤ 8，不 import store、不接收组件实例；页面仍负责取数、错误处理、文案；必须先在一页试点证明页面变短且行为等价。
+- **组合式函数（谨慎抽）**：只封装状态机语义（启动 / 停止、去重、清理），参数 ≤ 3、返回值 ≤ 8，不 import store、不接收组件实例；页面仍负责取数、错误处理、文案；必须先在一页试点证明页面变短且行为等价。现有：
+  - `composables/usePolling.ts`：`usePolling(task, { interval = 5000, immediate = false, visibleOnly = true })` → `{ start, stop, tick }`；同一时刻只保留一条定时器，上一轮未完成时跳过，`visibleOnly` 时 `document.hidden` 跳过，组件卸载自动停止。**全站唯一允许调用 `setInterval` 的位置**（依赖第三方库内部计时的除外）。
+  - `composables/useConfirmAction.ts`：`useConfirmAction()` → `{ confirmDanger({ title, message, confirmText?, cancelText? }) }`；统一 `warning` + `el-button--danger`，取消 / 关闭返回 `false`。**全站唯一允许直接调用 `ElMessageBox.confirm` 的位置**。
+  - `composables/useLogDir.ts`：`useLogDir('openlist' | 'upload' | 'automation')` → `{ open() }`；带重入保护，失败提示沿用后端文案（由请求拦截器展示），页面不再各写 try/catch。**全站唯一允许调用 `desktopApi.openLogDir` 的位置**。
 - **组件（默认不抽）**：需同时满足「≥3 处使用且语义一致、内部承载非平凡决策、删除后每个使用点至少多写 10 行、props ≤ 5 且 slots ≤ 2、不是第三方 props 同构转发」；已存在且合格的维持现状（`StatusDot` / `StatusPill` / `EmptyState` / `LogViewer` / `BulkBar` / `FlowCard`）。
 - **否决**：同构转发、只有布局、只有一个使用点 → 撤回本批并删除文件；单批 ≤ 3 个新文件、≤ 15 个调用点。
 - **不改交互**：详情页 / 抽屉形态、弹窗形态、状态组件合并等交互变更不随复用批一起做，需另立方案确认。

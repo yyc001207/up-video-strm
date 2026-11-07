@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-from app.business.uploader.scanner import normalize_extensions
+from app.business.uploader.scanner import is_partial_file, normalize_extensions
 
 _SKIP_NAMES = {"thumbs.db", "desktop.ini", ".ds_store"}
 
@@ -21,17 +21,19 @@ def _is_skipped(name: str) -> bool:
     return name.startswith(".") or name.lower() in _SKIP_NAMES
 
 
-def collect_stats(local_dir: str, extensions: object = None) -> tuple[list[tuple[str, int, int]], list[str]]:
-    """返回 ``([(绝对路径, 大小, mtime_ns)], [错误说明])``；目录不可读不抛异常。"""
+def collect_stats(local_dir: str, extensions: object = None) -> tuple[list[tuple[str, int, int]], list[str], int]:
+    """返回 ``([(绝对路径, 大小, mtime_ns)], [错误说明], 忽略的下载中文件数)``；目录不可读不抛异常。"""
     root = Path(local_dir).expanduser()
     if not root.is_dir():
-        return [], [f"本地目录不存在或不是文件夹：{root}"]
+        return [], [f"本地目录不存在或不是文件夹：{root}"], 0
 
     allowed = set(normalize_extensions(extensions))
     entries: list[tuple[str, int, int]] = []
     errors: list[str] = []
+    ignored_partial = 0
 
     def _walk(directory: Path) -> None:
+        nonlocal ignored_partial
         try:
             with os.scandir(directory) as it:
                 for entry in it:
@@ -41,6 +43,9 @@ def collect_stats(local_dir: str, extensions: object = None) -> tuple[list[tuple
                         if entry.is_dir(follow_symlinks=False):
                             _walk(Path(entry.path))
                         elif entry.is_file(follow_symlinks=False):
+                            if is_partial_file(entry.name):
+                                ignored_partial += 1
+                                continue
                             ext = Path(entry.name).suffix.lower().lstrip(".")
                             if ext not in allowed:
                                 continue
@@ -53,7 +58,7 @@ def collect_stats(local_dir: str, extensions: object = None) -> tuple[list[tuple
 
     _walk(root)
     entries.sort(key=lambda item: item[0])
-    return entries, errors
+    return entries, errors, ignored_partial
 
 
 def fingerprint_of(entries: Iterable[tuple[str, int, int]]) -> str:
@@ -64,7 +69,7 @@ def fingerprint_of(entries: Iterable[tuple[str, int, int]]) -> str:
     return digest.hexdigest()
 
 
-def compute_fingerprint(local_dir: str, extensions: object = None) -> tuple[str, int, list[str]]:
-    """返回 ``(指纹, 视频文件数, 错误列表)``。"""
-    entries, errors = collect_stats(local_dir, extensions)
-    return fingerprint_of(entries), len(entries), errors
+def compute_fingerprint(local_dir: str, extensions: object = None) -> tuple[str, int, list[str], int]:
+    """返回 ``(指纹, 视频文件数, 错误列表, 忽略的下载中文件数)``。"""
+    entries, errors, ignored_partial = collect_stats(local_dir, extensions)
+    return fingerprint_of(entries), len(entries), errors, ignored_partial

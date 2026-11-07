@@ -28,7 +28,7 @@ from sqlalchemy import select
 
 from app.business.automation import adapters, registry
 from app.business.automation.change_detector import compute_fingerprint
-from app.business.automation.execution_logger import AutomationLogger
+from app.business.automation.execution_logger import AutomationLogger, broadcast_notice
 from app.business.automation.notifier import notify_abnormal
 from app.business.automation.relay import ExecutionLogRelay
 from app.business.openlist.openlist_api import OpenListAPI
@@ -230,14 +230,24 @@ async def _loop(task_id: int) -> None:
             logger.warning("自动化任务 %s 不存在或绑定任务已删除，停止运行", task_id)
             return
 
-        fingerprint, file_count, scan_errors = compute_fingerprint(snapshot.local_dir, snapshot.extensions)
+        fingerprint, file_count, scan_errors, ignored_partial = compute_fingerprint(
+            snapshot.local_dir, snapshot.extensions
+        )
         pending = snapshot.pending
         force = _FORCE.pop(task_id, False)
 
         if pending:
-            outcome = await _execute_round(snapshot, fingerprint, file_count, scan_errors, pending, force=False)
+            outcome = await _execute_round(
+                snapshot, fingerprint, file_count, scan_errors, ignored_partial, pending, force=False
+            )
         elif file_count == 0:
             await _update_task(task_id, scan_fingerprint=fingerprint, scan_time=beijing_now(), pending_files=None)
+            if ignored_partial:
+                await broadcast_notice(
+                    task_id,
+                    "info",
+                    f"忽略下载中文件 {ignored_partial} 个（下载完成后会自动纳入下一轮）",
+                )
             await _set_runtime_sleep(task_id, "idle", snapshot.interval_seconds)
             if not await _sleep(task_id, snapshot.interval_seconds):
                 return
@@ -248,7 +258,9 @@ async def _loop(task_id: int) -> None:
                 return
             continue
         else:
-            outcome = await _execute_round(snapshot, fingerprint, file_count, scan_errors, pending, force=force)
+            outcome = await _execute_round(
+                snapshot, fingerprint, file_count, scan_errors, ignored_partial, pending, force=force
+            )
 
         status = outcome["status"]
         if status in ("success", "partial"):
@@ -320,6 +332,7 @@ async def _execute_round(
     fingerprint: str,
     file_count: int,
     scan_errors: list[str],
+    ignored_partial: int,
     pending: list[str],
     *,
     force: bool,
@@ -350,6 +363,7 @@ async def _execute_round(
     await log.status(status="running", run_id=run_id, round_no=round_no, phase="waiting_idle")
     await log.info(
         f"第 {round_no} 轮开始：本地视频 {file_count} 个，待校验 {len(pending)} 个"
+        + (f"，忽略下载中文件 {ignored_partial} 个" if ignored_partial else "")
         + ("（手动强制一轮）" if force else "")
     )
     for message in scan_errors:

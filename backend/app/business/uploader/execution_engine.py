@@ -182,11 +182,13 @@ async def _run_pipeline(
         )
 
         # 阶段 1–2：扫描 + 视频过滤
-        files, scan_errors = scanner.scan_files(execution.local_dir, extensions)
+        files, scan_errors, ignored_partial = scanner.scan_files(execution.local_dir, extensions)
         for path, reason in scan_errors:
             exe_logger.error("扫描失败 %s：%s", path, reason)
             progress["failed"] += 1
         exe_logger.info("扫描完成：识别视频文件 %d 个，异常 %d 个", len(files), len(scan_errors))
+        if ignored_partial:
+            exe_logger.info("忽略下载中文件 %d 个（下载完成后下一轮会自动纳入）", ignored_partial)
 
         # 阶段 3–4：重命名 + 预上传清单
         template = execution.template or rename_engine.DEFAULT_TEMPLATE

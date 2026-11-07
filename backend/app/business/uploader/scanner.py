@@ -20,7 +20,25 @@ DEFAULT_VIDEO_EXTENSIONS = ("mp4", "mkv", "avi", "wmv", "flv", "mov", "webm", "t
 """全局「视频格式」未配置时的兜底扩展名列表。"""
 
 _SKIP_NAMES = {"thumbs.db", "desktop.ini", ".ds_store"}
+_PARTIAL_SUFFIXES = (
+    ".part",
+    ".parts",
+    ".!qb",
+    ".!ut",
+    ".crdownload",
+    ".aria2",
+    ".download",
+    ".partial",
+    ".tmp",
+)
+"""下载中/临时文件后缀：qBittorrent 默认给未完成文件加 ``.!qB``，Transmission 用 ``.part``，
+浏览器用 ``.crdownload``，aria2 用 ``.aria2``。这些文件不参与扫描与指纹统计。"""
 _CHUNK_SIZE = 1024 * 1024
+
+
+def is_partial_file(name: str) -> bool:
+    """文件名是否带「下载中」临时后缀（忽略大小写）。"""
+    return name.lower().endswith(_PARTIAL_SUFFIXES)
 
 
 @dataclass(frozen=True)
@@ -73,20 +91,22 @@ def scan_files(
     extensions: object = None,
     *,
     recursive: bool = True,
-) -> tuple[list[ScannedFile], list[tuple[str, str]]]:
-    """扫描本地目录，返回 ``(视频文件列表, [(路径, 失败原因)])``。
+) -> tuple[list[ScannedFile], list[tuple[str, str]], int]:
+    """扫描本地目录，返回 ``(视频文件列表, [(路径, 失败原因)], 忽略的下载中文件数)``。
 
     - 目录不存在/不可读 → 直接返回单条错误，不抛异常，由调用方决定执行失败；
     - 非视频扩展名、隐藏/系统文件 → 跳过且不算错误；
+    - 下载中/临时文件（``.!qB``、``.part``、``.crdownload`` 等）→ 跳过，只累计数量供日志提示；
     - 单个文件读取失败（权限/占用等）→ 记入错误列表，继续扫描。
     """
     root = Path(local_dir).expanduser()
     if not root.is_dir():
-        return [], [(str(root), "本地目录不存在或不是文件夹")]
+        return [], [(str(root), "本地目录不存在或不是文件夹")], 0
 
     allowed = set(normalize_extensions(extensions))
     files: list[ScannedFile] = []
     errors: list[tuple[str, str]] = []
+    ignored_partial = 0
 
     def _iter_entries(directory: Path, recurse: bool) -> Iterable[Path]:
         try:
@@ -106,6 +126,9 @@ def scan_files(
             errors.append((str(directory), f"读取失败：{exc}"))
 
     for file_path in _iter_entries(root, recursive):
+        if is_partial_file(file_path.name):
+            ignored_partial += 1
+            continue
         ext = file_path.suffix.lower().lstrip(".")
         if ext not in allowed:
             continue
@@ -118,7 +141,7 @@ def scan_files(
         files.append(ScannedFile(path=file_path, name=file_path.name, ext=ext, size=size, md5=md5))
 
     files.sort(key=lambda item: item.name.lower())
-    return files, errors
+    return files, errors, ignored_partial
 
 
 def find_remote_dir_id(items: list[dict], name: str) -> Optional[int]:

@@ -96,3 +96,17 @@ class AutomationLogger:
 
     async def alert(self, message: str, status: str = "fail") -> None:
         await self._emit({"type": "alert", "status": status, "message": message})
+
+
+async def broadcast_notice(task_id: int, level: str, message: str) -> None:
+    """无运行轮次的轻提示：仅广播 WS 一行（回放缓冲也记录），不落日志文件。
+
+    用于「本轮无完整视频，忽略下载中文件 N 个」这类不属于某一轮的说明。
+    """
+    mapped = _LEVEL_MAP.get(level.lower(), "info")
+    frame = {"type": "log", "level": mapped, "message": message, "ts": format_ts(time.time())}
+    TASK_RECENT.setdefault(task_id, deque(maxlen=200)).append(frame)
+    try:
+        await ws_manager.broadcast(channel(task_id), frame)
+    except Exception:  # pragma: no cover - 广播失败不影响链路
+        pass

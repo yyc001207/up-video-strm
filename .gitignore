@@ -23,7 +23,7 @@ backend/desktop.json
 .workbuddy/
 .vscode/
 
-# Tests（测试文件不纳入版本管理）
+# Tests（后端测试文件不纳入版本管理；前端纯函数单测随源码提交）
 backend/tests/
 
 # Env
@@ -32,5 +32,5 @@ backend/tests/
 # Logs
 *.log
 
-# һ���Խű�Ŀ¼
+# 一次性脚本目录
 .build/

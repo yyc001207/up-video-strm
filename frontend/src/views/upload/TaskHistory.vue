@@ -8,7 +8,8 @@ import { desktopApi } from '@/api/desktop'
 import { uploaderApi } from '@/api/uploader'
 import StatusDot from '@/components/StatusDot.vue'
 import type { UploadConflictPolicy, UploadExecution, UploadFileRecord, UploadHistorySummaryItem } from '@/types/uploader'
-import { beijingMillis, formatDateTime } from '@/utils/date'
+import { beijingMillis, formatDateTime, toBeijingDayRange } from '@/utils/date'
+import { countText, durationText, triggerText } from '@/utils/format'
 
 const router = useRouter()
 
@@ -71,19 +72,6 @@ const logLoading = ref(false)
 const logs = ref<{ id: number; log_level: string; content: string; created_time: string | null }[]>([])
 const logExecution = ref<UploadExecution | null>(null)
 
-function durationText(sec: number | null): string {
-  if (sec == null) return '—'
-  if (sec < 60) return `${sec} 秒`
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${m} 分 ${s} 秒`
-}
-
-/** 计数文本：总数为 0 时显示「—」，避免 0/0 噪声。 */
-function countText(value: number, total: number): string {
-  return total > 0 ? `${value}/${total}` : '—'
-}
-
 function seasonText(season: number, startEpisode: number): string {
   return `S${String(season).padStart(2, '0')} · 起 ${startEpisode}`
 }
@@ -91,12 +79,6 @@ function seasonText(season: number, startEpisode: number): string {
 /** 冲突策略显示文本（模板中 row 为 any，统一走这里收窄类型）。 */
 function conflictText(policy: string): string {
   return CONFLICT_LABELS[policy as UploadConflictPolicy] ?? policy
-}
-
-/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
-function triggerText(row: UploadExecution): string {
-  if (row.trigger_source !== 'automation') return '手动'
-  return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
 }
 
 /** 取最近一次执行的时间（结束 → 开始 → 创建），按北京时间比较。 */
@@ -108,23 +90,17 @@ function executionTimestamp(item: UploadHistorySummaryItem): number | null {
 
 const filteredList = computed(() => {
   const needle = keyword.value.trim().toLowerCase()
-  const range = dateRange.value
-  let startMs: number | null = null
-  let endMs: number | null = null
-  if (range !== null) {
-    // 起止日期分别按北京时间 00:00:00 / 23:59:59 计算
-    startMs = beijingMillis(`${range[0]} 00:00:00`)
-    endMs = beijingMillis(`${range[1]} 23:59:59`)
-  }
+  const bounds = toBeijingDayRange(dateRange.value)
   return list.value.filter(item => {
     if (needle !== '' && !item.task_name.toLowerCase().includes(needle)) return false
     if (statusFilter.value !== 'all') {
       const status = item.last_execution?.status ?? 'none'
       if (status !== statusFilter.value) return false
     }
-    if (startMs !== null && endMs !== null) {
+    if (bounds) {
       const timestamp = executionTimestamp(item)
-      if (timestamp === null || timestamp < startMs || timestamp > endMs) return false
+      if (timestamp === null || bounds.startMs === null || bounds.endMs === null) return false
+      if (timestamp < bounds.startMs || timestamp > bounds.endMs) return false
     }
     return true
   })

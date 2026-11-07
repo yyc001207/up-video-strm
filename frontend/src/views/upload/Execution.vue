@@ -17,6 +17,7 @@ import { Close, Refresh, RefreshLeft, Search, Select, VideoPlay } from '@element
 import StatusDot from '@/components/StatusDot.vue'
 import { uploaderApi } from '@/api/uploader'
 import { formatDateTime } from '@/utils/date'
+import { countText, triggerText } from '@/utils/format'
 import type {
   UploadConflictPolicy,
   UploadExecution,
@@ -109,17 +110,6 @@ function toggleSelectAll(): void {
   const merged = new Set(selectedIds.value)
   for (const task of filteredTasks.value) merged.add(task.id)
   selectedIds.value = [...merged]
-}
-
-/** 进度文本：0/0 显示「—」降噪，等宽数字对齐。 */
-function progressText(row: UploadExecution): string {
-  return row.file_total > 0 ? `${row.file_success}/${row.file_total}` : '—'
-}
-
-/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
-function triggerText(row: UploadExecution): string {
-  if (row.trigger_source !== 'automation') return '手动'
-  return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
 }
 
 function taskMeta(task: UploadTask): string {
@@ -488,7 +478,7 @@ onBeforeUnmount(() => {
           <el-table-column label="进度" width="110" align="right">
             <template #default="{ row }">
               <span class="exec-running__num" :class="{ 'is-muted': !row.file_total }">
-                {{ progressText(row) }}
+                {{ countText(row.file_success, row.file_total) }}
               </span>
             </template>
           </el-table-column>

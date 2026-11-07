@@ -1,7 +1,7 @@
 {
   "name": "up-video-strm-web",
   "private": true,
-  "version": "4.19.3",
+  "version": "4.19.4",
   "type": "module",
   "packageManager": "pnpm@8.0.0",
   "scripts": {
@@ -9,6 +9,8 @@
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format": "prettier --write src/"
   },
   "dependencies": {
@@ -28,6 +30,7 @@
     "sass": "^1.102.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
+    "vitest": "^4.1.12",
     "vue-tsc": "^3.3.8"
   }
 }

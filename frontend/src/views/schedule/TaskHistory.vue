@@ -7,7 +7,8 @@ import { openlistApi } from '@/api/openlist'
 import StatusDot from '@/components/StatusDot.vue'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { HistorySummaryItem, OpenListExecution, OpenListLog } from '@/types/openlist'
-import { beijingMillis, formatDateTime } from '@/utils/date'
+import { beijingMillis, formatDateTime, toBeijingDayRange } from '@/utils/date'
+import { countText, durationText, triggerText } from '@/utils/format'
 
 const store = useOpenlistStore()
 
@@ -47,25 +48,6 @@ const logLoading = ref(false)
 const logs = ref<OpenListLog[]>([])
 const logExecution = ref<OpenListExecution | null>(null)
 
-function durationText(sec: number | null): string {
-  if (sec == null) return '—'
-  if (sec < 60) return `${sec} 秒`
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${m} 分 ${s} 秒`
-}
-
-/** 计数文本：总数为 0 时显示「—」，避免 0/0 噪声。 */
-function countText(success: number, total: number): string {
-  return total > 0 ? `${success}/${total}` : '—'
-}
-
-/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
-function triggerText(row: OpenListExecution): string {
-  if (row.trigger_source !== 'automation') return '手动'
-  return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
-}
-
 /** 该任务最近一次执行的时间戳：优先完成时间，其次开始/创建时间。 */
 function executionMillis(item: HistorySummaryItem): number | null {
   const exec = item.execution
@@ -74,14 +56,7 @@ function executionMillis(item: HistorySummaryItem): number | null {
 }
 
 /** 时间范围边界（北京时间）：开始日 00:00:00 ~ 结束日 23:59:59。 */
-const rangeBounds = computed(() => {
-  const range = dateRange.value
-  if (!range) return null
-  return {
-    start: beijingMillis(`${range[0]} 00:00:00`),
-    end: beijingMillis(`${range[1]} 23:59:59`)
-  }
-})
+const rangeBounds = computed(() => toBeijingDayRange(dateRange.value))
 
 const filteredList = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
@@ -96,8 +71,8 @@ const filteredList = computed(() => {
     if (bounds) {
       const millis = executionMillis(item)
       if (millis == null) return false
-      if (bounds.start != null && millis < bounds.start) return false
-      if (bounds.end != null && millis > bounds.end) return false
+      if (bounds.startMs != null && millis < bounds.startMs) return false
+      if (bounds.endMs != null && millis > bounds.endMs) return false
     }
     return true
   })

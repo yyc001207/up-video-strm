@@ -9,6 +9,7 @@ import { automationRunApi } from '@/api/automation'
 import type { OpenListExecution } from '@/types/openlist'
 import type { UploadExecution } from '@/types/uploader'
 import type { AutomationActiveTask } from '@/types/automation'
+import { percentOf, scheduleProgress, uploadProgress } from '@/utils/execution'
 
 /** 顶栏轮询间隔（壳层统一轮询；页面可见时才执行，避免后台无意义请求）。 */
 export const RUNNING_POLL_MS = 30000
@@ -28,11 +29,6 @@ export interface RunningModuleItem {
   /** 跳转到的运行详情路径（带执行 id）。 */
   detailPath: string
   stop: () => Promise<unknown>
-}
-
-function ratio(done: number, total: number): number | null {
-  if (!Number.isFinite(total) || total <= 0) return null
-  return Math.min(100, Math.max(0, (done / total) * 100))
 }
 
 export const useRunningStore = defineStore('running', () => {
@@ -60,7 +56,7 @@ export const useRunningStore = defineStore('running', () => {
         id: item.id,
         taskId: item.task_id,
         name: item.task_name,
-        progress: ratio(item.video_success_count, item.video_total_count),
+        progress: scheduleProgress(item),
         detailPath: `/schedule/realtime?execs=${item.id}`,
         stop: () => openlistApi.cancelExecution(item.id)
       })),
@@ -70,7 +66,7 @@ export const useRunningStore = defineStore('running', () => {
         id: item.id,
         taskId: item.task_id,
         name: item.task_name,
-        progress: ratio(item.file_success + item.file_skipped, item.file_total),
+        progress: uploadProgress(item),
         detailPath: `/upload/realtime?execs=${item.id}`,
         stop: () => uploaderApi.cancelExecution(item.id)
       })),
@@ -105,7 +101,7 @@ export const useRunningStore = defineStore('running', () => {
       all += denominator
     }
     if (all <= 0) return null
-    return Math.round((done / all) * 100)
+    return percentOf(done, all)
   })
 
   function scheduleTotal(item: RunningModuleItem): number | undefined {

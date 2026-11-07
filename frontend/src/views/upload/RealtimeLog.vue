@@ -15,6 +15,8 @@ import LogViewer from '@/components/LogViewer.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { uploaderApi } from '@/api/uploader'
 import { beijingMillis, parseBeijing } from '@/utils/date'
+import { clockText } from '@/utils/format'
+import { CONNECTION_META } from '@/utils/status'
 import { connectUploadWs, disconnectWs, type WsState } from '@/utils/ws'
 import type {
   UploadExecution,
@@ -41,11 +43,6 @@ interface RealtimeTarget {
 type FilterLevel = 'all' | 'info' | 'warn' | 'error'
 
 const MAX_LOG_LINES = 3000
-const CONNECTION_META: Record<WsState, { label: string; tone: 'info' | 'success' | 'danger' }> = {
-  connecting: { label: '连接中', tone: 'info' },
-  connected: { label: '已连接', tone: 'success' },
-  disconnected: { label: '未连接', tone: 'danger' }
-}
 
 const route = useRoute()
 const router = useRouter()
@@ -101,8 +98,7 @@ const elapsedText = computed(() => {
   if (!startedAt.value) return '—'
   const end = finishedAt.value ?? now.value
   const seconds = Math.max(0, Math.floor((end - startedAt.value) / 1000))
-  const minutes = Math.floor(seconds / 60)
-  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+  return clockText(seconds)
 })
 
 const bytesText = computed(() => {

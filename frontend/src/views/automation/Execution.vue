@@ -25,6 +25,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { automationApi, automationRunApi } from '@/api/automation'
+import { PHASE_LABELS } from '@/utils/status'
 import type {
   AutomationActiveTask,
   AutomationStartPayload,
@@ -52,19 +53,6 @@ const RUN_PARAM_FIELDS = [
   'stage_timeout',
   'interval_seconds'
 ] as const
-
-const PHASE_LABELS: Record<string, string> = {
-  starting: '准备中',
-  waiting_idle: '等待 A/B 空闲',
-  waiting_upload: '上传中',
-  waiting_openlist_check: '校验 OpenList 可见性',
-  waiting_openlist_task: 'STRM 调度中',
-  interval: '等待下一轮',
-  backoff: '失败退避中',
-  idle: '空闲等待',
-  stopped: '已停止',
-  done: '已结束'
-}
 
 const router = useRouter()
 

@@ -18,6 +18,7 @@ import StatusDot from '@/components/StatusDot.vue'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListExecution, OpenListTask } from '@/types/openlist'
 import { formatDateTime } from '@/utils/date'
+import { countText, triggerText } from '@/utils/format'
 
 /** 执行模式：用互斥分段控件表达，映射到后端三个布尔开关（替代旧版三个开关 + 隐含联动）。 */
 type ExecutionMode = 'incremental' | 'full' | 'strm-only'
@@ -153,17 +154,6 @@ function handleRowKeydown(event: KeyboardEvent, task: OpenListTask): void {
   if (event.target !== event.currentTarget) return
   event.preventDefault()
   toggleTask(task)
-}
-
-/** 计数文本：0/0 显示「—」降噪，等宽数字对齐。 */
-function countText(success: number, total: number): string {
-  return total > 0 ? `${success}/${total}` : '—'
-}
-
-/** 谁启动的：自动追更触发时展示任务名，其余为手动。 */
-function triggerText(row: { trigger_source?: string | null; trigger_name?: string | null }): string {
-  if (row.trigger_source !== 'automation') return '手动'
-  return row.trigger_name ? `自动化 · ${row.trigger_name}` : '自动化'
 }
 
 function lastExecutionText(task: OpenListTask): string {

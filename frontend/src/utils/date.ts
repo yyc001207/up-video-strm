@@ -55,3 +55,22 @@ export function beijingMillis(value: string | null | undefined): number | null {
   const parsed = parseBeijing(value)
   return parsed ? parsed.valueOf() : null
 }
+
+export interface BeijingDayRangeMillis {
+  startMs: number | null
+  endMs: number | null
+}
+
+/**
+ * 时间范围 → 北京时间当日边界毫秒：开始日 00:00:00、结束日 23:59:59。
+ * 用于列表页的日期范围筛选，保证筛选含首尾两天。
+ */
+export function toBeijingDayRange(
+  range: readonly [string, string] | null | undefined
+): BeijingDayRangeMillis | null {
+  if (!range) return null
+  return {
+    startMs: beijingMillis(`${range[0]} 00:00:00`),
+    endMs: beijingMillis(`${range[1]} 23:59:59`)
+  }
+}

@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { desktopApi } from '@/api/desktop'
 import { automationApi, automationRunApi } from '@/api/automation'
+import { AUTOMATION_RUN_STATUS_LABELS, PHASE_LABELS_HISTORY } from '@/utils/status'
 import type { AutomationExecutionBrief, AutomationRun, AutomationRunStatus, AutomationTask } from '@/types/automation'
 
 const router = useRouter()
@@ -19,33 +20,12 @@ const STATUS_OPTIONS: { label: string; value: AutomationRunStatus | 'all' }[] = 
   { label: '已取消', value: 'cancelled' },
 ]
 
-const STATUS_LABELS: Record<AutomationRunStatus, string> = {
-  running: '运行中',
-  success: '成功',
-  partial: '部分成功',
-  fail: '失败',
-  cancelled: '已取消',
-}
-
 const STATUS_TAG_TYPES: Record<AutomationRunStatus, 'success' | 'warning' | 'danger' | 'info'> = {
   running: 'warning',
   success: 'success',
   partial: 'warning',
   fail: 'danger',
   cancelled: 'info',
-}
-
-const PHASE_LABELS: Record<string, string> = {
-  starting: '启动中',
-  waiting_idle: '等待空闲',
-  waiting_upload: '等待上传完成',
-  waiting_openlist_check: '等待 OpenList 可见',
-  waiting_openlist_task: '等待 STRM 完成',
-  interval: '轮次间隔',
-  backoff: '失败退避',
-  idle: '空闲等待',
-  stopped: '已停止',
-  done: '本轮完成',
 }
 
 const tasks = ref<AutomationTask[]>([])
@@ -70,11 +50,11 @@ const logLines = ref<{ index: number; level: string; message: string }[]>([])
 const logRun = ref<AutomationRun | null>(null)
 
 function statusText(status: string): string {
-  return STATUS_LABELS[status as AutomationRunStatus] ?? status
+  return AUTOMATION_RUN_STATUS_LABELS[status as AutomationRunStatus] ?? status
 }
 
 function phaseText(phase: string): string {
-  return PHASE_LABELS[phase] ?? phase
+  return PHASE_LABELS_HISTORY[phase] ?? phase
 }
 
 function statusTagType(status: string): 'success' | 'warning' | 'danger' | 'info' {

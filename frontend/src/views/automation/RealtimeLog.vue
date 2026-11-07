@@ -21,6 +21,7 @@ import StatusDot from '@/components/StatusDot.vue'
 import LogViewer from '@/components/LogViewer.vue'
 import { connectAutomationWs, disconnectWs, type WsState } from '@/utils/ws'
 import { beijingMillis } from '@/utils/date'
+import { AUTOMATION_RUN_STATUS_LABELS, CONNECTION_META, PHASE_LABELS } from '@/utils/status'
 import type { AutomationTask, AutomationWsFrame } from '@/types/automation'
 
 interface LogLine {
@@ -34,33 +35,6 @@ type FilterLevel = 'all' | 'info' | 'warn' | 'error'
 type AutomationStatus = 'running' | 'success' | 'partial' | 'fail' | 'cancelled'
 
 const MAX_LOG_LINES = 3000
-const CONNECTION_META: Record<WsState, { label: string; tone: 'info' | 'success' | 'danger' }> = {
-  connecting: { label: '连接中', tone: 'info' },
-  connected: { label: '已连接', tone: 'success' },
-  disconnected: { label: '未连接', tone: 'danger' }
-}
-
-/** 阶段文案：与开始执行页保持一致。 */
-const PHASE_LABELS: Record<string, string> = {
-  starting: '准备中',
-  waiting_idle: '等待 A/B 空闲',
-  waiting_upload: '上传中',
-  waiting_openlist_check: '校验 OpenList 可见性',
-  waiting_openlist_task: 'STRM 调度中',
-  interval: '等待下一轮',
-  backoff: '失败退避中',
-  idle: '空闲等待',
-  stopped: '已停止',
-  done: '已结束'
-}
-
-const STATUS_TEXT: Record<AutomationStatus, string> = {
-  running: '运行中',
-  success: '成功',
-  partial: '部分成功',
-  fail: '失败',
-  cancelled: '已取消'
-}
 
 const route = useRoute()
 const router = useRouter()
@@ -98,7 +72,7 @@ const currentStatus = computed<AutomationStatus>(() => finalStatus.value ?? 'run
 const statusDotStatus = computed(() => (currentStatus.value === 'partial' ? 'fail' : currentStatus.value))
 const statusText = computed(() => {
   if (taskId.value === null) return '—'
-  if (finalStatus.value !== null) return STATUS_TEXT[finalStatus.value]
+  if (finalStatus.value !== null) return AUTOMATION_RUN_STATUS_LABELS[finalStatus.value]
   if (currentTask.value?.is_running || connectionState.value === 'connected') return '运行中'
   return '未运行'
 })

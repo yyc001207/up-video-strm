@@ -18,6 +18,7 @@ import type { OpenListExecution, OpenListTask } from '@/types/openlist'
 import type { UploadExecution } from '@/types/uploader'
 import type { AutomationActiveTask, AutomationTask } from '@/types/automation'
 import { formatDateTime } from '@/utils/date'
+import { scheduleProgress, uploadProgress } from '@/utils/execution'
 import { useRunningStore } from '@/stores/running'
 
 const router = useRouter()
@@ -65,10 +66,7 @@ const scheduleCard = computed(() => ({
       : lastSchedule.value
         ? 'success'
         : 'neutral') as 'running' | 'success' | 'fail' | 'warning' | 'neutral',
-  progress:
-    lastSchedule.value && lastSchedule.value.video_total_count > 0
-      ? Math.round((lastSchedule.value.video_success_count / lastSchedule.value.video_total_count) * 100)
-      : null
+  progress: lastSchedule.value ? scheduleProgress(lastSchedule.value) : null
 }))
 
 const uploadCard = computed(() => ({
@@ -83,12 +81,7 @@ const uploadCard = computed(() => ({
       : lastUpload.value
         ? 'success'
         : 'neutral') as 'running' | 'success' | 'fail' | 'warning' | 'neutral',
-  progress:
-    lastUpload.value && lastUpload.value.file_total > 0
-      ? Math.round(
-          ((lastUpload.value.file_success + lastUpload.value.file_skipped) / lastUpload.value.file_total) * 100
-        )
-      : null
+  progress: lastUpload.value ? uploadProgress(lastUpload.value) : null
 }))
 
 const automationCard = computed(() => ({

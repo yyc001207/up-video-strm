@@ -20,6 +20,8 @@ import StatusDot from '@/components/StatusDot.vue'
 import LogViewer from '@/components/LogViewer.vue'
 import { connectWs, disconnectWs, type WsState } from '@/utils/ws'
 import { beijingMillis } from '@/utils/date'
+import { clockText } from '@/utils/format'
+import { CONNECTION_META } from '@/utils/status'
 import { openlistApi } from '@/api/openlist'
 import type {
   ExecutionStatus,
@@ -74,12 +76,6 @@ const MAX_LOG_LINES = 3000
  * 使用 sessionStorage，仅当前标签页有效。
  */
 const LAUNCHED_STORAGE_KEY = 'up-strm:launched-executions'
-
-const CONNECTION_META: Record<WsState, { label: string; tone: 'info' | 'success' | 'danger' }> = {
-  connecting: { label: '连接中', tone: 'info' },
-  connected: { label: '已连接', tone: 'success' },
-  disconnected: { label: '未连接', tone: 'danger' }
-}
 
 const route = useRoute()
 const store = useOpenlistStore()
@@ -192,15 +188,6 @@ function formatLogTime(value: string | null | undefined): string | undefined {
   return match === null ? undefined : match[1]
 }
 
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const rest = seconds % 60
-  const mm = String(minutes).padStart(2, '0')
-  const ss = String(rest).padStart(2, '0')
-  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
-}
-
 const executionOptions = computed<{ id: number; name: string }[]>(() => {
   const options: { id: number; name: string }[] = []
   const known = new Set<number>()
@@ -249,7 +236,7 @@ const elapsedText = computed(() => {
   if (start === null) return '—'
   const end = finishedAt.value ?? now.value
   const seconds = Math.max(0, Math.floor((end - start) / 1000))
-  return formatDuration(seconds)
+  return clockText(seconds)
 })
 
 const filteredLines = computed<LogLine[]>(() => {

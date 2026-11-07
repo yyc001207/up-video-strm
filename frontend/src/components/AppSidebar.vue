@@ -159,15 +159,6 @@ function badgeValue(kind?: NavPage['badge']): number {
     <div class="app-sidebar__brand">
       <span class="app-sidebar__logo" aria-hidden="true">uv</span>
       <span v-if="!collapsed" class="app-sidebar__title">up-video-strm</span>
-      <button
-        class="app-sidebar__collapse"
-        type="button"
-        :title="collapsed ? '展开导航' : '收起导航'"
-        :aria-label="collapsed ? '展开导航' : '收起导航'"
-        @click="emit('toggle')"
-      >
-        <el-icon :size="16"><Expand v-if="collapsed" /><Fold v-else /></el-icon>
-      </button>
     </div>
 
     <nav class="app-sidebar__nav" aria-label="主导航">
@@ -241,6 +232,17 @@ function badgeValue(kind?: NavPage['badge']): number {
         </el-icon>
         <span v-if="!collapsed" class="nav-item__label">{{ item.label }}</span>
       </button>
+
+      <button
+        class="app-sidebar__collapse nav-item"
+        type="button"
+        :title="collapsed ? '展开导航' : '收起导航'"
+        :aria-label="collapsed ? '展开导航' : '收起导航'"
+        @click="emit('toggle')"
+      >
+        <el-icon :size="18"><Expand v-if="collapsed" /><Fold v-else /></el-icon>
+        <span v-if="!collapsed" class="nav-item__label">收起导航</span>
+      </button>
     </div>
   </aside>
 </template>
@@ -299,16 +301,19 @@ function badgeValue(kind?: NavPage['badge']): number {
 }
 
 .app-sidebar__collapse {
-  display: inline-flex;
+  display: flex;
   flex: none;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  margin-top: 2px;
+  padding: 0 10px;
   border: none;
-  border-radius: var(--up-strm-radius-sm);
+  border-radius: var(--up-strm-radius-md);
   background: transparent;
   color: var(--el-text-color-secondary);
+  font-size: var(--up-strm-font-size-sm);
   cursor: pointer;
 
   &:hover {
@@ -387,10 +392,15 @@ function badgeValue(kind?: NavPage['badge']): number {
 .nav-group__wrap {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--up-strm-dur-base) var(--up-strm-ease);
+  overflow: hidden;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--up-strm-dur-base) var(--up-strm-ease),
+    visibility var(--up-strm-dur-base) var(--up-strm-ease);
 
   &.is-open {
     grid-template-rows: 1fr;
+    visibility: visible;
   }
 }
 

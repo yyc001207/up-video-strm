@@ -20,33 +20,56 @@
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
-        <div v-loading="loading" class="task-list">
-          <TaskItem
-            v-for="row in tasks"
-            :key="row.id"
-            :name="row.name"
-            :path="row.check_dir"
-            :meta="`上传 ${row.upload_task_name || `#${row.upload_task_id}`} → STRM ${row.openlist_task_name || `#${row.openlist_task_id}`} · 第 ${row.last_round_no} 轮 · ${row.scan_time || '尚未扫描'}`"
-            :status="row.is_running ? 'running' : row.pending_file_count > 0 ? 'pending' : 'never'"
-            :status-count="row.pending_file_count > 0 ? row.pending_file_count : undefined"
-            :selected="selectedIds.includes(row.id)"
-            selectable
-            @toggle="toggleSelect(row.id)"
-            @activate="openEdit(row)"
-          >
-            <template #actions>
+        <el-table
+          v-loading="loading"
+          :data="tasks"
+          row-key="id"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="48" />
+          <el-table-column label="任务" min-width="240">
+            <template #default="{ row }">
+              <div class="cell-primary">{{ row.name }}</div>
+              <div class="cell-secondary" :title="row.check_dir">{{ row.check_dir }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="上传任务" min-width="150">
+            <template #default="{ row }">{{ row.upload_task_name || `#${row.upload_task_id}` }}</template>
+          </el-table-column>
+          <el-table-column label="STRM 任务" min-width="150">
+            <template #default="{ row }">{{ row.openlist_task_name || `#${row.openlist_task_id}` }}</template>
+          </el-table-column>
+          <el-table-column label="运行参数" min-width="170">
+            <template #default="{ row }">
+              <div class="cell-primary">并发 {{ row.upload_concurrency }} · 重试 {{ row.upload_retry_times }}</div>
+              <div class="cell-secondary">{{ modeLabel(row.openlist_mode) }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="110">
+            <template #default="{ row }">
+              <el-tag :type="row.is_running ? 'success' : 'info'" effect="light" round>
+                {{ row.is_running ? '运行中' : '空闲' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="最近扫描" min-width="190">
+            <template #default="{ row }">
+              <div class="cell-primary">{{ row.scan_time || '尚未扫描' }}</div>
+              <div class="cell-secondary">
+                第 {{ row.last_round_no }} 轮 · 待处理 {{ row.pending_file_count }} 个文件
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="170" fixed="right">
+            <template #default="{ row }">
               <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
               <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
             </template>
-          </TaskItem>
-          <EmptyState
-            v-if="!loading && tasks.length === 0"
-            :title="emptyDescription"
-            :action-text="keyword.trim() ? '' : '创建第一个自动追更'"
-            compact
-            @action="openCreate"
-          />
-        </div>
+          </el-table-column>
+          <template #empty>
+            <EmptyState :title="emptyDescription" compact @action="openCreate" />
+          </template>
+        </el-table>
       </div>
       <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="selectedIds = []">
         <el-button type="danger" plain :icon="Delete" @click="handleBatchDelete">删除</el-button>
@@ -189,9 +212,9 @@ import {
 import { automationApi } from '@/api/automation'
 import BulkBar from '@/components/BulkBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import TaskItem from '@/components/TaskItem.vue'
 import type {
   AutomationCheckDirResult,
+  AutomationOpenListMode,
   AutomationOpenListTaskOption,
   AutomationTask,
   AutomationTaskPayload,
@@ -206,12 +229,13 @@ const page = ref(1)
 const pageSize = ref(20)
 const selectedIds = ref<number[]>([])
 
-// 列表统一为行式卡片，批量选择只通过行内勾选框维护
-/** 点勾选框切换选中。 */
-function toggleSelect(id: number): void {
-  const index = selectedIds.value.indexOf(id)
-  if (index >= 0) selectedIds.value.splice(index, 1)
-  else selectedIds.value.push(id)
+// 列表仅提供表格视图，批量选择通过 selection-change 维护
+function handleSelectionChange(rows: AutomationTask[]): void {
+  selectedIds.value = rows.map(row => row.id)
+}
+
+function modeLabel(mode: AutomationOpenListMode): string {
+  return mode === 'full' ? '全量生成' : mode === 'strm_only' ? '仅生成 STRM' : '增量生成'
 }
 
 const drawerVisible = ref(false)

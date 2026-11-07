@@ -6,7 +6,6 @@ import { Delete, Edit, CopyDocument, FolderAdd, Plus, Refresh, Search } from '@e
 import { openlistApi } from '@/api/openlist'
 import BulkBar from '@/components/BulkBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import TaskItem from '@/components/TaskItem.vue'
 import { useOpenlistStore } from '@/stores/openlist'
 import type { OpenListTask } from '@/types/openlist'
 import DirTreePanel from './components/DirTreePanel.vue'
@@ -47,12 +46,10 @@ const emptyDescription = computed(() =>
   keyword.value.trim() ? '没有匹配的任务' : '还没有任务'
 )
 
-// 列表统一为行式卡片，批量选择只通过行内勾选框维护
-/** 点勾选框切换选中。 */
-function toggleSelect(id: number) {
-  const index = selectedIds.value.indexOf(id)
-  if (index >= 0) selectedIds.value.splice(index, 1)
-  else selectedIds.value.push(id)
+// 列表仅提供表格视图，批量选择通过 selection-change 维护
+/** 表格选择变化时同步选中集。 */
+function handleSelectionChange(rows: OpenListTask[]) {
+  selectedIds.value = rows.map(row => row.id)
 }
 
 async function load() {
@@ -385,32 +382,34 @@ defineExpose({ reload: load })
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
-        <div v-loading="loading" class="task-list">
-          <TaskItem
-            v-for="row in pagedList"
-            :key="row.id"
-            :name="row.name"
-            :path="row.process_path || '—'"
-            :meta="`输出到 ${row.output_dir}`"
-            :selected="selectedIds.includes(row.id)"
-            selectable
-            @toggle="toggleSelect(row.id)"
-            @activate="openEdit(row)"
-          >
-            <template #actions>
+        <el-table
+          v-loading="loading"
+          :data="pagedList"
+          row-key="id"
+          class="task-manage__table"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="48" />
+          <el-table-column label="编号" prop="id" width="76" />
+          <el-table-column label="任务" min-width="260">
+            <template #default="{ row }">
+              <div class="cell-primary">{{ row.name }}</div>
+              <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="输出目录" prop="output_dir" min-width="200" show-overflow-tooltip />
+          <el-table-column label="操作" fixed="right">
+            <template #default="{ row }">
               <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
               <el-button link type="primary" :icon="CopyDocument" @click="handleCopy(row)">复制</el-button>
               <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
             </template>
-          </TaskItem>
-          <EmptyState
-            v-if="!loading && pagedList.length === 0"
-            :title="emptyDescription"
-            :action-text="keyword.trim() ? '' : '创建第一个任务'"
-            compact
-            @action="openCreate"
-          />
-        </div>
+          </el-table-column>
+
+          <template #empty>
+            <EmptyState :title="emptyDescription" compact @action="openCreate" />
+          </template>
+        </el-table>
       </div>
 
       <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="selectedIds = []">

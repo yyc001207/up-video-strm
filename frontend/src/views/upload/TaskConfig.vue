@@ -5,13 +5,13 @@ import {
   ElMessage,
   ElMessageBox,
   type FormInstance,
-  type FormRules
+  type FormRules,
+  type TableInstance
 } from 'element-plus'
 
 import { uploaderApi } from '@/api/uploader'
 import BulkBar from '@/components/BulkBar.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import TaskItem from '@/components/TaskItem.vue'
 import type { UploadRenameRule, UploadTask, UploadTaskCreate } from '@/types/uploader'
 
 import RemoteDirPanel from './components/RemoteDirPanel.vue'
@@ -26,11 +26,10 @@ const selectedIds = ref<number[]>([])
 const page = ref(1)
 const pageSize = ref(20)
 
-/** 点勾选框切换选中。 */
-function toggleSelect(id: number): void {
-  const index = selectedIds.value.indexOf(id)
-  if (index >= 0) selectedIds.value.splice(index, 1)
-  else selectedIds.value.push(id)
+const tableRef = ref<TableInstance>()
+
+function handleSelectionChange(rows: UploadTask[]): void {
+  selectedIds.value = rows.map(row => row.id)
 }
 
 const drawerVisible = ref(false)
@@ -112,6 +111,7 @@ watch(filteredTasks, value => {
 
 function resetSelection(): void {
   selectedIds.value = []
+  tableRef.value?.clearSelection()
 }
 
 async function load(): Promise<void> {
@@ -264,31 +264,38 @@ onMounted(() => void load())
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
-        <div v-loading="loading" class="task-list">
-          <TaskItem
-            v-for="row in pagedTasks"
-            :key="row.id"
-            :name="row.name"
-            :path="row.local_dir"
-            :meta="`云端 ${row.remote_dir} · S${String(row.season).padStart(2, '0')} · 起始第 ${row.start_episode} 集 · ${row.rename_rule_name || '默认规则'}`"
-            :selected="selectedIds.includes(row.id)"
-            selectable
-            @toggle="toggleSelect(row.id)"
-            @activate="openEdit(row)"
-          >
-            <template #actions>
+        <el-table
+          ref="tableRef"
+          v-loading="loading"
+          :data="pagedTasks"
+          row-key="id"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="48" />
+          <el-table-column label="任务" min-width="260">
+            <template #default="{ row }">
+              <div class="cell-primary">{{ row.name }}</div>
+              <div class="cell-secondary" :title="row.local_dir">{{ row.local_dir }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="云端目录" prop="remote_dir" min-width="160" show-overflow-tooltip />
+          <el-table-column label="季数" width="80" align="right">
+            <template #default="{ row }">S{{ String(row.season).padStart(2, '0') }}</template>
+          </el-table-column>
+          <el-table-column label="起始集号" prop="start_episode" width="96" align="right" />
+          <el-table-column label="命名规则" min-width="140">
+            <template #default="{ row }">{{ row.rename_rule_name || '默认规则' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="190" fixed="right">
+            <template #default="{ row }">
               <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
               <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
             </template>
-          </TaskItem>
-          <EmptyState
-            v-if="!loading && pagedTasks.length === 0"
-            :title="emptyDescription"
-            :action-text="keyword.trim() ? '' : '创建第一个任务'"
-            compact
-            @action="openCreate"
-          />
-        </div>
+          </el-table-column>
+          <template #empty>
+            <EmptyState :title="emptyDescription" compact @action="openCreate" />
+          </template>
+        </el-table>
       </div>
       <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="resetSelection">
         <el-button type="danger" plain :icon="Delete" @click="handleBatchDelete">删除</el-button>

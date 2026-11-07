@@ -531,8 +531,8 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.9fr) minmax(280px, 1fr);
   gap: var(--up-strm-space-4);
   align-items: stretch;
-  height: clamp(380px, 52vh, 560px);
-  min-height: 380px;
+  height: auto;
+  min-height: clamp(380px, 52vh, 560px);
 }
 
 // 面板通用骨架（与STRM 生成开始执行保持一致）
@@ -697,8 +697,8 @@ onBeforeUnmount(() => {
 // 执行参数
 .exec-panel--params {
   .exec-panel__body {
-    padding-right: var(--up-strm-space-1);
-    padding-bottom: var(--up-strm-space-5);
+    padding-right: var(--up-strm-space-4);
+    padding-bottom: var(--up-strm-space-4);
     overflow-y: auto;
   }
 

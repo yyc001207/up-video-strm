@@ -35,6 +35,9 @@ const moduleId = computed(() => route.path.split('/')[1] ?? '')
 const moduleLabel = computed(() => MODULE_LABEL[moduleId.value] ?? '')
 const pageLabel = computed(() => (route.meta.title as string | undefined) ?? '')
 const pageDescription = computed(() => (route.meta.description as string | undefined) ?? '')
+const crumbPrimary = computed(() =>
+  moduleLabel.value ? `${moduleLabel.value} · ${pageLabel.value}` : pageLabel.value
+)
 
 const offline = computed(() => running.isConnectFailed(now.value))
 const updateText = computed(() => {
@@ -50,12 +53,8 @@ const progressText = computed(() =>
 <template>
   <header class="top-bar">
     <div class="top-bar__crumbs">
-      <span class="top-bar__page">{{ pageLabel }}</span>
-      <span v-if="moduleLabel || pageDescription" class="top-bar__sub">
-        <template v-if="moduleLabel">{{ moduleLabel }}</template>
-        <template v-if="moduleLabel && pageDescription"> · </template>
-        <template v-if="pageDescription">{{ pageDescription }}</template>
-      </span>
+      <span class="top-bar__page">{{ crumbPrimary }}</span>
+      <span v-if="pageDescription" class="top-bar__sub">{{ pageDescription }}</span>
     </div>
 
     <div class="top-bar__actions">

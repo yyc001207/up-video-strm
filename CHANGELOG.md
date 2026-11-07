@@ -21,6 +21,12 @@
 
 - 暂无。
 
+## [文档整理] - 2026-11-07（不递增版本）
+
+- 删除过期设计文档（三份自动化模块评审记录、前端抽象复核方案与组件抽取方案），并清理 `README.md`、`docs/design/automation-module-plan.md` 中的失效链接与状态说明。
+- 按真实代码校正：`docs/rules/frontend.md` 组件清单移除已删除的 `TaskItem`；`docs/rules/backend.md` 补桌面接口 `fix-tray` / `open-taskbar-settings`；`docs/rules/project.md` 补源码日志目录 `upload_logs` / `automation_logs`；`README.md` 项目结构与「运行记录」说明改为当前实际形态。
+- 设计文档状态回填：`automation-module-plan.md` 标记已实现（v4.13.x）、`ui-review-round2.md` 标记第 7 节已实施（v4.9.1）、`ui-next-fix-plan.md` 标记已实施（v4.19.1）、`ui-next-plan.md` 注明任务列表已在 4.19.2 改为表格。
+
 ## [4.19.2] - 2026-11-07
 
 **级别：PATCH（任务列表统一为表格、侧栏收起按钮下移、二级菜单收起漏字修复）** · 代码见本次提交

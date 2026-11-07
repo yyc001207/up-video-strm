@@ -23,7 +23,7 @@ frontend/
 │   │   ├── automation/     # 自动追更模块：任务配置 / 开始执行 / 运行详情 / 运行记录
 │   │   ├── config/         # 连接与格式：服务器配置 + 视频/字幕格式 + 123 云盘凭据
 │   │   └── Settings/       # 桌面设置页
-│   ├── components/         # 通用组件（AppSidebar / TopBar / ActivityDrawer / CommandPalette / FlowCard / StatusPill / AvatarTile / EmptyState / ProgressRing / TaskItem / BulkBar / StatusDot / LogViewer / ThemeToggle）
+│   ├── components/         # 通用组件（AppSidebar / TopBar / ActivityDrawer / CommandPalette / FlowCard / StatusPill / AvatarTile / EmptyState / ProgressRing / BulkBar / StatusDot / LogViewer / ThemeToggle）
 │   ├── types/ / utils/     # 类型（openlist / uploader / automation / desktop）、工具（date / ws）
 │   └── styles/             # variables（Next UI v2 令牌）/ element-reset（EP 变量映射与表格统一）/ dark（紫黑四层）/ global
 ├── index.html              # 标题「up-video-strm 控制台」+ 首屏主题预加载
@@ -58,7 +58,7 @@ frontend/
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
-- 壳层（Next UI v2，见 [docs/design/ui-next-plan.md](../design/ui-next-plan.md)）：左侧 [AppSidebar.vue](../../frontend/src/components/AppSidebar.vue) 232px 单列手风琴（折叠 72px，存 `localStorage` 的 `up-video-strm-sidebar-collapsed`；展开 / 收起按钮固定在侧栏**最下方**，展开时带「收起导航」文字、折叠时仅图标居中），顶部「今天」，随后「STRM 生成 / 云盘上传 / 自动追更」三个模块（同一时刻只展开一个，展开状态记在 `up-video-strm-nav-open-group`，子项展开 / 收起用 Vue `<Transition :css="false">` + JS 高度过渡（0 → `scrollHeight`，动画结束后才移除节点，取消时清理内联样式），避免收起时子项文字残留、闪动或提前消失），底部「连接与格式」「设置」；「开始执行」项显示该模块运行中数量徽标。顶栏 [TopBar.vue](../../frontend/src/components/TopBar.vue) 60px 两行吸顶：第一行「模块 / 页面」面包屑，第二行页面简述（取路由 `meta.description`，单行省略）+ 运行胶囊（`N 个在跑 · P%` / 空闲，点击打开 [ActivityDrawer.vue](../../frontend/src/components/ActivityDrawer.vue) 可看详情或停止）+ 连接状态 + 搜索入口 + 主题切换；搜索入口与快捷键 Ctrl/Cmd + K 均打开 [CommandPalette.vue](../../frontend/src/components/CommandPalette.vue) 命令面板。`App.vue` 仅负责壳层、离线细横幅与 30s 运行状态轮询（页面隐藏时跳过），页面标题只出现在顶栏，内容区不再渲染重复的大标题。
+- 壳层（Next UI v2，见 [docs/design/ui-next-plan.md](../design/ui-next-plan.md)）：左侧 [AppSidebar.vue](../../frontend/src/components/AppSidebar.vue) 232px 单列手风琴（折叠 72px，存 `localStorage` 的 `up-video-strm-sidebar-collapsed`；展开 / 收起按钮固定在侧栏**最下方**，展开时带「收起导航」文字、折叠时仅图标居中），顶部「今天」，随后「STRM 生成 / 云盘上传 / 自动追更」三个模块（同一时刻只展开一个，展开状态记在 `up-video-strm-nav-open-group`，子项展开 / 收起用 Vue `<Transition :css="false">` + JS 高度过渡（0 → `scrollHeight`，动画结束后才移除节点，取消时清理内联样式），避免收起时子项文字残留、闪动或提前消失），底部「连接与格式」「设置」；「开始执行」项显示该模块运行中数量徽标。顶栏 [TopBar.vue](../../frontend/src/components/TopBar.vue) 60px 两行吸顶：第一行页面标题（15px/600，取 `route.meta.title`），第二行「模块 · 页面简述」（`meta.description`，单行省略）+ 运行胶囊（`N 个在跑 · P%` / 空闲，点击打开 [ActivityDrawer.vue](../../frontend/src/components/ActivityDrawer.vue) 可看详情或停止）+ 连接状态 + 搜索入口 + 主题切换；搜索入口与快捷键 Ctrl/Cmd + K 均打开 [CommandPalette.vue](../../frontend/src/components/CommandPalette.vue) 命令面板。`App.vue` 仅负责壳层、离线细横幅与 30s 运行状态轮询（页面隐藏时跳过），页面标题只出现在顶栏，内容区不再渲染重复的大标题。
 - 展示名（路由不变）：任务调度 → STRM 生成，任务配置 → 任务，执行管理 → 开始执行，实时日志 → 运行详情，任务历史 → 运行记录；上传管理 → 云盘上传，重命名规则 → 命名规则；自动化任务 → 自动追更；全局配置 → 连接与格式。默认进入「今天」（`/`），未匹配路由重定向 `/`。`document.title` 同步为「`<页面标题> - up-video-strm`」，默认「up-video-strm 控制台」。
 - 「今天」首屏固定 5 个只读请求（`openlistApi.listTasks`、`openlistApi.listExecutions`、`uploaderApi.listExecutions`、`automationApi.listTasks`、`automationRunApi.active`，均 silent），任一失败只降级对应区块；无任务时展示「先从连接开始」三步空态；壳层 running store 的聚合请求不计入。
 - 后端不可达时内容区顶部展示可关闭的离线细横幅，运行状态由 [stores/running.ts](../../frontend/src/stores/running.ts) 聚合（三模块运行中数量、`items` 运行条目、加权 `progress`、`lastUpdatedAt`，30s 轮询且页面隐藏时跳过）。
@@ -66,7 +66,7 @@ frontend/
 - 执行管理 → 实时日志通过路由 query 传参：任务调度为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName, launch}`），上传管理为 `execs`（JSON 数组，元素 `{executionId, taskId, taskName}`）。实时日志页先建立 WebSocket，`onOpen` 后再调用 `startExecution`（保证先连日志再启动）；上传管理多个执行按队列串行启动与切换。
 - 时间统一按**北京时间**解释与展示：一律使用 `utils/date.ts` 的 `formatDateTime`（`YYYY-MM-DD HH:mm:ss`）、`formatDate`（`YYYY-MM-DD`）或 `beijingMillis`（耗时计算），不要直接调用 dayjs 格式化；后端返回无时区墙钟字符串时按 `Asia/Shanghai` 解析，自带 Z / 偏移则先换算到北京时间。
 - 列表页工具栏统一使用 `styles/global.scss` 的 `.toolbar` 原语：`.toolbar__left` 放搜索/筛选/提示，`.toolbar__right` 放操作组且恒贴右（`margin-left: auto`），间距 12px / 组内 8px；页面样式只保留专有规则（如 `.toolbar__keyword`、`.toolbar__hint`），不再各自定义布局。
-- 执行类页面的卡片区（调度 `.exec-workspace`、上传 `.upload-execution__cards` 与 `.running-card`）固定 `flex: none`：窗口变矮时不压缩卡片，内容过高由外层容器滚动。
+- 执行类页面的工作台（`.exec-workspace`）与「正在执行」表（`.exec-running`）固定 `flex: none`：窗口变矮时不压缩，内容过高由外层容器滚动。
 - 列表页统一使用 `styles/global.scss` 的列表页骨架：根 `.page.page--fill.list-page`（flex 列、`overflow: hidden`）、表格卡 `.list-card`、滚动容器 `.list-card__table`、分页 `.list-card__pager`。所有列表默认每页 20 条（可选 10 / 20 / 50），筛选或数据变化后回到第 1 页；滚动条只出现在表格卡片内部，页面上不得出现整页滚动条。`.page--fill` 基础样式不含纵向 `gap`，工具栏与列表卡之间的间距由页面自身提供（如 `.automation-tasks { gap: var(--up-strm-space-4) }`）。
 - 列表筛选约定：工具栏 `__left` 放「关键字 / 状态 / 时间范围」筛选，`__right` 放操作按钮与刷新；筛选在客户端完成（单模块数据量小），详情与执行记录仍走服务端分页。时间范围按北京时间自然日 `[开始日 00:00:00, 结束日 23:59:59]`，取「完成时间 → 开始时间 → 创建时间」中第一个可用值；「未执行」用哨兵值（任务调度 `'unexecuted'`、上传历史 `last_execution?.status ?? 'none'`）。
 

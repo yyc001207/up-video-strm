@@ -49,7 +49,7 @@ cd frontend
 npm run dev
 ```
 
-- 源码运行时数据相对 CWD：`backend/data`（数据库）、`backend/openlist_logs`、`backend/output`。
+- 源码运行时数据相对 CWD：`backend/data`（数据库）、`backend/openlist_logs`、`backend/upload_logs`、`backend/automation_logs`、`backend/output`。
 - 设置 `UP_VIDEO_STRM_UI=window` 可在源码模式也打开原生窗口（便于调试桌面外壳）。
 - 前端产物同步到 `backend/frontend/dist` 后，后端自动托管前端页面（含 SPA 回退）。
 
@@ -68,7 +68,7 @@ npm run dev
 
 | 方面 | 冻结态行为 |
 |------|-----------|
-| 数据目录 | 正式版固定为 `%LOCALAPPDATA%\up-video-strm`，测试版为 `%LOCALAPPDATA%\up-video-strm-test`（由资源目录内 `build_profile.json` 区分；`UP_VIDEO_STRM_HOME` 均可覆盖）；启动后 `os.chdir(数据目录)`，`./data`、`./openlist_logs`、`./output` 等相对路径均落在数据目录下 |
+| 数据目录 | 正式版固定为 `%LOCALAPPDATA%\up-video-strm`，测试版为 `%LOCALAPPDATA%\up-video-strm-test`（由资源目录内 `build_profile.json` 区分；`UP_VIDEO_STRM_HOME` 均可覆盖）；启动后 `os.chdir(数据目录)`，`./data`、`./openlist_logs`、`./upload_logs`、`./automation_logs`、`./output` 等相对路径均落在数据目录下 |
 | 资源定位 | `resource_dir()` 返回 `_MEIPASS`（onedir 为 `_internal`）定位打包的前端产物；exe 同级 `frontend/dist` 也可作为托管目录；`build_profile.json`（`prod`/`test`）记录构建类型 |
 | 端口回退 | 源码首选 `8000`、安装包首选 `18765`（`UP_VIDEO_STRM_PORT` 可改），被占用时顺延探测最多 20 个端口，全失败则报错退出 |
 | 进程模型 | 不派生子进程：后台线程运行 uvicorn，主线程运行原生窗口；exe 为 GUI 进程（无控制台），stdio 重定向到 `logs/app.log`（超 5 MB 轮转） |

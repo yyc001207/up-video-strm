@@ -1,6 +1,6 @@
 # docs/design/ui-review-round2.md — 前端 UI 评审与优化方案（第二轮）
 
-> 状态：**P0–P2 已实施（v4.9.0，commit `bde1752`）**；第 7 节为实施后回归问题的修复计划（**未实施**）。
+> 状态：**P0–P2 已实施（v4.9.0，commit `bde1752`）**；第 7 节回归问题的修复已实施（v4.9.1）。
 > 上一轮评审见 [ui-redesign-plan.md](ui-redesign-plan.md)（已实施至 v2.1.0）；核心规范见 [AGENTS.md](../../AGENTS.md)；前端工程说明见 [docs/rules/frontend.md](../rules/frontend.md)。
 
 - 评审对象：`frontend/src` 全部视图与样式层（约 6600 行，14 个视图组件）+ 真实界面截图

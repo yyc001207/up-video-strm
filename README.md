@@ -18,7 +18,7 @@
 | STRM 生成 · 任务 | 任务自动绑定唯一服务器；支持新建、复制、列表行与批量删除、「快速添加」（目录树勾选 / 搜索 / 下钻）；生成参数（并发度、限流、SSL 校验、输出目录前缀与根目录）在「连接与格式 · 生成设置」统一维护 |
 | STRM 生成 · 开始执行 | 多选任务批量执行、取消；支持执行参数覆盖 |
 | STRM 生成 · 运行详情 | WebSocket 实时推送进度与日志，多任务切换查看 |
-| STRM 生成 · 运行记录 | 每任务最近执行 + 全部记录、日志回放 / 下载 |
+| STRM 生成 · 运行记录 | 每任务最近执行 + 全部记录、日志回放 / 打开日志文件夹 |
 | 云盘上传 | 面向 123 云盘的独立模块：上传任务（本地/云端目录、季数与起始集号）、命名规则（`SxxExx` 模板预览）、开始执行（冲突策略 / 并发 / 重试 / 试运行）、运行详情、运行记录（文件明细 / 打开日志文件夹 / 重跑） |
 | 云盘上传 · 执行 | 六阶段流水线（扫描 → 过滤 → 重命名 → 预上传清单 → 重复检查 → 上传）；同名冲突支持跳过 / 覆盖 / 追加后缀，进度与日志经 WebSocket 实时推送 |
 | 自动追更 | 把「上传任务」与「STRM 任务」串联为轮询链路——本地新增 → 上传到 123 云盘 → 校验 OpenList 可见性 → 触发 STRM 生成；含任务配置、开始执行、运行详情、运行记录与失败文件补偿 |
@@ -98,9 +98,10 @@ npm run preview                   # 本地预览构建产物
 | [CHANGELOG.md](CHANGELOG.md) | 版本演进记录：各版本的级别、变更要点与版本判定依据 |
 | [docs/design/upload-module-plan.md](docs/design/upload-module-plan.md) | 上传管理模块设计计划：信息架构、数据模型、执行流水线、123 云盘对接与测试约束 |
 | [docs/design/automation-module-plan.md](docs/design/automation-module-plan.md) | 自动化任务模块设计计划：四模块平级、B→OpenList 校验→A 链路、等待机制与触发来源 |
-| [docs/design/ui-next-plan.md](docs/design/ui-next-plan.md) | 新版界面设计方案（Next UI · 暖调媒体方向，P1–P5 已按此实施）：暖紫视觉语言、全量改名、单列导航、卡片化列表、顶栏运行入口与命令面板；复用现有接口，不新增后端接口 |
-| [docs/design/ui-next-fix-plan.md](docs/design/ui-next-fix-plan.md) | 新版 UI 落地问题修复方案（v4.19.0 复盘）：深色对比度、列表化、导航交互、页面标题、参数卡裁切、浅色卡片去白化等 9 项与全站样式复查 |
-| [docs/design/frontend-abstraction-plan-v2.md](docs/design/frontend-abstraction-plan-v2.md) | 前端抽象复核与修订方案（v4.19.2）：撤回组件抽取方案，只做纯函数/分页/选择/共享样式六项去重，交互变更单独立项，并给出删除与失败判据 |
+| [docs/design/ui-next-plan.md](docs/design/ui-next-plan.md) | 新版界面设计方案（Next UI · 暖调媒体方向，P1–P5 已按此实施）：暖紫视觉语言、全量改名、单列导航、任务列表、顶栏运行入口与命令面板；复用现有接口，不新增后端接口 |
+| [docs/design/ui-next-fix-plan.md](docs/design/ui-next-fix-plan.md) | 新版 UI 落地问题修复方案（v4.19.0 复盘）：深色对比度、导航交互、页面标题、参数卡裁切、浅色卡片去白化等 9 项与全站样式复查 |
+| [docs/design/ui-review-round2.md](docs/design/ui-review-round2.md) | 第二轮 UI 评审与修复方案（v4.9.0–4.9.1 已实施）：全局错误治理、运行状态聚合、列表筛选与布局一致性（历史记录） |
+| [docs/design/ui-redesign-plan.md](docs/design/ui-redesign-plan.md) | 早期界面重构方案（v2.1.0 已实施）：布局、导航、日志与响应式基线（历史记录） |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 
@@ -112,8 +113,8 @@ up-video-strm/
 │   ├── app/
 │   │   ├── main.py             # 应用入口（路由挂载、前端托管、健康检查）
 │   │   ├── desktop.py          # 原生窗口外壳（pywebview + WebView2）
-│   │   ├── api/                # openlist 业务路由 / desktop 桌面设置路由
-│   │   ├── business/openlist/  # 执行引擎、STRM 生成、日志、业务服务
+│   │   ├── api/                # openlist / uploader / automation 业务路由、desktop 桌面设置路由
+│   │   ├── business/           # openlist（STRM 生成）、uploader（云盘上传）、automation（自动追更）与执行启动闸门
 │   │   ├── core/               # settings / database / models / paths / desktop_prefs
 │   │   ├── utils/              # 响应封装与工具
 │   │   └── websocket/          # 实时日志连接管理

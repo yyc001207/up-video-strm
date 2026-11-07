@@ -1,8 +1,8 @@
 # 自动化任务模块（模块 C）设计与实现计划
 
-> 状态：**已按第三轮评审补齐口径，待 Go 开工**（已按[第三轮评审意见](automation-module-plan-review-round3.md)补齐 1 项残余 P0 与 6 项 P1 的书面口径，并吸收 7 项 P2 备注；第三轮结论为「补完即可实施、不需要第四轮评审」；本文只描述设计，用户确认开工后再写代码）
+> 状态：**已实现并交付**（v4.13.0 交付模块，v4.13.1 修复授权令牌超限问题，v4.13.2 修复轮次结束待校验数量刷新；实现细节以代码与 [后端规范](../rules/backend.md)、[前端规范](../rules/frontend.md) 为准）
 >
-> 关联文档：[上传管理模块计划](upload-module-plan.md) · [第一轮评审意见](automation-module-plan-review.md) · [第二轮评审意见](automation-module-plan-review-round2.md) · [第三轮评审意见](automation-module-plan-review-round3.md) · [前端规范](../rules/frontend.md) · [后端规范](../rules/backend.md)
+> 关联文档：[上传管理模块计划](upload-module-plan.md) · [前端规范](../rules/frontend.md) · [后端规范](../rules/backend.md)
 
 ## 1. 背景与定位
 

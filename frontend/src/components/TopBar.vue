@@ -35,9 +35,11 @@ const moduleId = computed(() => route.path.split('/')[1] ?? '')
 const moduleLabel = computed(() => MODULE_LABEL[moduleId.value] ?? '')
 const pageLabel = computed(() => (route.meta.title as string | undefined) ?? '')
 const pageDescription = computed(() => (route.meta.description as string | undefined) ?? '')
-const crumbPrimary = computed(() =>
-  moduleLabel.value ? `${moduleLabel.value} · ${pageLabel.value}` : pageLabel.value
-)
+const crumbPrimary = computed(() => {
+  if (!moduleLabel.value) return pageLabel.value
+  if (!pageLabel.value || pageLabel.value === moduleLabel.value) return moduleLabel.value
+  return `${moduleLabel.value} · ${pageLabel.value}`
+})
 
 const offline = computed(() => running.isConnectFailed(now.value))
 const updateText = computed(() => {

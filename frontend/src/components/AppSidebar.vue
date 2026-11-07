@@ -1,17 +1,20 @@
 <script setup lang="ts">
 /**
  * 左侧导航：232px 单列，模块手风琴（同一时刻只展开一个），可折叠为 72px。
- * 组内记住上次访问的页面；「开始执行」显示运行中数量徽标。
+ * 组内只记忆中当前模块（不记忆具体页面）；「开始执行」显示运行中数量徽标。
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  ArrowDown,
   Cpu,
   Film,
   Setting,
   MagicStick,
   Odometer,
-  Connection
+  Connection,
+  Expand,
+  Fold
 } from '@element-plus/icons-vue'
 
 import { useRunningStore } from '@/stores/running'
@@ -79,7 +82,6 @@ const FOOTER: NavPage[] = [
   { path: '/settings', label: '设置' }
 ]
 
-const LAST_PAGE_KEY = 'up-video-strm-nav-last-page'
 const OPEN_GROUP_KEY = 'up-video-strm-nav-open-group'
 
 function readStorage(key: string, fallback = ''): string {
@@ -108,29 +110,14 @@ const moduleOfPath = computed(() => {
 })
 
 const openGroup = ref(readStorage(OPEN_GROUP_KEY) || 'schedule')
-const lastPageByModule = ref<Record<string, string>>(
-  (() => {
-    try {
-      return JSON.parse(readStorage(LAST_PAGE_KEY, '{}')) as Record<string, string>
-    } catch {
-      return {}
-    }
-  })()
-)
 
 watch(
   () => route.path,
-  path => {
+  () => {
     const module = moduleOfPath.value
     if (!module) return
     openGroup.value = module
     writeStorage(OPEN_GROUP_KEY, module)
-    const remembered = lastPageByModule.value[module]
-    const exact = GROUPS.find(group => group.id === module)?.pages.some(page => page.path === path)
-    if (exact || !remembered) {
-      lastPageByModule.value[module] = path
-      writeStorage(LAST_PAGE_KEY, JSON.stringify(lastPageByModule.value))
-    }
   },
   { immediate: true }
 )
@@ -155,10 +142,6 @@ function toggleGroup(group: NavGroup): void {
   writeStorage(OPEN_GROUP_KEY, openGroup.value)
 }
 
-function groupTarget(group: NavGroup): string {
-  return lastPageByModule.value[group.id] ?? group.pages[0]!.path
-}
-
 function go(path: string): void {
   if (route.path !== path) router.push(path)
 }
@@ -177,14 +160,13 @@ function badgeValue(kind?: NavPage['badge']): number {
       <span class="app-sidebar__logo" aria-hidden="true">uv</span>
       <span v-if="!collapsed" class="app-sidebar__title">up-video-strm</span>
       <button
-        v-if="!collapsed"
         class="app-sidebar__collapse"
         type="button"
-        title="收起导航"
-        aria-label="收起导航"
+        :title="collapsed ? '展开导航' : '收起导航'"
+        :aria-label="collapsed ? '展开导航' : '收起导航'"
         @click="emit('toggle')"
       >
-        «
+        <el-icon :size="16"><Expand v-if="collapsed" /><Fold v-else /></el-icon>
       </button>
     </div>
 
@@ -196,7 +178,7 @@ function badgeValue(kind?: NavPage['badge']): number {
         :title="collapsed ? '今天' : undefined"
         @click="go('/')"
       >
-        <el-icon :size="18"><Odometer /></el-icon>
+        <el-icon :size="20"><Odometer /></el-icon>
         <span v-if="!collapsed" class="nav-item__label">今天</span>
       </button>
 
@@ -208,32 +190,37 @@ function badgeValue(kind?: NavPage['badge']): number {
           :title="collapsed ? group.label : undefined"
           @click="toggleGroup(group)"
         >
-          <el-icon :size="18"><component :is="group.icon" /></el-icon>
+          <el-icon :size="20"><component :is="group.icon" /></el-icon>
           <span v-if="!collapsed" class="nav-group__label">{{ group.label }}</span>
-          <span v-if="!collapsed && groupActive(group.id)" class="nav-group__chevron">⌄</span>
+          <el-icon
+            v-if="!collapsed"
+            class="nav-group__chevron"
+            :class="{ 'is-open': openGroup === group.id }"
+            :size="14"
+          >
+            <ArrowDown />
+          </el-icon>
         </button>
-        <div v-if="!collapsed && openGroup === group.id" class="nav-group__body">
-          <button
-            v-for="page in group.pages"
-            :key="page.path"
-            class="nav-item"
-            type="button"
-            :class="{ 'is-active': pageActive(page.path) }"
-            @click="go(page.path)"
-          >
-            <span class="nav-item__label">{{ page.label }}</span>
-            <span v-if="badgeValue(page.badge) > 0" class="nav-item__badge">
-              {{ badgeValue(page.badge) }}
-            </span>
-          </button>
-          <button
-            v-if="!group.pages.some(page => page.path === route.path)"
-            class="nav-item nav-item--ghost"
-            type="button"
-            @click="go(groupTarget(group))"
-          >
-            <span class="nav-item__label">继续上次页面</span>
-          </button>
+        <div
+          v-if="!collapsed"
+          class="nav-group__wrap"
+          :class="{ 'is-open': openGroup === group.id }"
+        >
+          <div class="nav-group__body">
+            <button
+              v-for="page in group.pages"
+              :key="page.path"
+              class="nav-item"
+              type="button"
+              :class="{ 'is-active': pageActive(page.path) }"
+              @click="go(page.path)"
+            >
+              <span class="nav-item__label">{{ page.label }}</span>
+              <span v-if="badgeValue(page.badge) > 0" class="nav-item__badge">
+                {{ badgeValue(page.badge) }}
+              </span>
+            </button>
+          </div>
         </div>
       </template>
     </nav>
@@ -248,21 +235,11 @@ function badgeValue(kind?: NavPage['badge']): number {
         :title="collapsed ? item.label : undefined"
         @click="go(item.path)"
       >
-        <el-icon :size="18">
+        <el-icon :size="20">
           <Connection v-if="item.path === '/config'" />
           <Setting v-else />
         </el-icon>
         <span v-if="!collapsed" class="nav-item__label">{{ item.label }}</span>
-      </button>
-      <button
-        v-if="collapsed"
-        class="app-sidebar__expand"
-        type="button"
-        title="展开导航"
-        aria-label="展开导航"
-        @click="emit('toggle')"
-      >
-        »
       </button>
     </div>
   </aside>
@@ -274,7 +251,7 @@ function badgeValue(kind?: NavPage['badge']): number {
   flex: none;
   flex-direction: column;
   width: var(--up-strm-sidebar-width);
-  height: 100vh;
+  height: 100%;
   padding: var(--up-strm-space-3) var(--up-strm-space-2);
   border-right: 1px solid var(--el-border-color-lighter);
   background: var(--el-bg-color);
@@ -283,7 +260,7 @@ function badgeValue(kind?: NavPage['badge']): number {
   &.is-collapsed {
     width: var(--up-strm-sidebar-collapsed);
     align-items: center;
-    padding-inline: 8px;
+    padding-inline: 4px;
   }
 }
 
@@ -293,7 +270,7 @@ function badgeValue(kind?: NavPage['badge']): number {
   align-items: center;
   gap: 8px;
   height: 40px;
-  padding: 0 8px;
+  padding: 0 6px;
 }
 
 .app-sidebar__logo {
@@ -303,11 +280,11 @@ function badgeValue(kind?: NavPage['badge']): number {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--up-primary-500), var(--up-accent-400));
+  border-radius: 8px;
+  background: var(--up-primary-500);
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.5px;
 }
 
@@ -316,24 +293,27 @@ function badgeValue(kind?: NavPage['badge']): number {
   overflow: hidden;
   color: var(--el-text-color-primary);
   font-size: var(--up-strm-font-size-sm);
-  font-weight: 600;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.app-sidebar__collapse,
-.app-sidebar__expand {
+.app-sidebar__collapse {
+  display: inline-flex;
   flex: none;
-  width: 24px;
-  height: 24px;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--up-strm-radius-sm);
   background: transparent;
   color: var(--el-text-color-secondary);
   cursor: pointer;
 
   &:hover {
     background: var(--el-fill-color-light);
+    color: var(--el-text-color-primary);
   }
 }
 
@@ -360,6 +340,7 @@ function badgeValue(kind?: NavPage['badge']): number {
   background: transparent;
   color: var(--el-text-color-regular);
   font-size: var(--up-strm-font-size-sm);
+  font-weight: 400;
   cursor: pointer;
   transition:
     background var(--up-strm-dur-fast) var(--up-strm-ease),
@@ -373,7 +354,6 @@ function badgeValue(kind?: NavPage['badge']): number {
   &.is-active {
     background: var(--up-primary-50);
     color: var(--up-primary-600);
-    font-weight: 600;
   }
 }
 
@@ -383,7 +363,6 @@ function badgeValue(kind?: NavPage['badge']): number {
 
 .nav-group__head {
   margin-top: 2px;
-  font-weight: 600;
 }
 
 .nav-group__label {
@@ -392,15 +371,36 @@ function badgeValue(kind?: NavPage['badge']): number {
 }
 
 .nav-group__chevron {
+  flex: none;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  transition: transform var(--up-strm-dur-fast) var(--up-strm-ease);
+
+  &.is-open {
+    transform: rotate(0deg);
+  }
+
+  &:not(.is-open) {
+    transform: rotate(-90deg);
+  }
+}
+
+.nav-group__wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--up-strm-dur-base) var(--up-strm-ease);
+
+  &.is-open {
+    grid-template-rows: 1fr;
+  }
 }
 
 .nav-group__body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
   padding: 2px 0 6px 20px;
+  overflow: hidden;
 }
 
 .nav-item__label {
@@ -420,14 +420,9 @@ function badgeValue(kind?: NavPage['badge']): number {
   padding: 0 5px;
   border-radius: 999px;
   background: var(--up-primary-100);
-  color: var(--up-primary-700);
+  color: var(--up-primary-600);
   font-size: 11px;
-  font-weight: 600;
-}
-
-.nav-item--ghost {
-  color: var(--el-text-color-secondary);
-  font-size: var(--up-strm-font-size-xs);
+  font-weight: 500;
 }
 
 .app-sidebar__footer {
@@ -438,14 +433,6 @@ function badgeValue(kind?: NavPage['badge']): number {
   border-top: 1px solid var(--el-border-color-lighter);
 }
 
-.app-sidebar__theme {
-  padding: 4px 10px;
-}
-
-.app-sidebar__hint {
-  color: var(--el-text-color-placeholder);
-}
-
 .is-collapsed {
   .nav-item,
   .nav-group__head {
@@ -454,12 +441,11 @@ function badgeValue(kind?: NavPage['badge']): number {
   }
 
   .app-sidebar__brand {
+    flex-direction: row;
     justify-content: center;
+    gap: 4px;
+    height: 40px;
     padding: 0;
-  }
-
-  .app-sidebar__theme {
-    padding: 4px 0;
   }
 }
 </style>

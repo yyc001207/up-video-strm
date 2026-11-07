@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 顶栏 48px 吸顶：面包屑 + 运行胶囊 + 连接状态 + 主题切换。 */
+/** 顶栏 60px 吸顶：两行面包屑 + 运行胶囊 + 连接状态 + 主题切换。 */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
@@ -34,6 +34,7 @@ const MODULE_LABEL: Record<string, string> = {
 const moduleId = computed(() => route.path.split('/')[1] ?? '')
 const moduleLabel = computed(() => MODULE_LABEL[moduleId.value] ?? '')
 const pageLabel = computed(() => (route.meta.title as string | undefined) ?? '')
+const pageDescription = computed(() => (route.meta.description as string | undefined) ?? '')
 
 const offline = computed(() => running.isConnectFailed(now.value))
 const updateText = computed(() => {
@@ -49,9 +50,12 @@ const progressText = computed(() =>
 <template>
   <header class="top-bar">
     <div class="top-bar__crumbs">
-      <span v-if="moduleLabel" class="top-bar__module">{{ moduleLabel }}</span>
-      <span v-if="moduleLabel && pageLabel" class="top-bar__sep">/</span>
       <span class="top-bar__page">{{ pageLabel }}</span>
+      <span v-if="moduleLabel || pageDescription" class="top-bar__sub">
+        <template v-if="moduleLabel">{{ moduleLabel }}</template>
+        <template v-if="moduleLabel && pageDescription"> · </template>
+        <template v-if="pageDescription">{{ pageDescription }}</template>
+      </span>
     </div>
 
     <div class="top-bar__actions">
@@ -106,29 +110,33 @@ const progressText = computed(() =>
   justify-content: space-between;
   gap: var(--up-strm-space-4);
   height: var(--up-strm-topbar-height);
-  padding: 0 var(--up-strm-space-6);
+  padding: 0 var(--up-strm-page-pad);
   border-bottom: 1px solid var(--el-border-color-lighter);
-  background: color-mix(in srgb, var(--el-bg-color) 88%, transparent);
-  backdrop-filter: saturate(160%) blur(10px);
+  background: var(--el-bg-color);
 }
 
 .top-bar__crumbs {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
-  font-size: var(--up-strm-font-size-sm);
-}
-
-.top-bar__module,
-.top-bar__sep {
-  color: var(--el-text-color-secondary);
 }
 
 .top-bar__page {
   overflow: hidden;
   color: var(--el-text-color-primary);
+  font-size: var(--up-strm-fs-15);
   font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-bar__sub {
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-size: var(--up-strm-font-size-xs);
+  line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -229,7 +237,7 @@ const progressText = computed(() =>
   background: var(--el-fill-color-light);
   color: var(--el-text-color-placeholder);
   font-family: var(--up-strm-font-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 @keyframes capsule-breathe {

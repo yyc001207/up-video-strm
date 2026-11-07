@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 任务头像块：名称首字 + 名称哈希取 6 色（紫 / 蜜桃 / 青 / 粉 / 琥珀 / 蓝）。
- * 现有接口没有封面图，用色块建立条目识别度。
+ * 现有接口没有封面图，用色块建立条目识别度；色值走 --up-avatar-* 令牌，保证白字对比度 ≥4.9:1。
  */
 import { computed } from 'vue'
 
@@ -58,27 +58,27 @@ const initial = computed(() => {
   user-select: none;
 
   &--violet {
-    background: #6b4ee6;
+    background: var(--up-avatar-1);
   }
 
   &--peach {
-    background: #ff8a5b;
+    background: var(--up-avatar-6);
   }
 
   &--cyan {
-    background: #2aa8a8;
+    background: var(--up-avatar-4);
   }
 
   &--pink {
-    background: #d95c9a;
+    background: var(--up-avatar-3);
   }
 
   &--amber {
-    background: #d98a00;
+    background: var(--up-avatar-5);
   }
 
   &--blue {
-    background: #3f74d9;
+    background: var(--up-avatar-2);
   }
 }
 </style>

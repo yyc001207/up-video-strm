@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, FolderAdd, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Delete, Edit, CopyDocument, FolderAdd, Plus, Refresh, Search } from '@element-plus/icons-vue'
 
 import { openlistApi } from '@/api/openlist'
 import BulkBar from '@/components/BulkBar.vue'
@@ -47,16 +47,8 @@ const emptyDescription = computed(() =>
   keyword.value.trim() ? '没有匹配的任务' : '还没有任务'
 )
 
-// 列表视图偏好：卡片为默认，表格供批量核对时切换（记忆在 localStorage）
-const VIEW_KEY = 'up-video-strm-task-view'
-const VIEW_OPTIONS = [
-  { label: '卡片', value: 'card' },
-  { label: '表格', value: 'table' }
-]
-const viewMode = ref<'card' | 'table'>(localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'card')
-watch(viewMode, value => localStorage.setItem(VIEW_KEY, value))
-
-/** 卡片模式下点勾选框切换选中（表格模式由 selection-change 维护）。 */
+// 列表统一为行式卡片，批量选择只通过行内勾选框维护
+/** 点勾选框切换选中。 */
 function toggleSelect(id: number) {
   const index = selectedIds.value.indexOf(id)
   if (index >= 0) selectedIds.value.splice(index, 1)
@@ -81,10 +73,6 @@ async function load() {
 
 async function handleSearch() {
   await load()
-}
-
-function handleSelectionChange(rows: OpenListTask[]) {
-  selectedIds.value = rows.map(row => row.id)
 }
 
 function openCreate() {
@@ -389,7 +377,6 @@ defineExpose({ reload: load })
       </div>
 
       <div class="toolbar__right">
-        <el-segmented v-model="viewMode" :options="VIEW_OPTIONS" size="small" />
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button :icon="FolderAdd" @click="openQuickAdd">快速添加</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
@@ -398,7 +385,7 @@ defineExpose({ reload: load })
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
-        <div v-if="viewMode === 'card'" v-loading="loading" class="task-list">
+        <div v-loading="loading" class="task-list">
           <TaskItem
             v-for="row in pagedList"
             :key="row.id"
@@ -411,9 +398,9 @@ defineExpose({ reload: load })
             @activate="openEdit(row)"
           >
             <template #actions>
-              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
-              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="primary" :icon="CopyDocument" @click="handleCopy(row)">复制</el-button>
+              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
             </template>
           </TaskItem>
           <EmptyState
@@ -424,35 +411,6 @@ defineExpose({ reload: load })
             @action="openCreate"
           />
         </div>
-        <el-table
-          v-else
-          v-loading="loading"
-          :data="pagedList"
-          row-key="id"
-          class="task-manage__table"
-          @selection-change="handleSelectionChange"
-        >
-          <el-table-column type="selection" width="48" />
-          <el-table-column label="编号" prop="id" width="76" />
-          <el-table-column label="任务" min-width="260">
-            <template #default="{ row }">
-              <div class="cell-primary">{{ row.name }}</div>
-              <div class="cell-secondary" :title="row.process_path">{{ row.process_path || '—' }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="输出目录" prop="output_dir" min-width="200" show-overflow-tooltip />
-          <el-table-column label="操作" width="170" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
-              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-
-          <template #empty>
-            <EmptyState :title="emptyDescription" compact @action="openCreate" />
-          </template>
-        </el-table>
       </div>
 
       <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="selectedIds = []">
@@ -605,12 +563,15 @@ defineExpose({ reload: load })
   }
 }
 
-// 卡片列表：行间 2px，选中后底部批量条占位显示
+// 列表：行间以分隔线组织，外框由容器承担
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: var(--up-strm-space-2);
   min-height: 120px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: var(--up-strm-radius-lg);
+  background: var(--el-bg-color);
+  overflow: hidden;
 }
 
 .task-bulk {

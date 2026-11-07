@@ -4,14 +4,16 @@
 html.dark {
   color-scheme: dark;
 
-  --el-bg-color-page: #16131a; // 页面底（最深）
-  --el-bg-color: #1e1a24; // 卡片
-  --el-bg-color-overlay: #2e2839; // 浮层（最浅）
+  --el-bg-color-page: var(--up-surface-page); // 页面底（最深）
+  --el-bg-color: var(--up-surface-card); // 卡片
+  --el-bg-color-overlay: var(--up-surface-overlay); // 浮层（最浅）
   --el-border-color: #3a3344;
   --el-border-color-light: #3a3344;
   --el-border-color-lighter: #302a3a;
-  --el-fill-color-light: #2a2434;
-  --el-fill-color-lighter: #211d28;
+  --el-fill-color-light: var(--up-surface-panel);
+  --el-fill-color-lighter: var(--up-surface-page);
+  --el-dialog-bg-color: var(--up-surface-overlay);
+  --el-drawer-bg-color: var(--up-surface-overlay);
   --el-text-color-primary: #f5f0ed;
   --el-text-color-regular: #e8e1dc;
   --el-text-color-secondary: #b9b0c6;
@@ -32,5 +34,5 @@ html.dark {
   --el-color-danger: #ff9b9b;
   --el-color-error: #ff9b9b;
   --el-color-info: #b9b0c6;
-  --el-fill-color-blank: #1e1a24;
+  --el-fill-color-blank: var(--up-surface-card);
 }

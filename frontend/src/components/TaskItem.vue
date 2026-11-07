@@ -89,21 +89,20 @@ function handleActivate(): void {
   display: flex;
   align-items: center;
   gap: var(--up-strm-space-3);
-  min-height: 80px;
-  padding: 12px var(--up-strm-space-4);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: var(--up-strm-radius-lg);
-  background: var(--el-bg-color);
-  transition:
-    background-color var(--up-strm-dur-fast) var(--up-strm-ease),
-    border-color var(--up-strm-dur-fast) var(--up-strm-ease),
-    box-shadow var(--up-strm-dur-fast) var(--up-strm-ease),
-    transform var(--up-strm-dur-fast) var(--up-strm-ease);
+  min-height: 64px;
+  padding: 10px var(--up-strm-space-4);
+  border: none;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-radius: 0;
+  background: transparent;
+  transition: background-color var(--up-strm-dur-fast) var(--up-strm-ease);
+
+  &:last-child {
+    border-bottom: none;
+  }
 
   &:hover {
-    background: var(--up-ink-100);
-    box-shadow: var(--up-strm-shadow-sm);
-    transform: translateY(-1px);
+    background: var(--el-fill-color-light);
 
     .task-item__check {
       opacity: 1;
@@ -112,13 +111,17 @@ function handleActivate(): void {
   }
 
   &.is-selected {
-    border-color: var(--up-primary-300);
     background: var(--up-primary-50);
 
     .task-item__check {
       opacity: 1;
       pointer-events: auto;
     }
+  }
+
+  &:focus-within .task-item__check {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   &.is-clickable {

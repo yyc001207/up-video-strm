@@ -40,10 +40,17 @@
   --el-color-info: #8c8189;
   --el-color-info-light-9: #f5f0ed;
 
-  // 中性 / 表面（暖调）
-  --el-bg-color-page: #faf7f5;
-  --el-bg-color: #ffffff;
-  --el-bg-color-overlay: #ffffff;
+  // 中性 / 表面（暖调，统一由 --up-surface-* 派生，暗色自动跟随）
+  --el-bg-color-page: var(--up-surface-page);
+  --el-bg-color: var(--up-surface-card);
+  --el-bg-color-overlay: var(--up-surface-overlay);
+  --el-fill-color-blank: var(--up-surface-card);
+  --el-fill-color-light: var(--up-surface-panel);
+  --el-fill-color-lighter: var(--up-surface-page);
+  --el-dialog-bg-color: var(--up-surface-overlay);
+  --el-drawer-bg-color: var(--up-surface-overlay);
+  --el-mask-color: rgba(22, 19, 26, 0.45);
+  --el-border-color-darker: var(--up-ink-300);
   --el-text-color-primary: #211c26; // 正文 16.7:1
   --el-text-color-regular: #4a4350; // 常规 9.5:1
   --el-text-color-secondary: #6e6675; // 次要 5.5:1
@@ -52,8 +59,6 @@
   --el-border-color: #ebe4df;
   --el-border-color-light: #ebe4df;
   --el-border-color-lighter: #f0eae6;
-  --el-fill-color-light: #f5f0ed;
-  --el-fill-color-lighter: #faf7f5;
   --el-border-radius-base: 10px;
   --el-border-radius-small: 8px;
   --el-border-radius-round: 999px;

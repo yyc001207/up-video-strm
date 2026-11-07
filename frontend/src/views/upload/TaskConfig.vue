@@ -5,8 +5,7 @@ import {
   ElMessage,
   ElMessageBox,
   type FormInstance,
-  type FormRules,
-  type TableInstance
+  type FormRules
 } from 'element-plus'
 
 import { uploaderApi } from '@/api/uploader'
@@ -23,21 +22,11 @@ const rules = ref<UploadRenameRule[]>([])
 
 // 列表筛选 / 选择 / 分页（客户端处理）
 const keyword = ref('')
-const tableRef = ref<TableInstance>()
 const selectedIds = ref<number[]>([])
 const page = ref(1)
 const pageSize = ref(20)
 
-// 列表视图偏好：卡片为默认，表格供批量核对时切换（记忆在 localStorage）
-const VIEW_KEY = 'up-video-strm-upload-task-view'
-const VIEW_OPTIONS = [
-  { label: '卡片', value: 'card' },
-  { label: '表格', value: 'table' }
-]
-const viewMode = ref<'card' | 'table'>(localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'card')
-watch(viewMode, value => localStorage.setItem(VIEW_KEY, value))
-
-/** 卡片模式下点勾选框切换选中（表格模式由 selection-change 维护）。 */
+/** 点勾选框切换选中。 */
 function toggleSelect(id: number): void {
   const index = selectedIds.value.indexOf(id)
   if (index >= 0) selectedIds.value.splice(index, 1)
@@ -121,13 +110,8 @@ watch(filteredTasks, value => {
   }
 })
 
-function handleSelectionChange(rows: UploadTask[]): void {
-  selectedIds.value = rows.map(row => row.id)
-}
-
 function resetSelection(): void {
   selectedIds.value = []
-  tableRef.value?.clearSelection()
 }
 
 async function load(): Promise<void> {
@@ -273,7 +257,6 @@ onMounted(() => void load())
         />
       </div>
       <div class="toolbar__right">
-        <el-segmented v-model="viewMode" :options="VIEW_OPTIONS" size="small" />
         <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
         <el-button type="primary" :icon="Plus" @click="openCreate">新建任务</el-button>
       </div>
@@ -281,7 +264,7 @@ onMounted(() => void load())
 
     <el-card shadow="never" class="list-card">
       <div class="list-card__table">
-        <div v-if="viewMode === 'card'" v-loading="loading" class="task-list">
+        <div v-loading="loading" class="task-list">
           <TaskItem
             v-for="row in pagedTasks"
             :key="row.id"
@@ -306,40 +289,6 @@ onMounted(() => void load())
             @action="openCreate"
           />
         </div>
-        <el-table
-          v-else
-          ref="tableRef"
-          v-loading="loading"
-          :data="pagedTasks"
-          row-key="id"
-          style="width: 100%"
-          @selection-change="handleSelectionChange"
-        >
-          <el-table-column type="selection" width="48" />
-          <el-table-column label="任务名称" min-width="180">
-            <template #default="{ row }">
-              <div class="cell-main">{{ row.name }}</div>
-              <div class="cell-sub">{{ row.local_dir }}</div>
-            </template>
-          </el-table-column>
-          <el-table-column label="云端目录" prop="remote_dir" min-width="140" show-overflow-tooltip />
-          <el-table-column label="季数" width="80" align="right">
-            <template #default="{ row }">S{{ String(row.season).padStart(2, '0') }}</template>
-          </el-table-column>
-          <el-table-column label="起始集号" prop="start_episode" width="96" align="right" />
-          <el-table-column label="命名规则" min-width="140">
-            <template #default="{ row }">{{ row.rename_rule_name || '默认规则' }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="150" align="right">
-            <template #default="{ row }">
-              <el-button link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-          <template #empty>
-            <EmptyState :title="emptyDescription" compact @action="openCreate" />
-          </template>
-        </el-table>
       </div>
       <BulkBar v-if="selectedIds.length > 0" :count="selectedIds.length" class="task-bulk" @clear="resetSelection">
         <el-button type="danger" plain :icon="Delete" @click="handleBatchDelete">删除</el-button>
@@ -425,12 +374,15 @@ onMounted(() => void load())
   flex-direction: column;
   gap: var(--up-strm-space-3);
 
-  // 卡片列表：行间 2px；批量条选中后占位显示
+  // 列表：行间以分隔线组织，外框由容器承担
   .task-list {
     display: flex;
     flex-direction: column;
-    gap: var(--up-strm-space-2);
     min-height: 120px;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: var(--up-strm-radius-lg);
+    background: var(--el-bg-color);
+    overflow: hidden;
   }
 
   .task-bulk {

@@ -9,7 +9,6 @@ import { ArrowRight } from '@element-plus/icons-vue'
 
 import EmptyState from '@/components/EmptyState.vue'
 import FlowCard from '@/components/FlowCard.vue'
-import PageHeader from '@/components/PageHeader.vue'
 import StatusPill from '@/components/StatusPill.vue'
 
 import { openlistApi } from '@/api/openlist'
@@ -230,9 +229,9 @@ onMounted(() => {
 
 <template>
   <div class="today">
-    <PageHeader title="今天" :description="todayText" />
     <div class="today__body">
       <section class="today__overview">
+        <p class="today__date">{{ todayText }}</p>
         <p class="today__greeting">{{ overview }}</p>
         <div class="today__cards">
           <FlowCard
@@ -350,6 +349,12 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--up-strm-space-5);
+}
+
+.today__date {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  font-size: var(--up-strm-font-size-xs);
 }
 
 .today__greeting {

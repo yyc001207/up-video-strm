@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 应用壳层：232px 手风琴侧栏 + 48px 顶栏 + 内容区。
+ * 应用壳层：232px 手风琴侧栏 + 60px 顶栏 + 内容区。
+ * 页面标题与描述统一放在顶栏两行面包屑中，内容区不再重复标题。
  * 全局每 30s 轮询运行状态（页面隐藏时跳过）；离线时内容区顶部出现一条细横幅。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
@@ -8,7 +9,6 @@ import { useRoute } from 'vue-router'
 
 import AppSidebar from '@/components/AppSidebar.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
-import PageHeader from '@/components/PageHeader.vue'
 import TopBar from '@/components/TopBar.vue'
 import { RUNNING_POLL_MS, useRunningStore } from '@/stores/running'
 
@@ -22,9 +22,7 @@ const offlineDismissed = ref(false)
 const paletteOpen = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-const isToday = computed(() => route.path === '/')
 const pageTitle = computed(() => (route.meta.title as string | undefined) ?? '')
-const pageDescription = computed(() => (route.meta.description as string | undefined) ?? '')
 const showOfflineAlert = computed(() => runningStore.offline && !offlineDismissed.value)
 
 watchEffect(() => {
@@ -70,7 +68,16 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
   }
 }
 
+// 一次性清理旧版列表视图/上次页面的遗留存储键
+const LEGACY_STORAGE_KEYS = [
+  'up-video-strm-task-view',
+  'up-video-strm-upload-task-view',
+  'up-video-strm-automation-task-view',
+  'up-video-strm-nav-last-page'
+]
+
 onMounted(() => {
+  LEGACY_STORAGE_KEYS.forEach(key => localStorage.removeItem(key))
   void refreshRunning()
   document.addEventListener('keydown', handleGlobalKeydown)
   pollTimer = setInterval(() => {
@@ -105,11 +112,6 @@ onBeforeUnmount(() => {
       </div>
 
       <main class="app-content">
-        <PageHeader
-          v-if="!isToday && pageTitle"
-          :title="pageTitle"
-          :description="pageDescription"
-        />
         <router-view />
       </main>
     </div>
@@ -119,7 +121,7 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .app-shell {
   display: flex;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   background: var(--el-bg-color-page);
 }
@@ -129,7 +131,7 @@ onBeforeUnmount(() => {
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  height: 100vh;
+  height: 100%;
 }
 
 .app-content {
@@ -146,7 +148,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   height: 32px;
-  padding: 0 var(--up-strm-space-6);
+  padding: 0 var(--up-strm-page-pad);
   border-bottom: 1px solid var(--up-warning-bg);
   background: var(--up-warning-bg);
   color: var(--up-warning-text);
@@ -175,7 +177,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1279px) {
   .app-offline {
-    padding: 0 var(--up-strm-space-5);
+    padding: 0 24px;
   }
 }
 </style>

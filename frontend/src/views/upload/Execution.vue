@@ -696,6 +696,12 @@ onBeforeUnmount(() => {
 
 // 执行参数
 .exec-panel--params {
+  .exec-panel__body {
+    padding-right: var(--up-strm-space-1);
+    padding-bottom: var(--up-strm-space-5);
+    overflow-y: auto;
+  }
+
   .param-block {
     display: flex;
     flex: none;
@@ -717,8 +723,8 @@ onBeforeUnmount(() => {
   }
 
   .param-note {
-    margin: auto 0 0;
-    padding-top: var(--up-strm-space-3);
+    margin: var(--up-strm-space-3) 0 0;
+    padding: var(--up-strm-space-3) 0 0;
     border-top: 1px solid var(--el-border-color-lighter);
     color: var(--el-text-color-secondary);
     font-size: var(--up-strm-font-size-xs);

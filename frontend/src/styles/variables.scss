@@ -34,6 +34,21 @@
   --up-accent-text: #b84a1e;
   --up-accent-bg: #fff0e8;
 
+  // ---- 表面层（页面 / 卡片 / 浮层 / 内嵌面板）----
+  // 四级暖表面：L3 浮层 > L1 卡片 > L2 内嵌 > L0 页面，避免纯白刺眼
+  --up-surface-page: #f1eae3;
+  --up-surface-card: #faf5ef;
+  --up-surface-overlay: #fdf9f4;
+  --up-surface-panel: #f5eee7;
+
+  // ---- 头像色板（白字对比度均 ≥4.9:1）----
+  --up-avatar-1: #6b4ee6;
+  --up-avatar-2: #2f5bb7;
+  --up-avatar-3: #9d2b6b;
+  --up-avatar-4: #0f766e;
+  --up-avatar-5: #a16207;
+  --up-avatar-6: #c2410c;
+
   // ---- 语义色四件套（mark / text / bg）----
   --up-success-mark: #1fa971;
   --up-success-text: #0b7a4f;
@@ -48,7 +63,7 @@
   // ---- 布局 ----
   --up-strm-sidebar-width: 232px;
   --up-strm-sidebar-collapsed-width: 72px;
-  --up-strm-topbar-height: 48px;
+  --up-strm-topbar-height: 60px;
   --up-strm-content-max-width: 1360px;
   --up-strm-page-pad: 32px;
   --up-strm-workspace-sidebar: 360px;
@@ -117,6 +132,15 @@ html.dark {
   --up-ink-800: #e8e1dc;
   --up-ink-900: #f5f0ed;
 
+  // 表面四层：page / card / panel / overlay（Element Plus 表面变量统一由此派生）
+  --up-surface-page: #16131a;
+  --up-surface-card: #1e1a24;
+  --up-surface-overlay: #2e2839;
+  --up-surface-panel: #262130;
+
+  --up-primary-50: #241c3a;
+  --up-primary-100: #2d2350;
+  --up-primary-200: #40336b;
   --up-primary-500: #b49efc;
   --up-primary-600: #d3c6ff;
 

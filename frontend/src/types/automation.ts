@@ -163,8 +163,8 @@ export interface AutomationRunLogResult {
 
 /** 自动追更 WS 帧：日志 / 进度 / 状态 / 异常通知。 */
 export type AutomationWsFrame =
-  | { type: 'log'; level: string; message: string; ts: string }
-  | { type: 'progress'; data: Record<string, unknown> }
+  | { type: 'log'; level: string; message: string; ts: string; replay?: boolean }
+  | { type: 'progress'; data: Record<string, unknown>; replay?: boolean }
   | {
       type: 'status'
       status?: string
@@ -174,5 +174,11 @@ export type AutomationWsFrame =
       pending?: number
       checked?: number
       missed?: number
+      error_code?: string | null
+      error_message?: string | null
+      replay?: boolean
     }
-  | { type: 'alert'; status?: string; message: string; task_id?: number }
+  | { type: 'alert'; status?: string; message: string; task_id?: number; replay?: boolean }
+
+/** 任务运行态快照（`GET /api/automation/active` 单条，代码内简称 runtime）。 */
+export type AutomationRuntimeState = AutomationActiveTask

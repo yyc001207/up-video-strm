@@ -2,27 +2,28 @@
 /**
  * 自动追更 · 运行详情（/automation/realtime）。
  *
- * 布局与「STRM 生成 · 运行详情」保持一致：顶部进度摘要（轮次 / 待校验 / 已校验 /
- * 缺失 / 状态 / 用时 / 当前任务）、日志工具条（级别过滤 / 关键字 / 行数 / 返回开始执行）、
- * 可复用日志终端（LogViewer）。
+ * 状态分三层，页面并列展示、互不冒充（推导见 `@/utils/automationState`）：
+ * - 任务层：`GET /api/automation/active`（5s 轮询）→ 任务是否在跑、当前阶段、下一轮时间；
+ * - 本轮层：WS live 帧 + 终态后 `GET /runs/{run_id}` → 轮次状态、计数、失败原因；
+ * - 连接层：WS 连接状态 + 自动重连 → 只表达连接本身。
  *
- * 数据来源：按任务维度订阅 WS（automation:{task_id}），帧类型 log / progress / status，
- * 异常终止另有 alert 帧（网页通知）；连接建立后后端回放最近帧。
- * 任务未运行时自动回放最近一轮的日志文件，避免空白页。
+ * 后端回放的历史帧带 `replay: true`，本页直接丢弃，避免把上一轮的终态当成本轮结束；
+ * 最近一轮日志通过「查看最近一轮」按钮显式加载。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElNotification } from 'element-plus'
-import { Delete, FolderOpened, Refresh, Search } from '@element-plus/icons-vue'
+import { Clock, Delete, FolderOpened, Refresh, Search } from '@element-plus/icons-vue'
 
 import { automationApi, automationRunApi } from '@/api/automation'
-import { desktopApi } from '@/api/desktop'
-import StatusDot from '@/components/StatusDot.vue'
 import LogViewer from '@/components/LogViewer.vue'
+import { useLogDir } from '@/composables/useLogDir'
+import { usePolling } from '@/composables/usePolling'
 import { connectAutomationWs, disconnectWs, type WsState } from '@/utils/ws'
 import { beijingMillis } from '@/utils/date'
-import { AUTOMATION_RUN_STATUS_LABELS, CONNECTION_META, PHASE_LABELS } from '@/utils/status'
-import type { AutomationTask, AutomationWsFrame } from '@/types/automation'
+import { clockText } from '@/utils/format'
+import { deriveRunDetailView } from '@/utils/automationState'
+import type { AutomationRunStatus, AutomationRuntimeState, AutomationTask, AutomationWsFrame } from '@/types/automation'
 
 interface LogLine {
   seq: number
@@ -32,9 +33,11 @@ interface LogLine {
 }
 
 type FilterLevel = 'all' | 'info' | 'warn' | 'error'
-type AutomationStatus = 'running' | 'success' | 'partial' | 'fail' | 'cancelled'
 
 const MAX_LOG_LINES = 3000
+const RUNTIME_POLL_MS = 5000
+const RECONNECT_DELAYS = [1000, 3000, 5000, 5000, 5000]
+const MAX_RECONNECT_ATTEMPTS = RECONNECT_DELAYS.length
 
 const route = useRoute()
 const router = useRouter()
@@ -43,55 +46,55 @@ const tasks = ref<AutomationTask[]>([])
 const taskId = ref<number | null>(null)
 const socket = ref<WebSocket | null>(null)
 const connectionState = ref<WsState>('disconnected')
+const reconnecting = ref(false)
 const logLines = ref<LogLine[]>([])
 const nextSeq = ref(1)
 const autoScroll = ref(true)
 const levelFilter = ref<FilterLevel>('all')
 const keyword = ref('')
-const opening = ref(false)
+const loadingLatest = ref(false)
 
+/** 任务层：运行态快照。 */
+const runtime = ref<AutomationRuntimeState | null>(null)
+/** 本轮层：当前/最近一轮。 */
 const roundNo = ref(0)
-const phase = ref('')
+const roundPhase = ref('')
+const roundStatus = ref<AutomationRunStatus | null>(null)
 const pendingCount = ref(0)
 const checkedCount = ref(0)
 const missedCount = ref(0)
-const finalStatus = ref<AutomationStatus | null>(null)
+const errorMessage = ref<string | null>(null)
 const startedAt = ref<number | null>(null)
 const now = ref(Date.now())
 
-let timer: ReturnType<typeof setInterval> | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let reconnectAttempts = 0
+let lastEndedRunId: number | null = null
 let disposed = false
 
 const currentTask = computed(() => tasks.value.find(item => item.id === taskId.value) ?? null)
-const connectionMeta = computed(() => CONNECTION_META[connectionState.value])
-/** 未连接（无运行中任务可订阅）时：清空日志、禁用筛选控件，并展示「无运行中任务」。 */
-const notConnected = computed(() => connectionState.value === 'disconnected')
 
-const currentStatus = computed<AutomationStatus>(() => finalStatus.value ?? 'running')
-/** StatusDot 只接受 A/B 的四种终态；自动化「部分成功」按失败着色展示。 */
-const statusDotStatus = computed(() => (currentStatus.value === 'partial' ? 'fail' : currentStatus.value))
-const statusText = computed(() => {
-  if (taskId.value === null) return '—'
-  if (finalStatus.value !== null) return AUTOMATION_RUN_STATUS_LABELS[finalStatus.value]
-  if (currentTask.value?.is_running || connectionState.value === 'connected') return '运行中'
-  return '未运行'
-})
-const showStatus = computed(
-  () => taskId.value !== null && (finalStatus.value !== null || currentTask.value?.is_running === true || connectionState.value === 'connected')
+const view = computed(() =>
+  deriveRunDetailView({
+    selected: taskId.value !== null,
+    runtime: runtime.value,
+    connection: connectionState.value,
+    reconnecting: reconnecting.value,
+    round: {
+      status: roundStatus.value,
+      phase: roundPhase.value === '' ? null : roundPhase.value,
+      roundNo: roundNo.value,
+      pending: pendingCount.value,
+      checked: checkedCount.value,
+      missed: missedCount.value
+    }
+  })
 )
-
-const phaseText = computed(() => (phase.value === '' ? '—' : PHASE_LABELS[phase.value] ?? phase.value))
 
 const elapsedText = computed(() => {
   const start = startedAt.value
   if (start === null) return '—'
-  const seconds = Math.max(0, Math.floor(((finalStatus.value !== null ? now.value : now.value) - start) / 1000))
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const rest = seconds % 60
-  const mm = String(minutes).padStart(2, '0')
-  const ss = String(rest).padStart(2, '0')
-  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
+  return clockText(Math.max(0, Math.floor((now.value - start) / 1000)))
 })
 
 const filteredLines = computed<LogLine[]>(() => {
@@ -108,13 +111,7 @@ const filteredLines = computed<LogLine[]>(() => {
   })
 })
 
-const emptyText = computed(() => {
-  if (taskId.value === null) return '请选择要查看的自动追更'
-  if (connectionState.value === 'connecting') return '正在连接运行详情…'
-  if (finalStatus.value !== null) return '本轮已结束，可前往「运行记录」查看完整日志'
-  if (currentTask.value?.is_running) return '等待任务输出日志…'
-  return '任务当前未运行，可前往「运行记录」查看最近一轮日志'
-})
+const controlsDisabled = computed(() => taskId.value === null)
 
 function resetLogs(): void {
   logLines.value = []
@@ -136,7 +133,13 @@ function formatLogTime(value: string | undefined): string | undefined {
   return match === null ? undefined : match[1]
 }
 
+function isTerminalStatus(value: string | undefined): value is AutomationRunStatus {
+  return value === 'success' || value === 'partial' || value === 'fail' || value === 'cancelled'
+}
+
 function onFrame(frame: AutomationWsFrame): void {
+  // 回放帧是上一轮的历史状态，丢弃，避免误判「本轮已结束」。
+  if (frame.replay === true) return
   if (frame.type === 'log') {
     appendLine(frame.level || 'info', frame.message, frame.ts)
     return
@@ -148,12 +151,14 @@ function onFrame(frame: AutomationWsFrame): void {
     return
   }
   if (frame.type === 'status') {
-    if (frame.phase) phase.value = frame.phase
+    if (frame.phase) roundPhase.value = frame.phase
     if (typeof frame.round_no === 'number') roundNo.value = frame.round_no
     if (typeof frame.pending === 'number') pendingCount.value = frame.pending
     if (typeof frame.checked === 'number') checkedCount.value = frame.checked
     if (typeof frame.missed === 'number') missedCount.value = frame.missed
-    if (isTerminalStatus(frame.status)) handleRoundEnd(frame.status)
+    if (isTerminalStatus(frame.status)) {
+      handleRoundEnd(frame)
+    }
     return
   }
   ElNotification({
@@ -164,48 +169,49 @@ function onFrame(frame: AutomationWsFrame): void {
   })
 }
 
-function isTerminalStatus(value: string | undefined): value is AutomationStatus {
-  return value === 'success' || value === 'partial' || value === 'fail' || value === 'cancelled'
-}
-
-function handleRoundEnd(status: AutomationStatus): void {
-  finalStatus.value = status
-  disconnect()
-  void loadTasks(true)
-  ElMessage.info(
-    status === 'success' ? '本轮执行完成，可前往「运行记录」查看日志' : '本轮执行已结束，可前往「运行记录」查看日志'
-  )
-}
-
-function disconnect(): void {
-  if (socket.value !== null) {
-    disconnectWs(socket.value)
-    socket.value = null
+/** 单轮结束：记录终态明细，但不断开连接（任务可能仍在循环）。 */
+function handleRoundEnd(frame: Extract<AutomationWsFrame, { type: 'status' }>): void {
+  const status = frame.status as AutomationRunStatus
+  roundStatus.value = status
+  if (typeof frame.round_no === 'number') roundNo.value = frame.round_no
+  if (typeof frame.missed === 'number') missedCount.value = frame.missed
+  if (frame.error_message) errorMessage.value = frame.error_message
+  const runId = frame.run_id ?? null
+  if (runId !== null && lastEndedRunId !== runId) {
+    lastEndedRunId = runId
+    void loadRunDetail(runId)
+    ElMessage.info(status === 'success' ? '本轮执行完成，等待下一轮' : '本轮执行结束，正在等待下一轮或退避重试')
   }
-  connectionState.value = 'disconnected'
+  // 任务循环仍在继续：刷新快照以拿到下一轮时间/新阶段，连接保持不变。
+  void refreshRuntime()
 }
 
-function connect(): void {
-  disconnect()
+async function loadRunDetail(runId: number): Promise<void> {
+  try {
+    const res = await automationRunApi.getRun(runId)
+    const detail = res.data
+    if (detail === undefined || detail === null) return
+    if (typeof detail.round_no === 'number') roundNo.value = detail.round_no
+    if (isTerminalStatus(detail.status)) roundStatus.value = detail.status
+    if (typeof detail.pending_file_count === 'number') pendingCount.value = detail.pending_file_count
+    if (typeof detail.checked_file_count === 'number') checkedCount.value = detail.checked_file_count
+    if (Array.isArray(detail.missed_files)) missedCount.value = detail.missed_files.length
+    errorMessage.value = detail.error_message ?? null
+  } catch {
+    /* 拦截器已提示；保留 WS 帧里的字段 */
+  }
+}
+
+async function refreshRuntime(): Promise<void> {
   if (taskId.value === null) return
-  finalStatus.value = null
-  connectionState.value = 'connecting'
-  socket.value = connectAutomationWs(taskId.value, {
-    onMessage: onFrame,
-    onOpen: () => {
-      connectionState.value = 'connected'
-    },
-    onClose: () => {
-      socket.value = null
-      connectionState.value = 'disconnected'
-      if (finalStatus.value === null && taskId.value !== null) {
-        ElMessage.warning('运行详情连接已断开，可点击「重新连接」')
-      }
-    },
-    onError: () => {
-      connectionState.value = 'disconnected'
-    }
-  })
+  try {
+    const res = await automationRunApi.active()
+    const state = (res.data ?? []).find(item => item.task_id === taskId.value) ?? null
+    runtime.value = state
+    if (state?.started_time) startedAt.value = beijingMillis(state.started_time)
+  } catch {
+    /* 轮询失败不打断页面；保持当前快照 */
+  }
 }
 
 async function loadTasks(silent = false): Promise<void> {
@@ -216,68 +222,155 @@ async function loadTasks(silent = false): Promise<void> {
       taskId.value = null
     }
   } catch {
-    if (!silent) throw new Error('load tasks failed')
+    if (!silent) ElMessage.error('加载自动追更任务失败')
   }
 }
 
-/** 连接前刷新一次运行状态：运行中则订阅 WS，否则回放最近一轮日志。 */
-async function openTask(id: number): Promise<void> {
-  resetLogs()
+function clearReconnectTimer(): void {
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+}
+
+function disconnectSocket(): void {
+  clearReconnectTimer()
+  reconnecting.value = false
+  if (socket.value !== null) {
+    disconnectWs(socket.value)
+    socket.value = null
+  }
+  connectionState.value = 'disconnected'
+}
+
+/** 连接断开时：任务仍在运行则按 1s/3s/5s 自动重连（最多 5 次）。 */
+function scheduleReconnect(): void {
+  if (disposed || taskId.value === null || runtime.value === null) return
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    reconnecting.value = false
+    ElMessage.warning('运行详情连接已断开，可点击「重连」重试')
+    return
+  }
+  const delay = RECONNECT_DELAYS[reconnectAttempts]
+  reconnectAttempts += 1
+  reconnecting.value = true
+  clearReconnectTimer()
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    if (disposed || taskId.value === null) return
+    void refreshRuntime().then(() => {
+      if (runtime.value !== null) subscribe()
+    })
+  }, delay)
+}
+
+function subscribe(): void {
+  if (taskId.value === null) return
+  clearReconnectTimer()
+  if (socket.value !== null) {
+    disconnectWs(socket.value)
+    socket.value = null
+  }
+  connectionState.value = 'connecting'
+  socket.value = connectAutomationWs(taskId.value, {
+    onMessage: onFrame,
+    onOpen: () => {
+      connectionState.value = 'connected'
+      reconnecting.value = false
+      reconnectAttempts = 0
+    },
+    onClose: () => {
+      socket.value = null
+      connectionState.value = 'disconnected'
+      if (disposed) return
+      scheduleReconnect()
+    },
+    onError: () => {
+      connectionState.value = 'disconnected'
+    }
+  })
+}
+
+function resetRoundState(): void {
+  runtime.value = null
   roundNo.value = 0
-  phase.value = ''
+  roundPhase.value = ''
+  roundStatus.value = null
   pendingCount.value = 0
   checkedCount.value = 0
   missedCount.value = 0
-  finalStatus.value = null
+  errorMessage.value = null
   startedAt.value = null
-  if (disposed) return
-
-  try {
-    const res = await automationRunApi.active()
-    const state = (res.data ?? []).find(item => item.task_id === id)
-    if (state?.started_time) startedAt.value = beijingMillis(state.started_time)
-    if (state) {
-      if (state.phase) phase.value = state.phase
-      if (typeof state.round_no === 'number') roundNo.value = state.round_no
-    }
-  } catch {
-    /* 拦截器已提示，保持无运行状态 */
-  }
-
-  const task = tasks.value.find(item => item.id === id)
-  if (task?.is_running) {
-    connect()
-    return
-  }
-  // 任务未运行：不订阅 WS、不回放历史日志；页面保持「无运行中任务」空态，历史日志请到运行记录查看。
+  lastEndedRunId = null
+  reconnectAttempts = 0
+  resetLogs()
 }
 
-/** 重连：运行中重新订阅 WS；未运行时刷新任务状态并提示「无运行中任务」。 */
-function handleReconnect(): void {
-  if (taskId.value === null) return
-  const task = tasks.value.find(item => item.id === taskId.value)
-  if (task?.is_running) {
-    connect()
+/** 选择任务后：先取运行快照，任务在运行则订阅 WS；否则保持空态并允许查看最近一轮。 */
+async function openTask(): Promise<void> {
+  if (disposed) return
+  await Promise.all([refreshRuntime(), loadTasks(true)])
+  if (disposed) return
+  if (runtime.value !== null || currentTask.value?.is_running === true) {
+    subscribe()
     return
   }
-  ElMessage.info('当前没有运行中的任务，历史日志请到「运行记录」查看')
-  void loadTasks(true)
+  disconnectSocket()
+}
+
+/** 显式加载最近一轮日志（替代旧的自动回放）。 */
+async function loadLatestRound(): Promise<void> {
+  if (taskId.value === null || loadingLatest.value) return
+  loadingLatest.value = true
+  try {
+    const res = await automationRunApi.listRuns({ task_id: taskId.value, page: 1, page_size: 1 })
+    const latest = (res.data ?? [])[0]
+    if (latest === undefined) {
+      ElMessage.info('还没有运行记录')
+      return
+    }
+    const logs = await automationRunApi.runLogs(latest.id, 0, 2000)
+    resetLogs()
+    appendLine('info', `—— 第 ${latest.round_no} 轮历史日志（${latest.status}）——`)
+    for (const line of logs.data.lines) {
+      appendLine(line.level, line.message)
+    }
+    if (isTerminalStatus(latest.status)) roundStatus.value = latest.status
+    roundNo.value = latest.round_no
+    errorMessage.value = latest.error_message ?? null
+    ElMessage.success(`已加载第 ${latest.round_no} 轮日志`)
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    loadingLatest.value = false
+  }
+}
+
+function handleReconnect(): void {
+  if (taskId.value === null) return
+  clearReconnectTimer()
+  reconnectAttempts = 0
+  void refreshRuntime().then(() => {
+    if (runtime.value !== null) {
+      subscribe()
+    } else {
+      ElMessage.info('任务当前未运行，可点击「查看最近一轮」或前往「运行记录」')
+    }
+  })
 }
 
 function handleClear(): void {
   resetLogs()
 }
 
+const { open: openLogDir } = useLogDir('automation')
+const openingLogDir = ref(false)
 async function handleOpenLogDir(): Promise<void> {
-  if (opening.value) return
-  opening.value = true
+  openingLogDir.value = true
   try {
-    await desktopApi.openLogDir('automation')
-    ElMessage.success('已打开日志文件夹')
-  } catch {
-    /* 拦截器已提示 */
+    await openLogDir()
   } finally {
-    opening.value = false
+    openingLogDir.value = false
   }
 }
 
@@ -286,48 +379,51 @@ function handleBackToExecution(): void {
 }
 
 watch(taskId, id => {
-  disconnect()
-  if (id !== null) void openTask(id)
+  disconnectSocket()
+  resetRoundState()
+  if (id !== null) void openTask()
 })
 
-/** 断线（含任务不存在/本轮结束）后立即清空日志区域，避免残留上一任务的日志。 */
-watch(connectionState, state => {
-  if (state === 'disconnected') resetLogs()
+/** 任务停止后（快照变空）主动断开连接；轮次结束不在这里。 */
+watch(runtime, value => {
+  if (value === null && connectionState.value === 'connected') {
+    disconnectSocket()
+  }
 })
+
+const runtimePoll = usePolling(refreshRuntime, { interval: RUNTIME_POLL_MS, visibleOnly: true })
+const clockPoll = usePolling(
+  () => {
+    now.value = Date.now()
+  },
+  { interval: 1000, visibleOnly: false }
+)
 
 onMounted(async () => {
-  timer = setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-
-  try {
-    await loadTasks()
-  } catch {
-    return
-  }
+  await loadTasks(true)
   if (disposed) return
   const queryTaskId = Number(route.query.task_id)
-  if (Number.isInteger(queryTaskId) && queryTaskId > 0 && tasks.value.some(item => item.id === queryTaskId)) {
-    taskId.value = queryTaskId
-  } else {
-    taskId.value = tasks.value.find(item => item.is_running)?.id ?? tasks.value[0]?.id ?? null
-  }
+  const preferred =
+    Number.isInteger(queryTaskId) && queryTaskId > 0 && tasks.value.some(item => item.id === queryTaskId)
+      ? queryTaskId
+      : (tasks.value.find(item => item.is_running)?.id ?? tasks.value[0]?.id ?? null)
+  runtimePoll.start()
+  clockPoll.start()
+  taskId.value = preferred
 })
 
 onBeforeUnmount(() => {
   disposed = true
-  if (timer !== null) {
-    clearInterval(timer)
-    timer = null
-  }
-  disconnect()
+  runtimePoll.stop()
+  clockPoll.stop()
+  disconnectSocket()
 })
 </script>
 
 <template>
   <div class="page realtime-page">
     <p class="realtime-page__desc">
-      本页实时显示所选自动追更每一轮链路的日志与阶段；启动任务后会自动跳转到本页。可通过日志级别与关键字过滤日志；本轮结束后可前往「运行记录」查看完整记录。
+      本页并列显示任务状态（运行中 / 已停止）、本轮状态与 WS 连接状态；三者互不冒充。任务循环运行期间页面保持连接并自动进入下一轮；需要历史日志时点击「查看最近一轮」。
     </p>
 
     <div class="realtime-toolbar">
@@ -337,7 +433,7 @@ onBeforeUnmount(() => {
           class="realtime-toolbar__selector"
           placeholder="选择自动追更"
           filterable
-          :disabled="tasks.length === 0 || notConnected"
+          :disabled="tasks.length === 0"
         >
           <el-option
             v-for="task in tasks"
@@ -346,20 +442,30 @@ onBeforeUnmount(() => {
             :value="task.id"
           />
         </el-select>
-        <el-tag :type="connectionMeta.tone" size="small" disable-transitions>
-          {{ connectionMeta.label }}
+        <el-tag :type="view.taskTone" size="small" disable-transitions>{{ view.taskLabel }}</el-tag>
+        <el-tag :type="view.roundTone" size="small" disable-transitions effect="plain">
+          {{ view.roundLabel }}
         </el-tag>
-        <StatusDot v-if="!notConnected && showStatus" :status="statusDotStatus" />
-        <el-tag v-else type="info" size="small" disable-transitions>无运行中任务</el-tag>
+        <el-tag :type="view.connectionTone" size="small" disable-transitions>{{ view.connectionLabel }}</el-tag>
       </div>
       <div class="realtime-toolbar__right">
-        <el-button :icon="Refresh" @click="handleReconnect">重连</el-button>
-        <el-button :icon="Delete" :disabled="notConnected" @click="handleClear">清空</el-button>
-        <el-button :icon="FolderOpened" :loading="opening" @click="handleOpenLogDir">
-          打开日志文件夹
+        <el-button :icon="Refresh" :disabled="!view.canReconnect" @click="handleReconnect">重连</el-button>
+        <el-button :icon="Clock" :loading="loadingLatest" :disabled="controlsDisabled" @click="loadLatestRound">
+          查看最近一轮
         </el-button>
+        <el-button :icon="Delete" :disabled="controlsDisabled" @click="handleClear">清空</el-button>
+        <el-button :icon="FolderOpened" :loading="openingLogDir" @click="handleOpenLogDir">打开日志文件夹</el-button>
       </div>
     </div>
+
+    <el-alert
+      v-if="errorMessage"
+      class="realtime-alert"
+      type="error"
+      :title="`本轮失败：${errorMessage}`"
+      :closable="false"
+      show-icon
+    />
 
     <div class="progress-card">
       <div class="progress-card__item">
@@ -382,23 +488,23 @@ onBeforeUnmount(() => {
       </div>
       <div class="progress-card__item">
         <span class="progress-card__label">当前阶段</span>
-        <span class="progress-card__value progress-card__value--text">{{ phaseText }}</span>
+        <span class="progress-card__value progress-card__value--text">{{ view.phaseLabel }}</span>
       </div>
       <div class="progress-card__item">
-        <span class="progress-card__label">执行状态</span>
-        <span class="progress-card__value progress-card__value--text">{{ statusText }}</span>
+        <span class="progress-card__label">本轮状态</span>
+        <span class="progress-card__value progress-card__value--text">{{ view.roundLabel }}</span>
       </div>
       <div class="progress-card__item progress-card__item--wide">
-        <span class="progress-card__label">用时 / 当前任务</span>
+        <span class="progress-card__label">用时 / 下一轮</span>
         <span class="progress-card__value progress-card__value--mono">
-          {{ elapsedText }} · {{ currentTask?.name || '—' }}
+          {{ elapsedText }} · {{ view.nextRoundText || '—' }} · {{ currentTask?.name || '—' }}
         </span>
       </div>
     </div>
 
     <div class="log-toolbar">
       <div class="log-toolbar__left">
-        <el-select v-model="levelFilter" size="small" class="log-toolbar__level" :disabled="notConnected">
+        <el-select v-model="levelFilter" size="small" class="log-toolbar__level" :disabled="controlsDisabled">
           <el-option label="全部级别" value="all" />
           <el-option label="信息" value="info" />
           <el-option label="警告" value="warn" />
@@ -411,14 +517,12 @@ onBeforeUnmount(() => {
           placeholder="筛选关键字"
           clearable
           :prefix-icon="Search"
-          :disabled="notConnected"
+          :disabled="controlsDisabled"
         />
         <span class="log-toolbar__count">{{ filteredLines.length }} 行</span>
       </div>
       <div class="log-toolbar__right">
-        <el-button v-if="taskId !== null" size="small" @click="handleBackToExecution">
-          返回开始执行
-        </el-button>
+        <el-button v-if="taskId !== null" size="small" @click="handleBackToExecution">返回开始执行</el-button>
       </div>
     </div>
 
@@ -427,7 +531,7 @@ onBeforeUnmount(() => {
         v-model:auto-scroll="autoScroll"
         :lines="filteredLines"
         :max-lines="MAX_LOG_LINES"
-        :empty-text="emptyText"
+        :empty-text="view.emptyText"
       />
     </div>
   </div>
@@ -471,6 +575,10 @@ onBeforeUnmount(() => {
 .realtime-toolbar__selector {
   width: 260px;
   max-width: 100%;
+}
+
+.realtime-alert {
+  flex: none;
 }
 
 .progress-card {

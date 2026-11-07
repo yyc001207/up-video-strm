@@ -209,11 +209,16 @@ async def retry_failed(run_id: int, db: AsyncSession = Depends(get_db)):
 # ---------- 实时日志（WebSocket） ----------
 
 
+def _replay_frames(frames: list[dict]) -> list[dict]:
+    """给回放帧统一加 ``replay=True``：前端据此丢弃，避免把上一轮的终态/日志当成本轮实时状态。"""
+    return [{**frame, "replay": True} for frame in frames]
+
+
 @router.websocket("/ws/{task_id}")
 async def task_ws(websocket: WebSocket, task_id: int):
     key = channel(task_id)
     await ws_manager.connect(key, websocket)
-    await ws_manager.send_recent(key, websocket, recent_frames(task_id))
+    await ws_manager.send_recent(key, websocket, _replay_frames(recent_frames(task_id)))
     try:
         while True:
             await websocket.receive_text()

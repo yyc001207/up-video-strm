@@ -159,7 +159,18 @@ async def _update_run(run_id: int, **fields) -> None:
 
 
 async def _finish_run(run_id: int, log: AutomationLogger, status: str, **fields) -> None:
-    """写入 run 终态，并广播带 ``pending`` 的 status 帧（页面操作栏实时归零）。"""
+    """写入 run 终态，并广播带终态明细的 status 帧（页面无需再查库即可展示失败原因）。"""
+    missed_files = fields.get("missed_files")
+    if isinstance(missed_files, list):
+        missed_count = len(missed_files)
+        fields["missed_files"] = json.dumps(missed_files, ensure_ascii=False) if missed_files else None
+    elif isinstance(missed_files, str):
+        try:
+            missed_count = len(json.loads(missed_files) or [])
+        except ValueError:
+            missed_count = 0
+    else:
+        missed_count = 0
     await _update_run(run_id, status=status, phase="done", finished_time=beijing_now(), **fields)
     pending = fields.get("pending_file_count")
     if pending is None:
@@ -167,7 +178,15 @@ async def _finish_run(run_id: int, log: AutomationLogger, status: str, **fields)
             result = await db.execute(select(AutomationRun.pending_file_count).where(AutomationRun.id == run_id))
             value = result.scalar_one_or_none()
         pending = 0 if value is None else int(value)
-    await log.status(status=status, run_id=run_id, phase="done", pending=pending)
+    await log.status(
+        status=status,
+        run_id=run_id,
+        phase="done",
+        pending=pending,
+        error_code=fields.get("error_code"),
+        error_message=fields.get("error_message"),
+        missed=missed_count,
+    )
 
 
 # ---------- 对外入口 ----------

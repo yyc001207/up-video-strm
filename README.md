@@ -99,7 +99,7 @@ npm run preview                   # 本地预览构建产物
 | [docs/design/upload-module-plan.md](docs/design/upload-module-plan.md) | 上传管理模块设计计划：信息架构、数据模型、执行流水线、123 云盘对接与测试约束 |
 | [docs/design/automation-module-plan.md](docs/design/automation-module-plan.md) | 自动化任务模块设计计划：四模块平级、B→OpenList 校验→A 链路、等待机制与触发来源 |
 | [docs/design/ui-next-plan.md](docs/design/ui-next-plan.md) | 新版界面设计方案（Next UI · 暖调媒体方向，P1–P5 已按此实施）：暖紫视觉语言、全量改名、单列导航、卡片化列表、顶栏运行入口与命令面板；复用现有接口，不新增后端接口 |
-| [docs/design/ui-next-fix-plan.md](docs/design/ui-next-fix-plan.md) | 新版 UI 落地问题修复方案（v4.19.0 复盘）：深色对比度、列表化、导航交互、页面标题、参数卡裁切等 8 项与全站样式复查 |
+| [docs/design/ui-next-fix-plan.md](docs/design/ui-next-fix-plan.md) | 新版 UI 落地问题修复方案（v4.19.0 复盘）：深色对比度、列表化、导航交互、页面标题、参数卡裁切、浅色卡片去白化等 9 项与全站样式复查 |
 | [AGENTS.md](AGENTS.md) | 开发规范与交付前检查清单 |
 | [LICENSE](LICENSE) | MIT 许可证 |
 

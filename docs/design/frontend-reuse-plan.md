@@ -1,6 +1,6 @@
 # 前端复用重构方案（纯逻辑优先）
 
-> 状态：P0–P1 已实施（v4.19.5）；P2–P3 待实施
+> 状态：P0–P1 已实施（v4.19.5）；P2–P3 经用户决定**不再实施**（2026-11-07 起冻结，剩余调用点保留现状，不再铺开）
 > 基线：v4.19.3（`43975d9`）
 > 替代：已删除的 `frontend-component-extraction-plan.md`（该方案被判定不合格，原因见 §1，本方案不沿用其任何组件设计）
 
@@ -265,6 +265,8 @@ export function useSelection<T>(options: {
 > **P0 已完成（v4.19.4）**：4 个 utils 文件与 24 个单测落地，页面/store 本地实现已删除并通过 §6 grep 断言。
 >
 > **P1 已完成（v4.19.5）**：`composables/usePolling.ts`、`useConfirmAction.ts`、`useLogDir.ts` 落地（新增 12 个单测，纯函数与组合式函数共 36 个）；试点接入 `App.vue`（运行数 30s）、`views/schedule/Execution.vue`（正在执行 5s）、`views/upload/TaskConfig.vue`（两个删除确认）、`views/schedule/TaskHistory.vue`（日志文件夹）；三个入口的旧实现（`setInterval` / `ElMessageBox.confirm` / `desktopApi.openLogDir` + 各写 catch）在试点页已删除，其余调用点留待 P2 铺开。
+
+> **P2–P3 不实施（2026-11-07 用户决定）**：P1 交付后不再铺开剩余调用点（轮询 9 处、确认 18 处、日志目录 20 处、分页 5 处、选择 6 处维持现状）；`useEntityForm` / `utils/storage` 评估一并取消。若后续同类逻辑再次出现第 2 份实现，按 §2 判据就事论事处理，不重启整批迁移。
 
 每批独立 commit；文档（`docs/rules/frontend.md` 判据与目录）随代码提交更新；每批交付前跑 `vue-tsc`、`npm run build`、`vitest`。
 

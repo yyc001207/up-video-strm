@@ -49,8 +49,9 @@ backend/
 | [service.py](../../backend/app/business/uploader/service.py) | 123 云盘凭据（DPAPI 加密存储、Token 缓存与续期；凭据真正变化才清空缓存、并发刷新加锁、测试连接复用缓存令牌）、重命名规则、上传任务、执行记录/历史/日志读取、配置 seed |
 | [pan123_client.py](../../backend/app/business/uploader/pan123_client.py) | 123 云盘开放平台客户端（token、文件列表/查重、目录解析、秒传/分片上传、异步结果、删除；`get_file_id` 兼容 `fileID`/`fileId`） |
 | [scanner.py](../../backend/app/business/uploader/scanner.py) | 本地目录扫描与视频过滤（扩展名来自全局「视频格式」）、MD5 计算；跳过下载中/临时文件（`is_partial_file`：`.!qB`、`.part`、`.crdownload`、`.aria2` 等）并返回忽略数量供日志提示 |
+| [subtitles.py](../../backend/app/business/uploader/subtitles.py) | 字幕配对与目标命名：固定字幕扩展名（`srt`/`ass`/`ssa`/`vtt`/`sub`/`idx`/`sup`），仅配对与视频同目录的字幕；优先按「视频主干前缀 + 语言标记」，否则按同集数（含任务自定义 `episode_pattern`）取公共前缀最长的视频兜底；目标名保留语言标记（`S01E03.chs.ass`），相同目标名去重；未匹配字幕不上传 |
 | [rename_engine.py](../../backend/app/business/uploader/rename_engine.py) | 集数解析（`第03集`/`S01E03`/`EP03`/`[03]`/`03 - 标题`，排除分辨率与哈希数字）+ 可选自定义集数正则（`episode_pattern`，第 1 个分组为集号）+ 模板渲染（`{season}`/`{episode}`/`{ext}`） |
-| [execution_engine.py](../../backend/app/business/uploader/execution_engine.py) | 六阶段执行流水线（扫描 → 过滤 → 重命名 → 清单 → 查重 → 上传）、并发上传与重试、取消、结果回写 |
+| [execution_engine.py](../../backend/app/business/uploader/execution_engine.py) | 六阶段执行流水线（扫描 → 过滤 → 重命名 → 清单 → 查重 → 上传）、并发上传与重试、取消、结果回写；字幕与视频进同一份清单、各自独立记录（字幕失败不影响视频） |
 | [execution_logger.py](../../backend/app/business/uploader/execution_logger.py) | 日志通道：按执行写 `upload_logs/execution_{id}.log` + WebSocket 广播 log/progress/status 帧（不落库） |
 | [schema.py](../../backend/app/business/uploader/schema.py) | Pydantic 请求/响应模型 |
 
@@ -103,6 +104,7 @@ backend/
 9. 自动化任务链路：由 `POST /api/automation/tasks/{id}/start` 启动后台循环，每轮先按本地目录指纹判断是否有新增/变化（无变化不建运行记录）；有待校验文件时跳过上传直接校验，否则等待 A/B 空闲后创建并启动上传（冲突策略固定跳过）。上传成功后按 `remote_name` 轮询 `check_dir` 可见性，全部可见后触发 STRM 任务；成功后清空待校验并提交指纹，失败保留待校验供下一轮补偿。轮次间隔取任务配置 `interval_seconds`（默认 60s，可在执行管理启动时填写并写回任务），连续 3 次轮次失败终止，进程重启不自动恢复（残留 `running` 置 `fail` + `PROCESS_RESTART`）。启动参数 `AutomationStartRequest` 只包含 5 项时间参数（可见性轮询间隔 / 可见性等待上限 / 空闲等待上限 / 阶段超时 / 轮次间隔），由 `service.apply_run_params` 写入任务配置后启动；上传/STRM 参数不再作为执行参数。等待 A/B 执行期间由 [relay.py](../../backend/app/business/automation/relay.py) 尾随 A/B 日志文件并逐行转写进本轮自动化日志，因此自动化实时日志与历史日志都能看到 A/B 的详细执行行（`[A#id]` / `[B#id]` 前缀）。扫描会跳过下载中/临时文件（`.!qB` / `.part` / `.crdownload` 等）；若本轮只有这类文件，则不建运行记录，仅通过 `execution_logger.broadcast_notice` 广播一行「忽略下载中文件 N 个」。
 10. 自动化任务接口：任务 CRUD / 批量删除 / 绑定选项 / 校验目录、启动 / 批量启动 / 停止 / 重置指纹 / 清空待校验、`GET /api/automation/active`、运行历史 `/api/automation/runs`（`task_id` / `status` / `start_time` / `end_time` 筛选，日期按北京时间含首尾两天，按 `coalesce(started_time, created_time)` 过滤）、运行日志 `/runs/{id}/logs`、失败重试 `/runs/{id}/retry-failed`，以及 WebSocket `/api/automation/ws/{task_id}`（log / progress / status / alert 帧）。历史与日志清理由 [retention.py](../../backend/app/business/automation/retention.py) 在启动时执行一次并每日定时执行。
 11. 本地改名链路：`POST /api/renamer/scan` 扫描并缓存文件计划（返回剧集 / 季 / 文件与冲突标记）→ 前端按需修改目标名后分批（每批 20 条）`POST /api/renamer/rename`；后端只允许重命名缓存计划中的文件，目标必须在扫描根目录内，冲突策略为跳过 / 覆盖 / 自动编号；每批结果即时返回，前端全部批次完成后重新扫描刷新。操作日志写入 `rename_logs/rename.log`，可通过桌面接口 `kind=rename` 打开日志目录。
+12. 字幕随视频上传（上传执行）：扫描阶段同时扫固定字幕扩展名（不随全局「视频格式」变化）→ 为每个视频生成计划后，[subtitles.py](../../backend/app/business/uploader/subtitles.py) 把同目录字幕配对到视频（主干前缀优先、同集数兜底）→ 字幕作为独立 `upload_file_record`（`remote_name = SxxExx.lang.ext`）与视频加入同一份清单，查重 / 冲突策略 / 并发 / 重试与视频一致；未匹配字幕只写日志、不上传；单条字幕失败只记该条为 failed，不影响视频。
 
 ## 环境变量（backend/.env，应用配置）
 

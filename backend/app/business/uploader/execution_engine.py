@@ -1,5 +1,8 @@
 """上传管理执行引擎：六阶段流水线（扫描 → 过滤 → 重命名 → 清单 → 查重 → 上传）。
 
+字幕文件与视频同目录配对后并入同一份清单（见 [subtitles.py](subtitles.py)），
+随对应视频一起上传，各自独立记录，字幕失败不影响视频上传。
+
 ``start_execution`` 校验通过后 ``asyncio.create_task`` 启动本模块的
 ``run_upload``；后者在独立数据库会话中运行（请求会话在端点返回后即关闭）。
 
@@ -27,7 +30,7 @@ from sqlalchemy import select
 from app.core.beijing import beijing_now
 from app.business import execution_registry
 from app.business.openlist.task_status_manager import TaskStatusManager
-from app.business.uploader import rename_engine, scanner
+from app.business.uploader import rename_engine, scanner, subtitles
 from app.business.uploader.execution_logger import ExecutionLogHandler, UploadLogPump
 from app.business.uploader.pan123_client import Pan123Client, get_file_id
 from app.business.uploader.service import build_client, get_access_token
@@ -181,12 +184,22 @@ async def _run_pipeline(
             execution.dry_run,
         )
 
-        # 阶段 1–2：扫描 + 视频过滤
+        # 阶段 1–2：扫描 + 视频 / 字幕过滤
         files, scan_errors, ignored_partial = scanner.scan_files(execution.local_dir, extensions)
+        subtitle_files, subtitle_errors, subtitle_partial = scanner.scan_files(
+            execution.local_dir, subtitles.SUBTITLE_EXTENSIONS
+        )
+        scan_errors = scan_errors + subtitle_errors
+        ignored_partial += subtitle_partial
         for path, reason in scan_errors:
             exe_logger.error("扫描失败 %s：%s", path, reason)
             progress["failed"] += 1
-        exe_logger.info("扫描完成：识别视频文件 %d 个，异常 %d 个", len(files), len(scan_errors))
+        exe_logger.info(
+            "扫描完成：识别视频文件 %d 个，字幕文件 %d 个，异常 %d 个",
+            len(files),
+            len(subtitle_files),
+            len(scan_errors),
+        )
         if ignored_partial:
             exe_logger.info("忽略下载中文件 %d 个（下载完成后下一轮会自动纳入）", ignored_partial)
 
@@ -232,6 +245,33 @@ async def _run_pipeline(
             records.append(record)
             plan_items.append((scanned, plan, record))
 
+        # 阶段 3–4：字幕配对（只配对已成功生成计划的视频，未匹配字幕不上传）
+        subtitle_count = 0
+        if subtitle_files and plan_items:
+            subtitle_plans, unmatched_subtitles = subtitles.pair_subtitles(
+                [(scanned, plan) for scanned, plan, _record in plan_items],
+                subtitle_files,
+                execution.episode_pattern,
+            )
+            for sub_plan in subtitle_plans:
+                exe_logger.info("字幕：%s -> %s", sub_plan.subtitle.name, sub_plan.target_name)
+                record = UploadFileRecord(
+                    execution_id=execution.id,
+                    local_path=str(sub_plan.subtitle.path),
+                    remote_name=sub_plan.target_name,
+                    size=sub_plan.subtitle.size,
+                    md5=sub_plan.subtitle.md5,
+                    status="pending",
+                    phase="ready",
+                )
+                records.append(record)
+                plan_items.append((sub_plan.subtitle, sub_plan.plan, record))
+            subtitle_count = len(subtitle_plans)
+            if unmatched_subtitles:
+                exe_logger.info(
+                    "未匹配到视频的字幕 %d 个（不随本次上传）", len(unmatched_subtitles)
+                )
+
         for record in records:
             db.add(record)
         await db.commit()
@@ -239,9 +279,11 @@ async def _run_pipeline(
             await db.refresh(record)
         progress["total"] = len(plan_items) + len(scan_errors)
         exe_logger.info("清单生成完成：待上传 %d 个文件", len(plan_items))
+        if subtitle_count:
+            exe_logger.info("其中字幕 %d 个，随对应视频一起上传", subtitle_count)
 
         if not plan_items:
-            exe_logger.info("未找到可上传的视频文件")
+            exe_logger.info("未找到可上传的视频 / 字幕文件")
             if progress["failed"] > 0:
                 return "fail", "B_SCAN_ERROR", "扫描/重命名失败，没有可上传的视频文件"
             return "success", None, None

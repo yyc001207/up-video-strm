@@ -73,6 +73,7 @@ frontend/
 - 列表页工具栏统一使用 `styles/global.scss` 的 `.toolbar` 原语：`.toolbar__left` 放搜索/筛选/提示，`.toolbar__right` 放操作组且恒贴右（`margin-left: auto`），间距 12px / 组内 8px；页面样式只保留专有规则（如 `.toolbar__keyword`、`.toolbar__hint`），不再各自定义布局。
 - 执行类页面的工作台（`.exec-workspace`）与「正在执行」表（`.exec-running`）固定 `flex: none`：窗口变矮时不压缩，内容过高由外层容器滚动。
 - 列表页统一使用 `styles/global.scss` 的列表页骨架：根 `.page.page--fill.list-page`（flex 列、`overflow: hidden`）、表格卡 `.list-card`、滚动容器 `.list-card__table`、分页 `.list-card__pager`。所有列表默认每页 20 条（可选 10 / 20 / 50），筛选或数据变化后回到第 1 页；滚动条只出现在表格卡片内部，页面上不得出现整页滚动条。`.page--fill` 基础样式不含纵向 `gap`，工具栏与列表卡之间的间距由页面自身提供（如 `.automation-tasks { gap: var(--up-strm-space-4) }`）。
+- 例外：本地改名页（`/renamer`）内容量大，允许整页滚动——页面根使用 `.page`（`overflow: auto`）而非 `.page--fill`，卡片作为 flex 子项不参与收缩（`flex: none` / `flex-shrink: 0`），卡片与表格内部不出现滚动条（4.20.1）。
 - 列表筛选约定：工具栏 `__left` 放「关键字 / 状态 / 时间范围」筛选，`__right` 放操作按钮与刷新；筛选在客户端完成（单模块数据量小），详情与执行记录仍走服务端分页。时间范围按北京时间自然日 `[开始日 00:00:00, 结束日 23:59:59]`，取「完成时间 → 开始时间 → 创建时间」中第一个可用值；「未执行」用哨兵值（任务调度 `'unexecuted'`、上传历史 `last_execution?.status ?? 'none'`）。
 
 ## 页面与组件

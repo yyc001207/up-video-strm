@@ -74,7 +74,7 @@ backend/
 
 | 文件 | 职责 |
 |------|------|
-| [planner.py](../../backend/app/business/renamer/planner.py) | 纯逻辑：视频/字幕扩展名、集数解析（`S01E03` / `EP03` / `E03` / `第03集` / `[03]` / `(03)`，排除年份与分辨率）、季数解析、语言标记、`.5` 特殊集、目标名 `SxxExx.lang.ext`、目录结构识别（一级 / 二级）、目标冲突标记（`exists` / `duplicate` / `chain` / `noop` / `caseonly`）与自动编号 |
+| [planner.py](../../backend/app/business/renamer/planner.py) | 纯逻辑：视频/字幕扩展名、集数解析（`S01E03` / `EP03` / `E03` / `第03集` / `[03]` / `(03)`，排除年份与分辨率）、季数解析（`S00` / `Special` / `特别篇` / `OVA` / `OAD` 等特别篇目录输出 `S00Exx`，避免被误判为第 1 季）、语言标记、`.5` 特殊集、目标名 `SxxExx.lang.ext`、目录结构识别（一级 / 二级）、目标冲突标记（`exists` / `duplicate` / `chain` / `noop` / `caseonly`）与自动编号 |
 | [service.py](../../backend/app/business/renamer/service.py) | 扫描（校验目录、拒绝磁盘根、限制 500 文件、计划缓存供改名校验）、批量重命名（冲突策略 `skip` / `overwrite` / `autonum`、仅允许重命名上次扫描到的文件、目标必须在根目录内、仅大小写调整走两步改名）、操作日志 `rename_logs/rename.log` 与最近日志读取 |
 | [schema.py](../../backend/app/business/renamer/schema.py) | Pydantic 请求模型（扫描 / 重命名 / 文件条目） |
 
@@ -122,6 +122,7 @@ backend/
 冻结态路径解析（`data_root()` / `resource_dir()`）、端口回退、单实例互斥、stdio 重定向等通用行为见 [project.md](project.md)；`run.py` 实现要点：冻结态 `os.chdir(data_root)` → stdio 重定向到 `logs/app.log`（超 5 MB 转 `app.log.1`）→ 后台线程 `uvicorn.Server`（`timeout_graceful_shutdown=2`）+ 主线程 [app/desktop.py](../../backend/app/desktop.py) 原生窗口；exe 为 GUI 进程（`console=False`），不派生子进程。
 
 - 桌面偏好与自启：[app/core/desktop_prefs.py](../../backend/app/core/desktop_prefs.py) 把 `start_minimized` / `close_to_tray` 存数据目录 `desktop.json`（不落库，避免桌面偏好影响其他运行方式）；开机自启读写 `HKCU\...\CurrentVersion\Run` 的 `up-video-strm` 值（仅冻结态；启动时若检测到旧版值 `video-strm` 已启用，自动改写成新值并删除旧值）。[api/desktop.py](../../backend/app/api/desktop.py) 暴露 `/api/desktop/info|autostart|preferences|fix-tray|open-taskbar-settings|open-data-dir|open-log-dir` 等接口（`open-log-dir` 按 `kind=openlist|upload|automation|rename` 用资源管理器打开对应日志目录），非桌面态只读、写操作返回 400。
+- 入口页缓存：[app/main.py](../../backend/app/main.py) 的 SPA 回退对 `index.html` 返回 `Cache-Control: no-cache, no-store, must-revalidate`（带哈希的 `/assets/*` 仍按文件缓存）；[desktop.py](../../backend/app/desktop.py) 原生窗口首屏地址带 `?v=<版本号>`，升级安装后换用新 URL，避免 WebView2 直接复用旧版本入口 HTML 加载旧 bundle，导致新页面不可见（4.20.1）。
 - 窗口关闭默认走托盘：[desktop.py](../../backend/app/desktop.py) 监听 `closing` 事件返回 False 取消关闭，并延迟隐藏窗口（事件内直接 hide 会被 WinForms 取消关闭流程重新显示）；关窗时现读 `desktop.json` 的 `close_to_tray`，设置页/托盘改完立即生效。pystray 菜单「打开主界面 / 设置… / 快捷设置（开机自启、启动最小化、关窗收进托盘）/ 打开数据目录 / 退出」，「设置…」通过 `window.__upVideoStrmNavigate('/settings')`（前端 [main.ts](../../frontend/src/main.ts) 注册）切页而非整页重载；退出时 `icon.stop()` → `window.destroy()` → 服务关停。
 - 窗口相关辅助：[app/core/tray_win.py](../../backend/app/core/tray_win.py) 负责 Windows 托盘图标探测与可见性（Win11 的 `HKCU\Control Panel\NotifyIconSettings\<hash>` 的 `IsPromoted`）：启动时 `check_tray` 调 `hide_tray_icon()` 写 `0`，让图标**默认收进「^」**；设置页「修复托盘图标」接口（`POST /api/desktop/fix-tray`）仍调 `promote_tray_icon()` 写 `1` 供用户临时固定到常驻区。
 

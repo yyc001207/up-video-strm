@@ -129,6 +129,13 @@ def mount_frontend() -> None:
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     index_file = DIST_DIR / "index.html"
+    # 入口 HTML 不缓存：安装升级后必须重新拉取，否则 WebView2 可能沿用旧 index.html
+    # 继续加载上一版本带哈希的旧 bundle，导致新页面/新模块看不到。
+    no_cache_headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
@@ -137,9 +144,11 @@ def mount_frontend() -> None:
             raise HTTPException(status_code=404, detail="Not Found")
         target = (DIST_DIR / full_path).resolve()
         if full_path and target.is_file() and target.is_relative_to(DIST_DIR.resolve()):
+            if target == index_file.resolve():
+                return FileResponse(target, headers=no_cache_headers)
             return FileResponse(target)
         if index_file.is_file():
-            return FileResponse(index_file)
+            return FileResponse(index_file, headers=no_cache_headers)
         raise HTTPException(status_code=404, detail="Not Found")
 
 

@@ -64,6 +64,12 @@ _SEASON_PATTERNS = [
     re.compile(r"^第\s*(\d{1,2})\s*季"),  # 第1季
 ]
 
+# 特别篇文件夹：OVA/OAD/SP 等，统一归入 S00。
+_SPECIAL_SEASON_RE = re.compile(
+    r"^(?:s\s*0{1,2}|season\s*0{1,2}|sp|sps|special|specials|ova|oad|oav|特别篇|特典|番外)$",
+    re.IGNORECASE,
+)
+
 _RESOLUTION_NUMBERS = {1080, 1440, 2160, 3840, 4320, 7680}
 
 _ILLEGAL_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -118,10 +124,12 @@ def is_likely_year(number: int) -> bool:
 
 
 def extract_season(dir_name: str) -> Optional[int]:
-    """从文件夹名提取季数（S01 / Season 1 / 第1季 / 纯数字）。"""
+    """从文件夹名提取季数（S01 / Season 1 / 第1季 / 纯数字）；特别篇文件夹返回 0。"""
     text = str(dir_name or "").strip()
     if not text:
         return None
+    if _SPECIAL_SEASON_RE.match(text):
+        return 0
     for pattern in _SEASON_PATTERNS:
         match = pattern.search(text)
         if match:
@@ -332,7 +340,9 @@ def _build_show(
     if season_dirs:
         show["level"] = 2
         for season_dir in sorted(season_dirs, key=lambda entry: _natural_key(entry.name)):
-            season_number = extract_season(season_dir.name) or 1
+            season_number = extract_season(season_dir.name)
+            if season_number is None:
+                season_number = 1
             folder_path = root_path / season_dir.name
             season = {
                 "season": season_number,

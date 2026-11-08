@@ -593,6 +593,7 @@ function statusTagType(status: RenameResultStatus): '' | 'success' | 'info' | 'd
         <div class="season__head">
           <div class="season__title">
             <span class="season__label">S{{ String(season.season).padStart(2, '0') }}</span>
+            <el-tag v-if="season.season === 0" size="small" effect="light" type="info">特别篇</el-tag>
             <span class="muted nums">{{ season.folder_name ?? '根目录' }}</span>
             <span class="muted nums">{{ season.files.length }} 个文件</span>
           </div>
@@ -743,7 +744,7 @@ function statusTagType(status: RenameResultStatus): '' | 'success' | 'info' | 'd
       <div class="result-summary nums">
         成功 {{ resultSummary.renamed }} · 跳过 {{ resultSummary.skipped }} · 失败 {{ resultSummary.failed }}
       </div>
-      <el-table v-if="problemResults.length" :data="problemResults" size="small" max-height="320">
+      <el-table v-if="problemResults.length" :data="problemResults" size="small">
         <el-table-column prop="name" label="原文件名" min-width="200" show-overflow-tooltip />
         <el-table-column prop="new_name" label="目标文件名" min-width="200" show-overflow-tooltip />
         <el-table-column label="状态" width="96">
@@ -782,10 +783,17 @@ function statusTagType(status: RenameResultStatus): '' | 'success' | 'info' | 'd
 </template>
 
 <style scoped lang="scss">
+// 本页内容多，特例：允许页面级滚动，卡片不压缩、不出现卡片内滚动条。
 .renamer {
   display: flex;
   flex-direction: column;
   gap: var(--up-strm-space-4);
+  overflow-y: auto;
+
+  // 关键：卡片作为 flex 子项默认会被压缩到容器高度内，导致卡片内出现滚动条/裁切。
+  > :deep(.el-card) {
+    flex: 0 0 auto;
+  }
 
   &__card {
     margin: 0;

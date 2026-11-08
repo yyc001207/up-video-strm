@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from app.core.paths import APP_DIR_NAME
+from app.version import __version__
 
 WINDOW_TITLE = APP_DIR_NAME
 WINDOW_SIZE = (1360, 900)
@@ -114,9 +115,11 @@ def run_window(
     import webview
 
     storage_dir.mkdir(parents=True, exist_ok=True)
+    # 带版本号首屏地址：升级后换用新 URL，避免 WebView2 直接复用旧版本的 index.html 缓存。
+    window_url = f"{url.rstrip('/')}/?v={__version__}"
     window = webview.create_window(
         title,
-        url,
+        window_url,
         width=WINDOW_SIZE[0],
         height=WINDOW_SIZE[1],
         min_size=WINDOW_MIN_SIZE,

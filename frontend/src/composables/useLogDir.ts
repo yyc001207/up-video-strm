@@ -9,7 +9,7 @@ import { ref } from 'vue'
 
 import { desktopApi } from '@/api/desktop'
 
-export type LogDirKind = 'openlist' | 'upload' | 'automation'
+export type LogDirKind = 'openlist' | 'upload' | 'automation' | 'rename'
 
 export function useLogDir(kind: LogDirKind): { open: () => Promise<void> } {
   const opening = ref(false)

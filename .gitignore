@@ -17,6 +17,7 @@ backend/data/
 backend/openlist_logs/
 backend/upload_logs/
 backend/automation_logs/
+backend/rename_logs/
 backend/output/
 backend/webview/
 backend/desktop.json

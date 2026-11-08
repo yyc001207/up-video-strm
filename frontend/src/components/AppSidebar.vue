@@ -11,6 +11,7 @@ import {
   Film,
   Setting,
   MagicStick,
+  FolderOpened,
   Odometer,
   Connection,
   Expand,
@@ -74,6 +75,12 @@ const GROUPS: NavGroup[] = [
       { path: '/automation/realtime', label: '运行详情' },
       { path: '/automation/history', label: '运行记录' }
     ]
+  },
+  {
+    id: 'renamer',
+    label: '本地改名',
+    icon: FolderOpened,
+    pages: [{ path: '/renamer', label: '批量改名' }]
   }
 ]
 

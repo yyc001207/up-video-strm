@@ -18,7 +18,7 @@ from app.core.paths import APP_DIR_NAME, exe_dir, is_frozen, resource_dir
 from app.business.automation.retention import cleanup_once, daily_cleanup_loop
 from app.business.execution_registry import clear as clear_execution_registry
 from app.utils.responses import success_response
-from app.api import automation, desktop, openlist, uploader
+from app.api import automation, desktop, openlist, renamer, uploader
 from app.version import __version__
 
 
@@ -88,6 +88,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(openlist.router, prefix="/api/openlist", tags=["OpenList"])
 app.include_router(uploader.router, prefix="/api/upload", tags=["Upload"])
 app.include_router(automation.router, prefix="/api/automation", tags=["Automation"])
+app.include_router(renamer.router, prefix="/api/renamer", tags=["Renamer"])
 app.include_router(desktop.router, prefix="/api/desktop", tags=["Desktop"])
 
 

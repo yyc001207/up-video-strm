@@ -35,6 +35,7 @@ const ITEMS: PaletteItem[] = [
   { path: '/automation/execution', label: '开始执行', group: '自动追更', aliases: '自动化执行 追更执行' },
   { path: '/automation/realtime', label: '运行详情', group: '自动追更', aliases: '自动化日志 实时日志' },
   { path: '/automation/history', label: '运行记录', group: '自动追更', aliases: '自动化历史 任务历史' },
+  { path: '/renamer', label: '批量改名', group: '本地改名', aliases: '重命名 rename 剧集 sxxexx 字幕 季 拆分' },
   { path: '/config', label: '连接与格式', group: '全局', aliases: '全局配置 config openlist 云盘 格式 生成设置' },
   { path: '/settings', label: '设置', group: '全局', aliases: 'settings 主题 外观 关于' }
 ]

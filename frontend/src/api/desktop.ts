@@ -16,8 +16,8 @@ export const desktopApi = {
   openDataDir(): Promise<ApiRes<{ path: string }>> {
     return request.post('/desktop/open-data-dir')
   },
-  /** 在资源管理器中打开日志保存目录（kind：openlist STRM 生成 / upload 云盘上传 / automation 自动追更）。 */
-  openLogDir(kind: 'openlist' | 'upload' | 'automation'): Promise<ApiRes<{ path: string }>> {
+  /** 在资源管理器中打开日志保存目录（kind：openlist STRM 生成 / upload 云盘上传 / automation 自动追更 / rename 本地改名）。 */
+  openLogDir(kind: 'openlist' | 'upload' | 'automation' | 'rename'): Promise<ApiRes<{ path: string }>> {
     return request.post('/desktop/open-log-dir', { kind })
   },
   /** Win11 默认折叠托盘图标，调用后写入「始终显示」注册表项。 */

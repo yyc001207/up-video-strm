@@ -27,6 +27,7 @@ const MODULE_LABEL: Record<string, string> = {
   schedule: 'STRM 生成',
   upload: '云盘上传',
   automation: '自动追更',
+  renamer: '本地改名',
   config: '连接与格式',
   settings: '设置'
 }

@@ -111,6 +111,12 @@ const router = createRouter({
       meta: { title: '运行记录', description: '按轮次查看自动追更运行结果与失败重试' }
     },
     {
+      path: '/renamer',
+      name: 'RenamerFiles',
+      component: () => import('@/views/renamer/RenameFiles.vue'),
+      meta: { title: '批量改名', description: '按 SxxExx 规范批量重命名本地剧集与字幕文件' }
+    },
+    {
       // 桌面托盘外壳经 window.__upVideoStrmNavigate('/settings') 跳转，此路径必须保持不变。
       path: '/settings',
       name: 'Settings',

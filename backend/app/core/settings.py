@@ -51,6 +51,11 @@ class Settings(BaseSettings):
         str(_data_root / "automation_logs") if _data_root else "./automation_logs"
     )
 
+    # 本地改名：批量重命名操作日志目录
+    rename_log_dir: str = (
+        str(_data_root / "rename_logs") if _data_root else "./rename_logs"
+    )
+
     # CORS（本地开发前端默认 5173；本地部署可放宽为 * 或指定端口）
     allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

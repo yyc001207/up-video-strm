@@ -629,6 +629,7 @@ defineExpose({ reload: load })
 }
 
 .global-config__row {
+  margin-top: var(--up-strm-space-4, 16px);
   align-items: flex-start;
 }
 

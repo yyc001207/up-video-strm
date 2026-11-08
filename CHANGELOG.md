@@ -21,6 +21,21 @@
 
 - 暂无。
 
+## [4.20.0] - 2026-11-08
+
+**级别：MINOR（新增独立模块：本地改名，含新页面、新接口与新日志目录）** · 代码见本次提交
+
+- 新增「本地改名」模块（侧栏第四个模块，页面「批量改名」，路由 `/renamer`）：把散乱的剧集 / 字幕文件名统一整理为 `SxxExx.lang.ext`，全程只操作本机文件，不依赖 OpenList / 123 云盘。
+- 后端新增 `backend/app/business/renamer/`：
+  - `planner.py`：视频 / 字幕扩展名、集数解析（`S01E05` → `EP05` → `E05` → `第05集` → `[05]` → `(05)` → 兜底数字，排除年份与分辨率）、季数解析、语言标记识别、`.5` 特殊集、目标名生成、一级 / 二级目录结构识别、目标冲突标记（`exists` / `duplicate` / `chain` / `noop` / `caseonly`）与自动编号；
+  - `service.py`：扫描（目录校验、拒绝磁盘根、单目录最多 500 文件、计划缓存）、批量重命名（冲突策略 `skip` / `autonum` / `overwrite`、只允许重命名已扫描文件、目标必须在根目录内、仅大小写调整走两步改名）、操作日志 `rename_logs/rename.log`；
+  - `schema.py`：扫描 / 重命名请求模型。
+- 新增接口：`POST /api/renamer/scan`、`POST /api/renamer/rename`、`GET /api/renamer/logs`（`backend/app/api/renamer.py`，`main.py` 挂载 `/api/renamer`）。
+- 配置与桌面能力：`settings.rename_log_dir`（环境变量 `RENAME_LOG_DIR`，默认 `./rename_logs`）、`.gitignore` 忽略 `backend/rename_logs/`、桌面接口 `POST /api/desktop/open-log-dir` 新增 `kind=rename`。
+- 前端新增 `views/renamer/RenameFiles.vue` 单页：选择 / 扫描文件夹、按剧集与季分组的预览表格（勾选 / 原文件名 / 可编辑目标名 / 状态标签）、全选与「从头开始」重编号、一级结构「按集数拆分季」并可选移动文件、冲突策略与语言标记开关、`.5` 手动确认、目标重名校验、每批 20 条的执行进度与停止、结果汇总、完成后自动重扫、操作日志抽屉；新增 `types/renamer.ts`、`api/renamer.ts`；路由、侧栏、顶栏模块名、命令面板与 `useLogDir` / `openLogDir` 的 `rename` 类型同步。
+- 测试：新增 `backend/tests/test_renamer.py` 34 项（解析、结构扫描、冲突标记、各类改名与限制），全量后端 202 项通过；前端 `vue-tsc -b --force` 通过、`npm run build` 成功。
+- 文档：README 特性表与项目结构、`docs/rules/backend.md`（本地改名业务层、关键流程 11、`RENAME_LOG_DIR`）、`docs/rules/frontend.md`（目录结构、路由、壳层、页面说明、复用判据）、`manual/用户手册.md`（1.2 模块表、1.3 侧栏、2.10 处理流程、3.14 操作步骤、5.11 限制、7 日志目录）。
+
 ## [4.19.7] - 2026-11-08
 
 **级别：PATCH（缺陷修复，交互语义修正，接口仅新增可选字段）** · 代码见本次提交

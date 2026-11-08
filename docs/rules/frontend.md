@@ -14,17 +14,18 @@
 frontend/
 ├── src/
 │   ├── main.ts / App.vue / router/index.ts  # 入口、壳层（手风琴侧栏 + 顶栏）、路由
-│   ├── api/                # axios 实例 + openlist / uploader / automation / desktop 接口封装
+│   ├── api/                # axios 实例 + openlist / uploader / automation / renamer / desktop 接口封装
 │   ├── stores/             # Pinia（openlist 业务 / running 运行状态聚合 / theme 主题）
 │   ├── views/
 │   │   ├── Today.vue       # 今天（默认页）：生成 / 上传 / 追更三张流水线卡 + 需要处理 + 最近活动
 │   │   ├── schedule/       # STRM 生成模块：任务 / 开始执行 / 运行详情 / 运行记录 + components/DirTreePanel.vue
 │   │   ├── upload/         # 云盘上传模块：任务 / 命名规则 / 开始执行 / 运行详情 / 运行记录 + components/RemoteDirPanel.vue
 │   │   ├── automation/     # 自动追更模块：任务配置 / 开始执行 / 运行详情 / 运行记录
+│   │   ├── renamer/        # 本地改名模块：批量改名（RenameFiles.vue）
 │   │   ├── config/         # 连接与格式：服务器配置 + 视频/字幕格式 + 123 云盘凭据
 │   │   └── Settings/       # 桌面设置页
 │   ├── components/         # 通用组件（AppSidebar / TopBar / ActivityDrawer / CommandPalette / FlowCard / StatusPill / AvatarTile / EmptyState / ProgressRing / BulkBar / StatusDot / LogViewer / ThemeToggle）
-│   ├── types/ / utils/     # 类型（openlist / uploader / automation / desktop）、工具（date / ws / format / status / execution）
+│   ├── types/ / utils/     # 类型（openlist / uploader / automation / renamer / desktop）、工具（date / ws / format / status / execution）
 │   ├── composables/        # 组合式函数（usePolling / useConfirmAction / useLogDir）：轮询、危险确认、日志目录的唯一入口
 │   ├── __tests__/          # 纯函数与组合式函数单测（vitest，node 环境，不挂载组件）
 │   └── styles/             # variables（Next UI v2 令牌）/ element-reset（EP 变量映射与表格统一）/ dark（紫黑四层）/ global
@@ -58,11 +59,12 @@ frontend/
 | `/automation/execution` | `views/automation/Execution.vue` | 开始执行：批量启动/停止、运行阶段与待校验文件、5 项时间参数（写回任务配置） |
 | `/automation/realtime` | `views/automation/RealtimeLog.vue` | 运行详情：任务 / 本轮 / 连接三层状态、自动重连、最近一轮日志显式加载 |
 | `/automation/history` | `views/automation/TaskHistory.vue` | 运行记录：按任务/状态/时间范围筛选，详情抽屉、日志回放、失败文件写回待校验 |
+| `/renamer` | `views/renamer/RenameFiles.vue` | 本地改名：扫描本机剧集目录 → 预览 SxxExx 目标名 → 勾选批量重命名（拆分季 / 从头编号 / 冲突策略 / 操作日志） |
 | `/settings` | `views/Settings/index.vue` | 桌面设置（desktop 外壳导航仍按此路径跳转） |
 | 其它 | — | 重定向到 `/` |
 
-- 壳层（Next UI v2，见 [docs/design/ui-next-plan.md](../design/ui-next-plan.md)）：左侧 [AppSidebar.vue](../../frontend/src/components/AppSidebar.vue) 232px 单列手风琴（折叠 72px，存 `localStorage` 的 `up-video-strm-sidebar-collapsed`；展开 / 收起按钮固定在侧栏**最下方**，展开时带「收起导航」文字、折叠时仅图标居中），顶部「今天」，随后「STRM 生成 / 云盘上传 / 自动追更」三个模块（同一时刻只展开一个，展开状态记在 `up-video-strm-nav-open-group`，子项展开 / 收起用 Vue `<Transition :css="false">` + JS 高度过渡（0 → `scrollHeight`，动画结束后才移除节点，取消时清理内联样式），避免收起时子项文字残留、闪动或提前消失），底部「连接与格式」「设置」；「开始执行」项显示该模块运行中数量徽标。顶栏 [TopBar.vue](../../frontend/src/components/TopBar.vue) 60px 两行吸顶：第一行「模块 · 页面」（模块展示名 + `route.meta.title`，如「云盘上传 · 开始执行」，15px/600；无模块的页面只显示页面标题），第二行页面简述（`meta.description`，单行省略）+ 运行胶囊（`N 个在跑 · P%` / 空闲，点击打开 [ActivityDrawer.vue](../../frontend/src/components/ActivityDrawer.vue) 可看详情或停止）+ 连接状态 + 搜索入口 + 主题切换；搜索入口与快捷键 Ctrl/Cmd + K 均打开 [CommandPalette.vue](../../frontend/src/components/CommandPalette.vue) 命令面板。`App.vue` 仅负责壳层、离线细横幅与 30s 运行状态轮询（页面隐藏时跳过），页面标题只出现在顶栏，内容区不再渲染重复的大标题。
-- 展示名（路由不变）：任务调度 → STRM 生成，任务配置 → 任务，执行管理 → 开始执行，实时日志 → 运行详情，任务历史 → 运行记录；上传管理 → 云盘上传，重命名规则 → 命名规则；自动化任务 → 自动追更；全局配置 → 连接与格式。默认进入「今天」（`/`），未匹配路由重定向 `/`。`document.title` 同步为「`<页面标题> - up-video-strm`」，默认「up-video-strm 控制台」。
+- 壳层（Next UI v2，见 [docs/design/ui-next-plan.md](../design/ui-next-plan.md)）：左侧 [AppSidebar.vue](../../frontend/src/components/AppSidebar.vue) 232px 单列手风琴（折叠 72px，存 `localStorage` 的 `up-video-strm-sidebar-collapsed`；展开 / 收起按钮固定在侧栏**最下方**，展开时带「收起导航」文字、折叠时仅图标居中），顶部「今天」，随后「STRM 生成 / 云盘上传 / 自动追更 / 本地改名」四个模块（同一时刻只展开一个，展开状态记在 `up-video-strm-nav-open-group`，子项展开 / 收起用 Vue `<Transition :css="false">` + JS 高度过渡（0 → `scrollHeight`，动画结束后才移除节点，取消时清理内联样式），避免收起时子项文字残留、闪动或提前消失），底部「连接与格式」「设置」；「开始执行」项显示该模块运行中数量徽标。顶栏 [TopBar.vue](../../frontend/src/components/TopBar.vue) 60px 两行吸顶：第一行「模块 · 页面」（模块展示名 + `route.meta.title`，如「云盘上传 · 开始执行」，15px/600；无模块的页面只显示页面标题），第二行页面简述（`meta.description`，单行省略）+ 运行胶囊（`N 个在跑 · P%` / 空闲，点击打开 [ActivityDrawer.vue](../../frontend/src/components/ActivityDrawer.vue) 可看详情或停止）+ 连接状态 + 搜索入口 + 主题切换；搜索入口与快捷键 Ctrl/Cmd + K 均打开 [CommandPalette.vue](../../frontend/src/components/CommandPalette.vue) 命令面板。`App.vue` 仅负责壳层、离线细横幅与 30s 运行状态轮询（页面隐藏时跳过），页面标题只出现在顶栏，内容区不再渲染重复的大标题。
+- 展示名（路由不变）：任务调度 → STRM 生成，任务配置 → 任务，执行管理 → 开始执行，实时日志 → 运行详情，任务历史 → 运行记录；上传管理 → 云盘上传，重命名规则 → 命名规则；自动化任务 → 自动追更；改名工具 → 本地改名（页面名「批量改名」）；全局配置 → 连接与格式。默认进入「今天」（`/`），未匹配路由重定向 `/`。`document.title` 同步为「`<页面标题> - up-video-strm`」，默认「up-video-strm 控制台」。
 - 「今天」首屏固定 5 个只读请求（`openlistApi.listTasks`、`openlistApi.listExecutions`、`uploaderApi.listExecutions`、`automationApi.listTasks`、`automationRunApi.active`，均 silent），任一失败只降级对应区块；无任务时展示「先从连接开始」三步空态；壳层 running store 的聚合请求不计入。
 - 后端不可达时内容区顶部展示可关闭的离线细横幅，运行状态由 [stores/running.ts](../../frontend/src/stores/running.ts) 聚合（三模块运行中数量、`items` 运行条目、加权 `progress`、`lastUpdatedAt`，30s 轮询且页面隐藏时跳过）。
 - 原「五页签」语义改为独立路由页面：进入页面即按需加载，切换路由即刷新，不再依赖 tab 的 `reload`。
@@ -87,6 +89,7 @@ frontend/
 - `RealtimeLog.vue`（上传管理）：与「任务调度 · 实时日志」共用同一套页面骨架与样式（类名 `.realtime-page / .realtime-toolbar / .progress-card / .log-toolbar / .log-area`，见上）：说明段 → 工具条 → 7 项进度卡（文件总数 / 成功 / 跳过 / 失败 / 已上传 / 用时 / 当前文件）→ 日志工具条（级别「全部级别 / 信息 / 警告 / 错误」、关键字、行数、返回执行管理）→ 日志终端；状态帧结束后自动切到下一个排队执行，全部结束停留回放最近日志。无执行记录时展示「无运行中任务」而不是「运行中」；WS 连接建立后若执行已结束，直接显示最终状态并断开连接。
 - `TaskHistory.vue`（上传管理）：与「任务调度 · 任务历史」采用同一套列表结构（顶部 `.page-hint` 说明 + `.toolbar` 筛选 + `.list-card` 表格 + `.list-card__pager` 分页）：任务名主行 + 本地目录副行（悬停显示云端目录）、状态彩色圆点、文件计数右对齐、耗时、执行时间、执行次数与右侧固定「详情」；工具栏筛选关键字 / 时间范围 / 状态（成功 / 失败 / 已取消 / 未执行）三项，客户端分页 20 / 10 / 50；详情页展示该任务全部执行记录（状态 / 冲突策略 / 文件统计），可查看文件粒度明细抽屉、日志回放 / 打开日志文件夹，并按原执行固化参数重跑（跳转实时日志自动启动）。
 - 自动化任务四页：`TaskConfig.vue`（表格服务端分页：选择列、任务名 + 校验目录主副行、上传任务、STRM 任务、运行参数（并发 / 重试 / 生成模式）、状态标签、最近扫描、带图标操作列；`EmptyState` 空态，勾选后底部 `BulkBar`）+ 抽屉编辑；绑定上传/STRM 任务时被占用项置灰并显示绑定者；上传/STRM 任务选择框未选中时为 `null`（不回显 0）；「检测」按钮调用 `POST /tasks/check-dir` 展示目录一致性与前 20 个文件样例；运行中任务每 5s 自动刷新；根节点 `.automation-tasks` 用 `gap` 补齐工具栏与列表卡间距；抽屉仅保留上传并发 / 失败重试 / 生成模式，5 项时间参数移至执行管理）、`Execution.vue`（与「任务调度 · 执行管理」同一套三栏骨架 `exec-page / exec-body / exec-workspace / exec-panel`：左「选择任务」（底部含「全选 / 取消全选」「重置指纹」「清空待校验」）、中「执行参数」（可见性轮询间隔 / 可见性等待上限 / 空闲等待上限 / 阶段超时 / 轮次间隔：默认取所选任务的当前配置，多选且取值不一致时置空并提示「多任务取值不同，留空不修改」，提交时写回任务配置并持续生效；数字输入框固定 180px 宽，不随卡片撑满；执行参数卡高度随内容自适应，不出现内部滚动条）、右「已选任务」（摘要、清空选择 / 启动）；启动成功后自动跳转 `/automation/realtime?task_id=`；仅当存在运行中任务且页面可见时每 5s 轮询 `GET /active`，轮次结束相位变化时静默刷新任务行；「正在执行」表带选择列（`reserve-selection`）与顶部批量栏（全选 / 取消全选 / 已选 N / 批量停止），批量停止逐个调用 `POST /tasks/{id}/stop`，完成后刷新列表并清理已不在运行列表中的选中项）、`RealtimeLog.vue`（三层状态并列展示、互不冒充，推导集中在 `frontend/src/utils/automationState.ts` 的 `deriveRunDetailView` 并由 `src/__tests__/automationState.test.ts` 覆盖：任务层 = `GET /active` 5s 轮询 → 「运行中 · 阶段 / 已停止」；本轮层 = WS live 帧 + 终态后 `GET /runs/{run_id}` → 「第 N 轮 · 状态 / 失败原因」；连接层 = WS 状态，仅表达连接；工具条标签分别为任务 / 本轮 / 连接；`connectAutomationWs(taskId)` 连接 `/api/automation/ws/{task_id}`，回放帧带 `replay: true` 由页面直接丢弃，避免把上一轮终态当成本轮结束；单轮终态后不断开，显示「下一轮 HH:mm:ss」并保持连接，仅任务停止才断开；断线且任务仍运行时按 1s/3s/5s 自动重连（最多 5 次，标签「重连中」）；摘要 7 项为轮次 / 待校验 / 已校验 / 缺失文件 / 当前阶段 / 本轮状态 / 用时·下一轮·当前任务，失败时摘要上方显示「本轮失败：原因」；工具条「重连 / 查看最近一轮 / 清空 / 打开日志文件夹」，历史日志改为显式加载，不再自动回放；控件禁用只依赖是否选中任务；日志含 A/B 镜像行（`[A#id]` / `[B#id]`））、`TaskHistory.vue`（服务端分页，任务 / 状态 / 时间范围筛选（`start_time`/`end_time` 传 YYYY-MM-DD）；表格展示轮次、阶段、新增/待校验/已校验/跳过、缺失文件与 A/B 执行摘要；详情抽屉展示错误码/错误信息/缺失文件清单，日志抽屉回放该轮日志文件，失败记录可「重试失败」写回待校验；工具栏含「日志文件夹」）。
+- 本地改名四页（`views/renamer/RenameFiles.vue` 单页）：顶部「选择文件夹」卡（路径输入 + 浏览（桌面版 `window.pywebview.api.pick_directory`，网页版提示手动输入）+ 扫描 + 扫描摘要标签），下方每个剧集一张卡、每个季一块表：季头「全选 / 从头开始」；一级结构且文件数 > 1 时出现「按集数拆分季」行（每季集数如 `3,2,1`，合计须等于文件数；季文件夹格式 Season 01 / S01 / 第1季；可选移动文件到对应季文件夹）；表格列为勾选 / 原文件名 / 可编辑目标名（修改后高亮并可重置）/ 状态标签（`.5` 特殊集、无法识别·自动编号、语言标记、分季、从头编号、已是目标名、仅大小写、目标已存在、已修改、目标重名）。底部操作卡：已选 N/总数、冲突策略（跳过 / 自动编号 / 覆盖）、保留语言标记、无法识别时自动编号、重新扫描、开始重命名；执行前校验 `.5` 必须手动输入、目标名非空、选中项目标不重名，覆盖策略需二次确认；执行按每批 20 条请求，进度弹窗显示已处理/成功/跳过/失败与「停止后续批次」，完成后结果弹窗列出跳过/失败原因并自动重扫；「操作日志」抽屉读取 `GET /api/renamer/logs` 并可打开日志文件夹。
 - 任务调度 / 上传管理的「开始执行」与「运行记录」表格均新增「谁启动的」列：`trigger_source === 'automation'` 时显示自动化任务名（`trigger_name`），否则显示「手动」；两者的运行记录工具栏均提供「日志文件夹」入口。
 
 ## 设计与令牌
@@ -105,14 +108,14 @@ frontend/
 - **组合式函数（谨慎抽）**：只封装状态机语义（启动 / 停止、去重、清理），参数 ≤ 3、返回值 ≤ 8，不 import store、不接收组件实例；页面仍负责取数、错误处理、文案；必须先在一页试点证明页面变短且行为等价。现有：
   - `composables/usePolling.ts`：`usePolling(task, { interval = 5000, immediate = false, visibleOnly = true })` → `{ start, stop, tick }`；同一时刻只保留一条定时器，上一轮未完成时跳过，`visibleOnly` 时 `document.hidden` 跳过，组件卸载自动停止。**全站唯一允许调用 `setInterval` 的位置**（依赖第三方库内部计时的除外）。
   - `composables/useConfirmAction.ts`：`useConfirmAction()` → `{ confirmDanger({ title, message, confirmText?, cancelText? }) }`；统一 `warning` + `el-button--danger`，取消 / 关闭返回 `false`。**全站唯一允许直接调用 `ElMessageBox.confirm` 的位置**。
-  - `composables/useLogDir.ts`：`useLogDir('openlist' | 'upload' | 'automation')` → `{ open() }`；带重入保护，失败提示沿用后端文案（由请求拦截器展示），页面不再各写 try/catch。**全站唯一允许调用 `desktopApi.openLogDir` 的位置**。
+  - `composables/useLogDir.ts`：`useLogDir('openlist' | 'upload' | 'automation' | 'rename')` → `{ open() }`；带重入保护，失败提示沿用后端文案（由请求拦截器展示），页面不再各写 try/catch。**全站唯一允许调用 `desktopApi.openLogDir` 的位置**。
 - **组件（默认不抽）**：需同时满足「≥3 处使用且语义一致、内部承载非平凡决策、删除后每个使用点至少多写 10 行、props ≤ 5 且 slots ≤ 2、不是第三方 props 同构转发」；已存在且合格的维持现状（`StatusDot` / `StatusPill` / `EmptyState` / `LogViewer` / `BulkBar` / `FlowCard`）。
 - **否决**：同构转发、只有布局、只有一个使用点 → 撤回本批并删除文件；单批 ≤ 3 个新文件、≤ 15 个调用点。
 - **不改交互**：详情页 / 抽屉形态、弹窗形态、状态组件合并等交互变更不随复用批一起做，需另立方案确认。
 
 ## 接口与状态
 
-- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`；错误提示按文案 3s 去重；请求 config 传 `{ silent: true }` 时不弹提示，供轮询使用）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload' | 'automation')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
+- axios 实例：[api/index.ts](../../frontend/src/api/index.ts)（响应拦截统一拆包 `code === 200`；错误提示按文案 3s 去重；请求 config 传 `{ silent: true }` 时不弹提示，供轮询使用）；业务接口：[api/openlist.ts](../../frontend/src/api/openlist.ts)；桌面接口：[api/desktop.ts](../../frontend/src/api/desktop.ts)（含 `openLogDir('openlist' | 'upload' | 'automation' | 'rename')`，调用 `POST /api/desktop/open-log-dir` 在资源管理器中打开对应日志目录；网页版返回 400 提示仅 Windows 本地环境支持）。
 - 后端 API 基址由 `VITE_API_BASE_URL` 控制（默认 `/api`）。
 - Pinia store：[stores/openlist.ts](../../frontend/src/stores/openlist.ts)（业务，含 `runningCount` 与 `fetchRunning(silent)`）、[stores/running.ts](../../frontend/src/stores/running.ts)（壳层运行状态聚合：三模块运行中数量、运行条目 `items`、加权进度 `progress`（运行数 ≤5 且每条目有分母时才算）、`lastUpdatedAt`、离线判定；30s 轮询且页面隐藏时跳过，失败时清空条目）、[stores/theme.ts](../../frontend/src/stores/theme.ts)（浅色/深色/跟随系统，localStorage 记忆，键名 `up-video-strm-theme`，首屏无闪烁）。
 - WebSocket 工具：[utils/ws.ts](../../frontend/src/utils/ws.ts)，连接 `ws://.../api/openlist/ws/{execution_id}`；`connectAutomationWs(taskId)` 连接 `ws://.../api/automation/ws/{task_id}`。
